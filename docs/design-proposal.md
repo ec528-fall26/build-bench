@@ -4,11 +4,6 @@
 progress is graded against for the rest of the semester — see the
 [progress rubric](https://ec528.github.io/ec528/fall26/grading/#progress).*
 
-**Team:** Joonseo Moon, Austin Li, Owen Zhang, Juliette Jacques, Anthony Capraru
-**Mentor:** Minghua Ma (Microsoft)
-
-> **Draft v0.1.** Items marked **TODO** need a team decision or mentor confirmation before submission.
-
 ## 1. Problem
 
 Linux distributions ship tens of thousands of packages, and each one has to build

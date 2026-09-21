@@ -1,209 +1,128 @@
 # Design Proposal
 
-*Due in the `demo-1` branch at 12:00 noon on 09/23. This document is what your
-progress is graded against for the rest of the semester — see the
-[progress rubric](https://ec528.github.io/ec528/fall26/grading/#progress).*
+**Build-Bench Challenge: Autonomous LLM Agents for Cross-Architecture Package Repair**
+**Team:** Anthony Capraru, Austin Li, Joonseo Moon, Juliette Jacques, Owen Zhang
+**Mentor:** Minghua Ma, Microsoft
+**Demo 1:** September 23, 2026. Materials are due at noon on `demo-1`.
+
+This is a design proposal. All agent modules and evaluation targets below are proposed; the completed work is the dataset inspection and starter-kit smoke run. We retain the course template's six sections. Milestones are proposed commitments for team review before submission.
 
 ## 1. Problem
 
-Linux distributions ship tens of thousands of packages, and each one has to build
-on every architecture the distribution supports (for openSUSE, x86_64, aarch64,
-ppc64le, s390x and riscv64). A package that builds on x86_64 often fails
-on another architecture. Common causes include:
+Package maintainers must diagnose software that builds on one instruction set architecture but fails on another. Failures can arise from source assumptions, dependencies, compiler flags, build-system configuration, tests, or packaging. Manual repair requires moving between long logs, unfamiliar source trees, and build metadata, then rebuilding to determine whether a change helped.
 
-- x86-only intrinsics or inline assembly (`<immintrin.h>`, `__asm__`),
-- hard-coded architecture assumptions: `char` signedness, page size, `long double`
-  width, endianness, `-m64`/`-msse` compiler flags,
-- `%ifarch` gaps or `ExcludeArch` lines in the RPM `.spec` file,
-- dependencies that are missing on the target architecture, or tests that time out
-  there.
+We propose a general LLM repair agent that gathers evidence, forms and revises a root-cause hypothesis, edits permitted package files, and requests validation within a fixed resource budget. The desired benefit is less manual investigation with independently verifiable repairs. We will measure repair success and resource cost; this project does not yet measure developer time saved.
 
-**Who has this problem today:** distribution packagers and porting teams, such as
-openSUSE/SUSE, Fedora and Debian porters and cloud vendors moving workloads to Arm.
-Today a human reads a build log that can run to thousands of lines, finds the root
-cause, edits the spec or adds a source patch, and resubmits the package to the build
-service. They repeat this until it builds. This takes a lot of skilled effort,
-and it's the main thing holding back new architectures such as riscv64.
+**Scope.** Our downloaded release has 200 Debian source-package cases across 188 packages: 100 x86_64-to-aarch64 and 100 in the reverse direction. The competition also advertises RISC-V migrations, but this release contains no RISC-V cases. Initial course experiments cover the two available directions. RISC-V support depends on released cases and permitted infrastructure. [1, 3]
 
-**Build-Bench** is a benchmark for this task. An agent gets a package that fails to
-build for a target architecture, along with the failing build log. It must edit the
-package worktree until the organizer's Docker Validator (OBS `obs-build` in a
-container) produces the expected RPM/SRPM artifacts. Success is measured by the
-build completing, not by matching a reference patch.
-
-Our goal is to build a **Repair Agent** that scores well on Build-Bench. Along the
-way we'll learn which kinds of cross-architecture failures LLM agents can and
-cannot fix.
+**Non-goals for Demo 1.** Implementing an agent, making case-specific hard-coded fixes, modifying the organizer's runner to pass, training a model, and claiming hidden-case performance. No competition registration or qualification is claimed.
 
 ## 2. Proposed design
 
-### 2.1 Constraints we design around
+### Execution contract
 
-These constraints come from the starter kit (`buildbench-starter-kit-0.1.0-rc.2`).
-They shape the whole design:
+An agent receives case metadata and initial failure evidence in `/workspace/input`, edits only the permitted repository under `/workspace/work/repo`, and writes structured completion output under `/workspace/output`. The platform derives a canonical patch, applies it to a fresh case, runs the official target build, and checks expected artifacts. Agent completion alone does not establish repair success. We will follow the submission checks, including `agent-result.json`, a README, and exactly pinned dependencies. [1, 4]
 
-| Constraint | Source | Consequence |
-| --- | --- | --- |
-| Agent is a Python 3.11 program in a managed runtime, packaged as a ZIP | `agent.yaml`, `AGENTS.md` | No custom container, and every dependency is pinned in `requirements.lock` |
-| Agent reads `/workspace/input` (read-only) and may only edit `/workspace/work/repo` | runtime interface | All repairs are file edits. The platform computes the canonical `repair.diff` |
-| Agent container runs with `--network none`, 1 CPU, 1 GB RAM, 128 PIDs, read-only root, 64 MB `/tmp` (local runner) | `runner/run-agent-case.sh` | We can't run a local LLM. How the agent reaches a model during evaluation is **still open** (see Risks) |
-| Build feedback comes through a platform protocol, with a limited number of attempts | `README.md` "Runtime interface" | Every build attempt is expensive, so the agent must reason as much as possible *before* each build |
-| Agent must be deterministic and non-interactive | `AGENTS.md` | Temperature 0, fixed seeds, and a bounded number of steps |
+The agent will use only permitted tools. It must not receive a Docker socket or start the validator directly. The controller adapts to the organizer's model-access and build-feedback protocol. The supplied local runner disables agent networking and does not expose a usable iterative model/validation client, so those interfaces must be confirmed before implementation. Local hello testing is already available; arbitrary public-case execution is not yet established.
 
-### 2.2 Architecture
+### Architecture
 
 ```mermaid
-flowchart LR
-    subgraph Input["/workspace/input (read-only)"]
-        T[task.json]
-        L[initial-build.log]
-    end
-
-    subgraph Agent["Repair Agent (src/)"]
-        P[Log Parser &<br/>Error Localizer]
-        C[Failure Classifier]
-        R[Rule-based<br/>Fixers]
-        X[Context Retriever<br/>spec, patches, sources]
-        LLM[LLM Planner /<br/>Patch Generator]
-        G[Patch Guard<br/>minimality + legitimacy]
-        B[Build Feedback<br/>Client]
-        M[(Attempt Memory)]
-    end
-
-    subgraph Repo["/workspace/work/repo (writable)"]
-        S[.spec / patches / sources]
-    end
-
-    V[[Platform Docker Validator]]
-
-    L --> P --> C
-    T --> C
-    C -- known pattern --> R
-    C -- unknown / complex --> X --> LLM
-    R --> G
-    LLM --> G
-    G --> S
-    S --> B --> V
-    V -- new build log --> P
-    B --> M --> LLM
+flowchart TD
+    C[Case manager: metadata, source, initial failure] --> E[Evidence manager: log slices, files, build context]
+    E --> P[LLM planner: hypothesis and next action]
+    P --> T[Controlled tools: search, inspect, permitted diagnostics]
+    T --> E
+    P --> R[Repair generator: candidate edits to allowed worktree]
+    R --> V[Validation adapter: permitted build-feedback protocol]
+    V -->|failure evidence| E
+    V -->|pass| F[Completion output and final worktree]
+    F --> O[Organizer: canonical patch, fresh build, artifact checks]
+    H[Attempt history and metrics] -.-> P
+    P -.-> H
+    V -.-> H
+    B[Iteration, token, time and repeat limits] -.-> P
+    B -.-> V
 ```
 
-**Pipeline, per case:**
+| Component | Responsibility and boundary |
+| --- | --- |
+| Case manager | Normalize package, architecture, build-stage and input paths without altering the original evidence. |
+| Evidence/context manager | Stream logs, retain diagnostic windows and source locations, collapse repetitions, and retrieve relevant source/build/dependency files within the context budget. |
+| Planner and repair generator | Record a falsifiable hypothesis, select a tool or candidate edit, and explain which observed failure the edit addresses. |
+| Controlled tool executor | Allow repository search, file inspection, diff inspection, and permitted diagnostic commands. Restrict paths, command duration and output size. |
+| Validation adapter | Request supported feedback and classify build failure, timeout, invalid patch, and infrastructure error. Final scoring stays with the organizer. |
+| History, budgets and metrics | Persist hypotheses, patch hashes, normalized failure signatures, validation results, usage and termination reasons. |
 
-1. **Log Parser & Error Localizer.** This step turns a raw OBS log of thousands of
-   lines into a short *failure digest*: the failing phase (`%prep`, `%build`,
-   `%check`, `%install`, or dependency resolution), the first real error line, the
-   surrounding compiler or linker output, and the file:line locations it refers to.
-   It's plain Python with regexes and heuristics, and doesn't use an LLM.
-2. **Failure Classifier.** This step puts the digest into one of our failure classes:
-   `missing-build-dep`, `arch-intrinsics/asm`, `compiler-flag`, `type-width/signedness`,
-   `test-failure`, `spec-arch-conditional`, `file-list/packaging`, or `unknown`.
-3. **Rule-based Fixers.** These are deterministic, cheap edits for common,
-   well-understood classes. Examples: add a `%ifarch` guard, drop `-msse*` flags on
-   non-x86, or add a missing `BuildRequires`.
-4. **Context Retriever.** For everything else, this step picks the few files that
-   matter (the `.spec`, patches already in the package, the source file named in the
-   error, the build system files) so that the LLM prompt stays small.
-5. **LLM Planner / Patch Generator.** The LLM proposes a *diagnosis* first and then
-   an edit, written as a unified diff or as structured search/replace blocks.
-6. **Patch Guard.** Before an edit is applied, this step rejects edits that "win" by
-   dodging the problem: adding `ExcludeArch`, deleting `%check` wholesale, emptying
-   `%files`, or touching files outside the repo. It also checks that the diff applies
-   cleanly.
-7. **Build Feedback loop.** This step submits a build through the platform protocol
-   and parses the new log. If the build fails again, the new digest and the previous
-   attempts (from Attempt Memory) go back to the planner. The loop stops on success,
-   when the attempt budget runs out, or when the same error repeats.
+### Repair loop and decisions
 
-### 2.3 Design decisions and rejected alternatives
+1. **Observe:** identify the failing stage and preserve diagnostic provenance, including file paths and log offsets.
+2. **Diagnose and inspect:** form a hypothesis, select relevant files/tools, and gather confirming or contradicting evidence.
+3. **Repair:** make a bounded candidate change and inspect its diff. Preserve tests and required artifacts; do not treat disabling checks as a general repair strategy.
+4. **Validate:** request the allowed build feedback and record the resulting status and evidence.
+5. **Revise or stop:** update the hypothesis on failure. Stop on verified feedback success, exhausted budgets, or a repeated unchanged failure/patch pair. The platform still performs the final clean validation after exit.
 
-| Decision | Chosen | Rejected alternative | Why |
-| --- | --- | --- | --- |
-| Agent loop | Explicit staged pipeline, with the LLM called only for diagnosis and patching | A generic ReAct / "shell agent" that runs arbitrary commands | Build attempts are scarce and the sandbox has no network, 1 CPU and 1 GB of memory. A free-form agent wastes attempts and is hard to keep deterministic |
-| Log handling | Deterministic digest before any LLM call | Pass the whole log (or its tail) to the LLM | Logs are long, and the root cause is often far from the tail. Cutting tokens also cuts cost and variance |
-| Common failures | Rule-based fixers first, LLM as fallback | LLM for everything | Rules are free, reproducible and easy to explain, and they give us a strong baseline to measure the LLM against |
-| Edit format | Structured search/replace blocks, validated before they're written | The LLM rewrites whole files | Whole-file rewrites break large `.spec` files and produce noisy diffs |
-| Legitimacy | Patch Guard blocks "cheating" fixes | Accept any edit that makes the build pass | Disabling the architecture or the tests isn't a real repair. **TODO:** confirm with the mentor how the hidden evaluation treats these |
-| Framework | Plain Python with a thin LLM client | LangChain, AutoGen, etc. | These add many pinned dependencies to the ZIP and hide control flow. **TODO:** revisit if we need their tooling |
+We choose bounded evidence retrieval over placing the entire repository and log in context. One downloaded libyuv log is 2.37 GB; noisy repetition would crowd out the relevant source and diagnostics. We choose iterative diagnosis over a single prompt because validation can contradict the first hypothesis. We choose a small explicit state machine and append-only attempt records over an unconstrained conversation so experiments can explain failures and enforce limits. We choose official fresh-build validation over the model's own confidence or an incremental workspace build. [3, 4]
+
+Initial configurable research limits are **5 repair candidates, 30 minutes total wall time per case, 30,000 model tokens, and 2 repeated identical failure/patch pairs**. These are proposed caps, not published competition limits. Use the stricter organizer cap where applicable and freeze the actual settings before comparison. Record token categories supported by the provider; unknown usage stays unknown, never zero. The wall-clock budget includes tool and build requests.
 
 ## 3. What makes this hard
 
-**Tracing a build failure on a foreign architecture back to a minimal, correct source
-or spec change, while every check costs a build attempt.**
+The hardest challenge is selecting the next useful evidence or repair action under an expensive, incomplete feedback loop. A compiler error may be downstream of a dependency problem, and a cross-architecture failure may actually occur during packaging. Repeated noisy logs can hide the causal diagnostic. The planner must connect architecture and build-system facts to a hypothesis, choose an informative tool call, and revise after a failed build without cycling through the same edits.
 
-We can't just wire an LLM API to the build log, for four reasons:
-
-- **The signal is buried.** OBS logs mix dependency resolution, `configure` output
-  and parallel `make` output, and each failure can trigger many follow-on errors.
-  The line that fails the build (`error: Bad exit status from ... (%build)`) is almost
-  never the root cause.
-- **The fixes need architecture knowledge the log doesn't contain.** For example,
-  "`_mm_crc32_u32` undeclared" on aarch64 might be fixed with an ACLE equivalent, a
-  portable fallback, or a `%ifarch` guard. The right choice depends on the upstream
-  code base, and the log says nothing about it.
-- **Feedback is expensive and limited.** Each build takes minutes and attempts are
-  capped, so ordinary try-and-see debugging isn't possible. The agent has to decide
-  where to spend its attempts.
-- **There's no reference patch to aim at, and there are easy wrong answers.** Many
-  edits make a build "succeed" without fixing anything. Telling a real repair from a
-  cheat is part of the problem.
+This requires more than an API call: bounded log extraction with provenance, tool and state management, reproducible validation integration, failure classification, and cost-aware stopping must work together. Our central experiment will test whether evidence selection and repair history increase verified repairs or reduce model usage compared with the Demo 2 prototype. Failure labels from the current log scan are heuristic signals, not established root causes.
 
 ## 4. How you will know it worked
 
-**Evaluation set.** The starter kit only includes the `hello` example case. We'll
-build a local **dev set of ≥ 20 cross-architecture failure cases**. Candidate sources
-are Build-Bench cases the organizers release, and openSUSE OBS packages whose build
-history shows a failure followed by a fix for aarch64 or riscv64. For each case we'll
-keep the fixing commit only for later grading, and never give it to the agent.
-(**TODO:** confirm with the mentor which cases may be used locally.) The hidden
-competition set is the final judge.
+**Primary metric:** Verified Build Success Rate = cases whose canonical patch applies, clean target build succeeds, and required artifacts pass verification / all cases in the frozen evaluation set. Report numerator and denominator. Timeouts, invalid patches, crashes, and unresolved cases remain in the denominator. Report infrastructure failures separately without silently removing them; any secondary rate restricted to runnable cases must identify that denominator.
 
-**Metrics** (computed by `experiments/eval.sh` over the dev set):
+**Secondary metrics:** total wall time, model token usage, repair candidates, tool calls by type, termination reason, and results by migration direction. Report per-case records and medians, plus failure categories only when manually supported. Build success demonstrates the benchmark outcome, not unrestricted semantic correctness.
 
-| Metric | Definition |
-| --- | --- |
-| **Repair rate** (primary) | % of cases where the validator produces all expected artifacts after the agent runs |
-| Legitimate repair rate | Repair rate after we manually review each diff and exclude cheats (`ExcludeArch`, disabled tests, emptied `%files`) |
-| Build attempts per case | Mean number of attempts used, for solved and unsolved cases |
-| Cost | LLM tokens and wall-clock time per case |
-| Patch size | Lines changed in `repair.diff`. Smaller is better at equal correctness |
+**Comparison plan.** Reproduce the organizer-linked baseline under matching case versions, model, tool access and budgets where compatible. Preserve its commit and configuration. The supplied hello example is a hard-coded smoke test and cannot establish a general-agent baseline. If the organizer baseline cannot run with the current protocol, document the mismatch and use a clearly named one-shot LLM comparator as an interim baseline. Do not label that substitute official. [1, 4]
 
-**Baselines:**
+Freeze 10 public cases for Demo 2, aiming for five per direction. For the final, target 40 cases, 20 per direction: the original 10 plus 30 held out from prompt/strategy tuning. Group repeated package names across splits, choose cases before inspecting repair outcomes, and preserve the selection manifest. Freeze the final held-out set before Demo 3 optimization. If environment availability prevents these targets, announce and justify the revised scope at a demo rather than silently changing the set. These small public subsets do not estimate hidden leaderboard performance.
 
-1. **Example agent**: the starter kit's `example-agent`, which should score about 0%
-   outside `hello`.
-2. **Rules-only**: our pipeline with the LLM disabled.
-3. **Naive LLM**: one prompt containing the last N lines of the log and the `.spec`,
-   applied once, with no feedback loop.
-4. **Full agent**: the complete pipeline.
+Use the same model/configuration and case snapshot for paired comparisons. Run each compared configuration once on the full selected set, then repeat three times on the cases that establish the claimed Demo 3 gain. Report all repeats and regressions. A claimed one-case improvement must persist in at least two of those three repeats. Freeze the improvement criterion before optimization.
 
-**Success criteria:**
+### Current evidence, September 21
 
-- The full agent solves **≥ 2× as many dev-set cases as naive LLM**.
-- It achieves **≥ 40% legitimate repair rate** on the dev set. (**TODO:** calibrate
-  this target once we see published Build-Bench baseline numbers.)
-- It uses **no more than the platform attempt budget** on any case.
-- An ablation shows that each component (digest, classifier/rules, feedback loop)
-  improves the repair rate.
+- Downloaded materials were inventoried and archived. Dataset checks covered 1,510 listed checksums and 705 per-case source entries with no mismatches. The release contains 200 cases and 188 packages. [3]
+- The unmodified rc.2 starter kit, with documented runtime-image overrides, ran its supplied hello example on the team's Linux VPS. The initial build failed, the example agent completed, the canonical patch applied, and final validation succeeded with build exit code 0 and two verified RPM artifacts. Both downloaded artifact hashes were checked. [4]
+- The final validator build reported **9 seconds**. This is one x86_64 hello run, with an architecture-independent RPM and a known marker-replacement repair. It is not a cross-architecture experiment, total agent runtime, LLM benchmark, or repair-rate result on the development cases.
+- General repair-agent implementation, public-case baseline evaluation, model/protocol integration, and competition qualification remain pending. The mentor direction in the team brief supports diagnosis, harness design, repair and validation; no meeting transcript is present in the repository.
 
 ## 5. Milestones
 
+Dates below follow the course repository template. Targets are intentionally measurable and must be reviewed by the team before submission. [2]
+
 | Demo | Date | Milestone | How we will demonstrate it |
 | --- | --- | --- | --- |
-| Demo 2 | 10/21 | End-to-end skeleton: `agents/our-agent` passes `./bb ready` and repairs the `hello` case, with the log digest, classifier and one feedback iteration in place | `./bb ready --agent ./agents/our-agent --json` returns `"status": "succeeded"` live; the digest for `hello` is printed |
-| Demo 2 | 10/21 | Dev set of ≥ 10 reproducible failing cases, with the naive-LLM baseline scored on it | `experiments/eval.sh --agent naive` prints per-case pass/fail and the aggregate repair rate |
-| Demo 3 | 11/16 | Full pipeline (rules + LLM + Patch Guard + multi-attempt loop), with the dev set grown to ≥ 20 cases | `experiments/eval.sh --agent full` beats naive LLM on repair rate; results table in `docs/design-document.md` |
-| Demo 3 | 11/16 | A submission uploaded to the competition platform that passes the hosted Smoke Test | Screenshot/record of the platform result, plus the ZIP SHA-256 matching the tagged commit |
-| Final | 12/09 | Final agent meets the §4 success criteria on the dev set, with the ablation study and failure-class breakdown | `experiments/eval.sh` and `experiments/ablation.sh` reproduce every number in the final slides |
+| Demo 2 | 10/21 | Compatible end-to-end LLM prototype; reproduce starter workflow and baseline or document compatibility blocker. | Runnable packaged agent and exact command. Trace shows input, model call, file inspection, candidate edit, completion output and clean validation. Preserve versions and limits. |
+| Demo 2 | 10/21 | Freeze and evaluate 10 public cases, aiming for 5 per direction. | Checked-in case manifest and reproducible experiment command. Per-case verified status, wall time, tokens, attempts and tool calls, including failures. No minimum repair rate promised. |
+| Demo 3 | 11/16 | Categorize Demo 2 failures and implement one evidence-driven improvement. | Failure taxonomy with concrete traces, changed module, and an ablation or controlled comparison isolating the change. |
+| Demo 3 | 11/16 | Measured improvement on the same 10 cases. | Target at least 1 additional verified repair, or equal repair count with at least 20% lower aggregate model tokens. Hold model and budget ceilings fixed, disclose regressions, and repeat gain-defining cases as specified above. Missing usage cannot satisfy the token criterion. |
+| Final | 12/09 | Stable agent and reproducible evaluation on the proposed 40-case set. | Pinned dependencies, agent version, case manifests, exact setup/commands, expected outputs, raw records, limits and failure analysis. Compare official baseline where reproducible, Demo 2, Demo 3 and final versions under a documented common setup. |
+| Final | 12/09 | Competition-ready packaging and qualification attempt if infrastructure and progress permit. | Archive validation report and submission/qualification receipt or a specific blocker. A competition version must be ready **before the currently published November 13 freeze**, not at the December final. Registration remains unverified. |
+
+Milestone changes must be announced with justification at the demo. A missed target is reported as a miss; it is not retroactively relabeled as success. The competition website lists results by November 20. Recheck those external dates before entering. [1]
 
 ## 6. Risks
 
-| Risk | Likelihood / Impact | Mitigation |
-| --- | --- | --- |
-| **LLM access during evaluation is unclear.** The local runner uses `--network none` and the submission can't contain API keys | High / High | Ask the mentor or organizers this week how the platform exposes a model. Build the LLM client behind one interface so we can swap backends. Rules-only is our fallback |
-| **The local validator doesn't run on our laptops.** On our macOS host, `./bb demo` currently fails in `build_setup` with `chroot: can't execute '/.build/build': Permission denied` | High / High | Run the validator on a Linux x86_64 VM (BU SCC / MOC / cloud credits). Check this with `./bb doctor` on that VM in week 1 |
-| **Too few realistic local cases.** Only `hello` ships, so without a dev set we can't measure progress | Medium / High | Start mining OBS/Fedora failure histories now. Ask the organizers for any public dev split |
-| Builds are slow, which makes experiments slow | Medium / Medium | Cache build roots, run cases in parallel on the VM, and keep a fast 5-case "smoke" subset for day-to-day work |
-| The agent overfits to "cheating" fixes that pass the local validator | Medium / Medium | Patch Guard plus manual review of each diff. Report the legitimate repair rate separately |
-| LLM output varies between runs, so results aren't reproducible | Medium / Medium | Temperature 0, fixed prompts, and 3 runs per configuration with the variance reported |
-| Starter kit changes (we're on `0.1.0-rc.2`) | Medium / Low | Keep our code in `agents/`, never modify `runner/`, and rerun `./bb ready` on each new release |
+| Risk | Mitigation and evidence needed |
+| --- | --- |
+| Public development inputs are not complete runnable validator cases | First reconstruct one permitted Debian case and reproduce its original failure. Confirm manifests, frozen dependencies, source materialization and build configuration with organizers. Keep the hello smoke result separate. |
+| Local runner has no demonstrated model/iterative feedback client | Resolve supported model gateway and feedback API before implementing the loop. Preserve runtime isolation; do not add a Docker socket or assume outbound networking. |
+| Sparse, misleading or huge logs | Stream and deduplicate with source offsets; measure extraction failures and inspect representative traces. |
+| Hallucinated edits or package-specific overfitting | Validate clean builds, retain required tests/artifacts, review recurring failure categories, and hold out package groups from tuning. |
+| Limited compute, tokens or target architectures | Current VPS is x86_64 with 2 CPUs and about 3.7 GiB RAM. ARM64/RISC-V execution and concurrent build capacity are unverified. Secure permitted target resources, run serially initially, and report resource failures. |
+| Performance gain does not materialize | Keep the predefined comparison, show negative results/regressions, and announce any scope revision. Do not cherry-pick successful cases. |
+| Competition and course timelines differ | Decide participation early. Prepare qualification before the November 13 external freeze, ahead of Demo 3. |
+
+**Team decisions still open:** model/provider and spending budget; protocol and target-build access; case selection and attainable case counts; final per-case caps; module ownership; the two Demo 1 presenters; and competition participation. The course permits at most two presenters per demo and requires every member to present at least once across the three demos. [2]
+
+### References
+
+1. [Official Build-Bench Challenge](https://matrix.cstcloud.cn/build-bench/), inspected September 21, 2026: execution/scoring, architecture scope, organizer baseline link and timeline. [Organizer-linked baseline repository](https://github.com/AIOps-Lab-NKU/BuildBench-Agent-Baseline). Baseline compatibility and results have not been verified. The site cites Zhao et al., [Can Language Models Go Beyond Coding?](https://arxiv.org/abs/2511.00780); no literature performance number is used as our baseline.
+2. [EC528 grading and presentation requirements](https://ec528.github.io/ec528/fall26/grading/) and [submission instructions](https://ec528.github.io/ec528/fall26/setup/). Demo dates are from this repository's original proposal template. Rubric and presenter/quiz requirements were checked on the official grading page September 21.
+3. [Dataset summary and provenance](evidence/demo-1/dataset-summary.json), derived from `analysis/dataset-analysis.json` inside the [downloaded materials snapshot](../../materials/README.md). Full analysis and input hashes reside in that snapshot.
+4. [Archived hello results and reproduction instructions](evidence/demo-1/README.md). Interface descriptions also come from the supplied rc.2 starter kit's README, AGENTS.md and runner inspection. The starter kit is intentionally outside this Git repository.

@@ -1,6 +1,6 @@
 # EC528 Project — Build-Bench Challenge: Autonomous LLM Agents for Cross-Architecture Package Repair
 
-**Team:** <names>
+**Team:** Joonseo Moon, Austin Li, Owen Zhang, Juliette Jacques, Anthony Capraru
 **Mentor:** Minghua Ma (Microsoft)
 **Project:** <one sentence: what this system does>
 

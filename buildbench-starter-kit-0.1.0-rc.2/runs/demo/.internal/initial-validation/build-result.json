@@ -1,0 +1,17 @@
+{
+  "artifact_validation_passed": false,
+  "artifacts": [],
+  "build_exit_code": 126,
+  "case_id": "hello-demo",
+  "duration_seconds": 3,
+  "message": "build failed; binary RPM root is missing; source RPM root is missing; expected binary artifact pattern 'buildbench-hello-*.noarch.rpm' was not matched; expected source artifact pattern 'buildbench-hello-*.src.rpm' was not matched; no physical RPM artifacts were collected",
+  "patch_applied": false,
+  "schema_version": "1.0",
+  "security": {
+    "mode": "privileged",
+    "safe_for_untrusted_submission": false
+  },
+  "status": "failed",
+  "target_arch": "x86_64",
+  "timed_out": false
+}

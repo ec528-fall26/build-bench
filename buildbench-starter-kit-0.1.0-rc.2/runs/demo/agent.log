@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/agent/src/main.py", line 53, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/agent/src/main.py", line 42, in main
+    result = repair(workspace)
+             ^^^^^^^^^^^^^^^^^
+  File "/agent/src/main.py", line 22, in repair
+    raise RuntimeError("expected demo failure was not found in the build log")
+RuntimeError: expected demo failure was not found in the build log

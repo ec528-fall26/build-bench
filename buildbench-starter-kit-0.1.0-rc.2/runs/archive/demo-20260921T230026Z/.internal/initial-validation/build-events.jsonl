@@ -1,0 +1,4 @@
+{"event":"stage","stage":"manifest_validation","state":"started","timestamp":"2026-09-21T22:59:21.387639Z"}
+{"event":"stage","stage":"manifest_validation","state":"completed","timestamp":"2026-09-21T22:59:21.388644Z"}
+{"event":"stage","stage":"backend_preflight","state":"started","timestamp":"2026-09-21T22:59:21.388879Z"}
+{"event":"stage","stage":"backend_preflight","state":"failed","timestamp":"2026-09-21T22:59:21.398454Z"}

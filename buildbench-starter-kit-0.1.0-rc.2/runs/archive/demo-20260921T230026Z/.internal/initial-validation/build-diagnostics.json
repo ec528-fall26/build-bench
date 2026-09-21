@@ -1,0 +1,31 @@
+{
+  "backend": "obs-rpm",
+  "case_id": "hello-demo",
+  "dependency_preflight": {
+    "actual_count": 0,
+    "architecture_mismatch_count": 0,
+    "bootstrap_missing_count": 0,
+    "checksum_mismatch_count": 0,
+    "expected_count": null,
+    "lock_declared": false,
+    "lock_path": null,
+    "missing_count": 0,
+    "passed": false,
+    "problems": [
+      "dependency preflight did not run"
+    ],
+    "transition_conflict_count": 0,
+    "unexpected_count": 0
+  },
+  "environment": null,
+  "execution": {
+    "launched": false,
+    "reached_real_build": false,
+    "resolver_unresolved_count": 0,
+    "stage": "backend_preflight"
+  },
+  "package_type": "rpm",
+  "schema_version": "1.0",
+  "status": "infrastructure_error",
+  "target_arch": "x86_64"
+}

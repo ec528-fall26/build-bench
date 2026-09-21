@@ -1,0 +1,17 @@
+{
+  "artifact_validation_passed": false,
+  "artifacts": [],
+  "build_exit_code": null,
+  "case_id": "hello-demo",
+  "duration_seconds": 0,
+  "message": "infrastructure error: Docker daemon preflight failed (exit 1): permission denied while trying to connect to the docker API at unix:///var/run/docker.sock",
+  "patch_applied": false,
+  "schema_version": "1.0",
+  "security": {
+    "mode": "privileged",
+    "safe_for_untrusted_submission": false
+  },
+  "status": "infrastructure_error",
+  "target_arch": "x86_64",
+  "timed_out": false
+}

@@ -1,0 +1,5 @@
+[build-case] [event] {"event":"stage","stage":"manifest_validation","state":"started"}
+[build-case] [event] {"event":"stage","stage":"manifest_validation","state":"completed"}
+[build-case] [event] {"event":"stage","stage":"backend_preflight","state":"started"}
+[build-case] Docker daemon preflight failed (exit 1): permission denied while trying to connect to the docker API at unix:///var/run/docker.sock
+[build-case] [event] {"event":"stage","stage":"backend_preflight","state":"failed"}

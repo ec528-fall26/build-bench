@@ -1,0 +1,9 @@
+Agent: my-agent
+Cases: 1
+[1/1] Testing hello
+✓ Agent submission is valid
+✓ Example Case prepared
+realpath: illegal option -- m
+usage: realpath [-q] [path ...]
+✗ Initial Validator result is missing.
+[1/1] hello failed (exit=1)

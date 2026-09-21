@@ -1,0 +1,10 @@
+{"event":"stage","stage":"manifest_validation","state":"started","timestamp":"2026-09-21T23:00:27.542963Z"}
+{"event":"stage","stage":"manifest_validation","state":"completed","timestamp":"2026-09-21T23:00:27.544290Z"}
+{"event":"stage","stage":"backend_preflight","state":"started","timestamp":"2026-09-21T23:00:27.544536Z"}
+{"event":"stage","stage":"backend_preflight","state":"completed","timestamp":"2026-09-21T23:00:27.573752Z"}
+{"event":"stage","stage":"dependency_preflight","state":"started","timestamp":"2026-09-21T23:00:27.574141Z"}
+{"event":"stage","stage":"dependency_preflight","state":"completed","timestamp":"2026-09-21T23:00:27.580851Z"}
+{"event":"stage","stage":"workspace","state":"started","timestamp":"2026-09-21T23:00:27.581153Z"}
+{"event":"stage","stage":"workspace","state":"completed","timestamp":"2026-09-21T23:00:27.583333Z"}
+{"event":"stage","stage":"build","state":"started","timestamp":"2026-09-21T23:00:27.583658Z"}
+{"event":"stage","stage":"build_setup","state":"failed","timestamp":"2026-09-21T23:00:31.585198Z"}

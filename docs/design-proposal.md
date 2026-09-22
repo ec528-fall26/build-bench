@@ -8,7 +8,7 @@
 
 **Demo 1:** September 23, 2026. Materials are due at noon on `demo-1`.
 
-This is a design proposal. All agent modules and evaluation targets below are proposed; the completed work is the dataset inspection and starter-kit smoke run. We retain the course template's six sections. Milestones are proposed commitments. Team approval is pending before the proposal is frozen for submission.
+This proposal defines the repair-agent design, evaluation plan and milestones for Demo 2, Demo 3 and the final. Completed work consists of dataset inspection and the organizer's starter-kit smoke run. General repair-agent implementation and public-case evaluation are scheduled for Demo 2.
 
 ## 1. Problem
 
@@ -102,11 +102,11 @@ Use the same model/configuration and case snapshot for paired comparisons. Run e
 - Downloaded materials were inventoried and archived. Dataset checks covered 1,510 listed checksums and 705 per-case source entries with no mismatches. The release contains 200 cases and 188 packages. [3]
 - The unmodified rc.2 starter kit, with documented runtime-image overrides, ran its supplied hello example on the team's Linux VPS. The initial build failed, the example agent completed, the canonical patch applied, and final validation succeeded with build exit code 0 and two verified RPM artifacts. Both downloaded artifact hashes were checked. [4]
 - **We reproduced the organizer's example workflow; this is not a Build-Bench repair result from our agent.** The final validator build reported **9 seconds**. This is one x86_64 hello run, with an architecture-independent RPM and a known marker-replacement repair. It is not a cross-architecture experiment, total agent runtime, LLM benchmark, or repair-rate result on the development cases.
-- General repair-agent implementation, public-case baseline evaluation, model/protocol integration, and competition qualification remain pending. The mentor direction in the team brief supports diagnosis, harness design, repair and validation; no meeting transcript is present in the repository.
+- Demo 2 work will implement the general repair agent, integrate model access and evaluate public cases. Competition qualification has not been attempted. The mentor direction in the team brief supports diagnosis, harness design, repair and validation; no meeting transcript is present in the repository.
 
 ## 5. Milestones
 
-Dates below follow the course repository template. Targets are intentionally measurable and must be reviewed by the team before submission. [2]
+The following milestones define the deliverables and verification criteria for each course deadline. Dates follow the course repository template. [2]
 
 | Demo | Date | Milestone | How we will demonstrate it |
 | --- | --- | --- | --- |
@@ -114,7 +114,7 @@ Dates below follow the course repository template. Targets are intentionally mea
 | Demo 2 | 10/21 | Freeze and evaluate 10 public cases, aiming for 5 per direction. | Checked-in case manifest and reproducible experiment command. Per-case verified status, wall time, tokens, attempts and tool calls, including failures. No minimum repair rate promised. |
 | Demo 3 | 11/16 | Categorize Demo 2 failures and implement one evidence-driven improvement. | Failure taxonomy with concrete traces, changed module behind a configuration flag, and an ablation isolating the change. |
 | Demo 3 | 11/16 | Measured improvement on the same 10 cases. | Target at least 1 additional verified repair per 10 cases on average, or at least 20% lower aggregate tokens while preserving repaired cases, under the three-full-run criteria above. Hold model and budget ceilings fixed, disclose regressions, and retain all attempts. Missing usage cannot satisfy the token criterion. |
-| Final | 12/09 | Stable agent and reproducible evaluation on the proposed 40-case set. | Pinned dependencies, agent version, case manifests, exact setup/commands, expected outputs, raw records, limits and failure analysis. Compare official baseline where reproducible, Demo 2, Demo 3 and final versions under a documented common setup. |
+| Final | 12/09 | Stable agent and reproducible evaluation on the 40-case target set. | Pinned dependencies, agent version, case manifests, exact setup/commands, expected outputs, raw records, limits and failure analysis. Compare official baseline where reproducible, Demo 2, Demo 3 and final versions under a documented common setup. |
 | Final | 12/09 | Competition-ready packaging and qualification attempt if infrastructure and progress permit. | Archive validation report and submission/qualification receipt or a specific blocker. A competition version must be ready **before the currently published November 13 freeze**, not at the December final. Registration remains unverified. |
 
 Milestone changes must be announced with justification at the demo. A missed target is reported as a miss; it is not retroactively relabeled as success. The competition website lists results by November 20. Recheck those external dates before entering. [1]
@@ -124,14 +124,14 @@ Milestone changes must be announced with justification at the demo. A missed tar
 | Risk | Mitigation and evidence needed |
 | --- | --- |
 | Public development inputs are not complete runnable validator cases | First reconstruct one permitted Debian case and reproduce its original failure. Confirm manifests, frozen dependencies, source materialization and build configuration with organizers. AWS does not resolve historical dependency reproduction. Keep the hello smoke result separate. |
-| Local runner has no demonstrated model/iterative feedback client | Resolve supported model gateway and feedback API before implementing the loop. Preserve runtime isolation; do not add a Docker socket or assume outbound networking. |
+| Local runner has no demonstrated model/iterative feedback client | Select the model/provider and resolve the supported model gateway and feedback API before implementing the loop. Preserve runtime isolation; do not add a Docker socket or assume outbound networking. |
 | Sparse, misleading or huge logs | Stream and deduplicate with source offsets; measure extraction failures and inspect representative traces. |
 | Hallucinated edits or package-specific overfitting | Validate clean builds, retain required tests/artifacts, review recurring failure categories, and hold out package groups from tuning. |
-| AWS capacity, cost and target environments | We plan to run course-scale experiments on AWS using reproducible x86_64 and ARM64 environments. Before comparisons, pin instance type, machine image, Docker version, container image digests and configuration. Provisioning, cost and capacity still need validation. The VPS was used only for the initial Starter Kit smoke test. RISC-V resources remain outside the current public-case plan. |
+| AWS capacity, cost and target environments | We plan to run course-scale experiments on AWS using reproducible x86_64 and ARM64 environments. Before comparisons, pin instance type, machine image, Docker version, container image digests and configuration. Set the model and compute spending budget, then verify provisioning, cost and capacity before running comparisons. The VPS was used only for the initial Starter Kit smoke test. RISC-V resources remain outside the current public-case plan. |
 | Performance gain does not materialize | Keep the predefined comparison, show negative results/regressions, and announce any scope revision. Do not cherry-pick successful cases. |
 | Competition and course timelines differ | Decide participation early. Prepare qualification before the November 13 external freeze, ahead of Demo 3. |
 
-**Team decisions still open:** milestone approval; model/provider and spending budget; protocol and target-build access; case selection and attainable case counts; final per-case caps; module ownership; and competition participation. Demo 1 presenters are **Owen Zhang and Joonseo Moon**. The course permits at most two presenters per demo and requires every member to present at least once across the three demos. [2]
+Demo 1 presenters are **Owen Zhang and Joonseo Moon**. The course permits at most two presenters per demo and requires every member to present at least once across the three demos. [2]
 
 ### References
 

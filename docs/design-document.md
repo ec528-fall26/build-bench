@@ -20,6 +20,6 @@ The completed evidence covers dataset inspection and one supplied hello smoke ru
 
 For a new Linux hello run, follow the [recorded environment and reproduction recipe](evidence/demo-1/README.md). Network/image access and a compatible Docker host are prerequisites. Runtime and artifact bytes may differ across rebuilds.
 
-## Pending implementation
+## Implementation plan
 
-We plan to use AWS for course-scale x86_64 and ARM64 experiments; those environments are not yet provisioned or verified. Model access, hosted build feedback, Debian case materialization, historical dependencies, the general repair loop and baseline experiments remain unresolved. No public-case repair rate or competition qualification is claimed.
+We plan to use AWS for course-scale x86_64 and ARM64 experiments. Demo 2 work will provision and verify those environments, establish model access, reconstruct Debian cases and historical dependencies, and implement the repair loop and baseline experiments. Hosted model and build-feedback compatibility must be confirmed with the organizers. No public-case repair rate or competition qualification is claimed.

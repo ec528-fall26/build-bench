@@ -4,13 +4,13 @@ Demo 1 status, September 22, 2026. The general repair agent is proposed and not 
 
 ## Current artifact
 
-The completed evidence covers dataset inspection and one supplied hello smoke run on the Linux VPS. It includes the initial failure, example-agent completion, canonical patch, successful final validator result and both RPM artifacts. The example performs a known marker replacement and uses no LLM.
+The [evidence archive](evidence/demo-1/README.md) documents the dataset inspection and organizer-provided starter workflow, including raw run records, package artifacts and reproduction instructions.
 
 ## Verify the archived evidence
 
 | Item | Value |
 | --- | --- |
-| Supports | Slide 8: successful hello smoke run, two artifacts, 9-second final build; proposal: 200 cases, 188 packages and 100 cases per direction |
+| Supports | Slide 8: dataset inspection and organizer workflow reproduced; proposal: 200 cases, 188 packages and 100 cases per direction |
 | Setup | Python 3.9 or newer; no external Python packages |
 | Command, from repository root | `python3 experiments/check-demo1-evidence.py` |
 | Expected runtime | A few seconds on a laptop |
@@ -18,7 +18,7 @@ The completed evidence covers dataset inspection and one supplied hello smoke ru
 | What it checks | Saved statuses, patch/artifact flags, artifact sizes and SHA-256 hashes, archived-file checksums, dataset-summary invariants |
 | What it does not check | New Docker builds, the full dataset source checksums, model behavior, or public-case repairs |
 
-For a new Linux hello run, follow the [recorded environment and reproduction recipe](evidence/demo-1/README.md). Network/image access and a compatible Docker host are prerequisites. Runtime and artifact bytes may differ across rebuilds.
+To reproduce the archived run on Linux, follow the [recorded environment and reproduction recipe](evidence/demo-1/README.md). Network/image access and a compatible Docker host are prerequisites. Runtime and artifact bytes may differ across rebuilds.
 
 ## Implementation plan
 

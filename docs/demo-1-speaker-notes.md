@@ -6,7 +6,7 @@ Target: 9 minutes 40 seconds, leaving 20 seconds of margin. Q&A: 5 minutes. **Ow
 
 **Presenter: Owen Zhang**
 
-We are Owen Zhang and Joonseo Moon. We are designing an autonomous agent to repair software packages that fail after migration between hardware architectures. Our team is Anthony Capraru, Austin Li, Joonseo Moon, Juliette Jacques, and Owen Zhang, with mentor Minghua Ma at Microsoft. Today we will explain the problem, the proposed repair loop, how success is independently checked, and our semester milestones. This is a design proposal. We have verified the supplied starter example on Linux, while our general LLM agent remains to be implemented.
+We are Owen Zhang and Joonseo Moon. We are designing an autonomous agent to repair software packages that fail after migration between hardware architectures. Our team is Anthony Capraru, Austin Li, Joonseo Moon, Juliette Jacques, and Owen Zhang, with mentor Minghua Ma at Microsoft. Today we will explain the problem, the proposed repair loop, how success is independently checked, and our semester milestones. This is a design proposal; our general LLM agent is scheduled for Demo 2.
 
 Sources: Team roster supplied by the team. Project title and mentor: repository README and Demo 1 brief.
 
@@ -22,7 +22,7 @@ Sources: Official challenge overview, https://matrix.cstcloud.cn/build-bench/ (c
 
 **Presenter: Owen Zhang**
 
-Read the diagram from the upper left across the top row, then down and back across the bottom. Cases describe a package that worked on a source architecture and failed on a target architecture. We have the target-failure evidence; we have not independently reproduced source success for the development dataset. The agent edits its permitted working repository. The organizer then derives a canonical patch, applies it to a fresh case, and runs the target build with expected artifact verification. Completion status and a plausible patch are insufficient. The downloaded public release contains 100 cases in each x86_64/ARM64 direction. The broader competition includes RISC-V, but RISC-V is outside our available public-case evidence. The supplied hello example is a separate RPM smoke case, not one of those 200 Debian cases.
+Read the diagram from the upper left across the top row, then down and back across the bottom. Cases describe a package that worked on a source architecture and failed on a target architecture. We have the target-failure evidence; we have not independently reproduced source success for the development dataset. The agent edits its permitted working repository. The organizer then derives a canonical patch, applies it to a fresh case, and runs the target build with expected artifact verification. Completion status and a plausible patch are insufficient. The downloaded public release contains 100 cases in each x86_64/ARM64 direction. The broader competition includes RISC-V, but RISC-V is outside our available public-case evidence.
 
 Sources: Official challenge overview, https://matrix.cstcloud.cn/build-bench/. Supplied starter kit rc.2 README and AGENTS.md. Dataset evidence summary.
 
@@ -46,7 +46,7 @@ Sources: docs/evidence/demo-1/dataset-summary.json, summary.largest_logs[0]. doc
 
 **Presenter: Joonseo Moon**
 
-The primary metric is the number of cases meeting clean-patch, target-build and artifact requirements divided by every case in a frozen set. We retain crashes, timeouts, invalid patches and unresolved cases in that denominator, and report infrastructure failures separately. Any runnable-case-only rate must be labeled with its own denominator. We will compare the organizer-linked baseline where it can be reproduced, pinning its version, model and configuration. If it is incompatible, we will document that and use an explicitly named one-shot comparator provisionally. The hello example is not this baseline. Record total wall time, tokens, attempts and tool calls. Run each compared configuration three times on all ten development cases. Report every run and regression, not only repeats on cases that improved. We will group related package names between development and held-out cases to reduce tuning leakage. No public result can establish hidden-case performance.
+The primary metric is the number of cases meeting clean-patch, target-build and artifact requirements divided by every case in a frozen set. We retain crashes, timeouts, invalid patches and unresolved cases in that denominator, and report infrastructure failures separately. Any runnable-case-only rate must be labeled with its own denominator. We will compare the organizer-linked baseline where it can be reproduced, pinning its version, model and configuration. If it is incompatible, we will document that and use an explicitly named one-shot comparator provisionally. Record total wall time, tokens, attempts and tool calls. Run each compared configuration three times on all ten development cases. Report every run and regression, not only repeats on cases that improved. We will group related package names between development and held-out cases to reduce tuning leakage. No public result can establish hidden-case performance.
 
 Sources: Official scoring: https://matrix.cstcloud.cn/build-bench/. Organizer-linked baseline: https://github.com/AIOps-Lab-NKU/BuildBench-Agent-Baseline (link verified on official overview; compatibility unverified). docs/design-proposal.md evaluation plan.
 
@@ -58,10 +58,10 @@ For Demo 2, the prototype must invoke a model, inspect files, produce an allowed
 
 Sources: Dates: original docs/design-proposal.md course template. Progress rubric: https://ec528.github.io/ec528/fall26/grading/. Competition timeline checked 2026-09-21: https://matrix.cstcloud.cn/build-bench/.
 
-## 8. Organizer’s hello workflow reproduced (55 seconds)
+## 8. Current status and next steps (55 seconds)
 
 **Presenter: Joonseo Moon**
 
-We reproduced the organizer's hello workflow on the Linux VPS. This is not a Build-Bench repair result from our agent. The initial build failed, the example agent replaced a known marker, and the canonical patch passed a fresh build with both RPM artifacts verified. The reported nine seconds measures only the final build. No LLM or public-case repair evaluation has run. The VPS is historical smoke-test evidence. We plan to run course experiments on AWS with pinned x86_64 and ARM64 environments. AWS does not solve Debian case reconstruction, historical dependencies or the hosted model and feedback interface. Those are the immediate technical questions. Our hardest challenge is selecting useful evidence and revising diagnoses within a budget.
+We have inspected the 200-case release across 188 packages and reproduced the organizer's hello example on Linux. Our LLM repair agent and public-case evaluation are scheduled for Demo 2. The first priority is a reproducible Debian case: provision the planned AWS environments, pin their configurations and reproduce the original failure. In parallel, confirm the supported model and feedback interfaces and implement the bounded repair loop. AWS provides the planned compute environment, but historical dependencies and hosted compatibility still need verification. This setup lets us evaluate the central question: can better evidence selection and repair history improve verified repairs or reduce model usage? Our hardest challenge is choosing useful evidence and revising diagnoses within a budget.
 
-Sources: docs/evidence/demo-1/{initial-build-result.json,agent-result.json,build-result.json,repair.diff,SHA256SUMS}. Run finished 2026-09-21 23:27:24 UTC.
+Sources: docs/evidence/demo-1/dataset-summary.json and docs/evidence/demo-1/README.md. Development priorities: docs/design-proposal.md.

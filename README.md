@@ -6,7 +6,7 @@
 
 **Demo 1 presenters:** Owen Zhang and Joonseo Moon
 
-We propose an LLM agent that diagnoses cross-architecture package build failures, edits permitted source or packaging files, and submits its work for a clean target build. Demo 1 presents the design, evaluation plan and verified starter-kit smoke evidence. General repair-agent implementation and public-case evaluation are scheduled for Demo 2.
+We propose an LLM agent that diagnoses cross-architecture package build failures, edits permitted source or packaging files, and submits its work for a clean target build. Demo 1 presents the design, evaluation plan and supporting evidence. General repair-agent implementation and public-case evaluation are scheduled for Demo 2.
 
 **Demo 1 submission:** Design proposal, presentation, architecture diagram and supporting evidence.
 
@@ -28,11 +28,9 @@ From the repository root, with Python 3.9 or newer:
 python3 experiments/check-demo1-evidence.py
 ```
 
-Expected: both `PASS` lines, confirming the saved hello failure-to-success sequence, two RPM artifact hashes and dataset-summary counts. This command checks saved files; it does not run Docker, call a model or rebuild a package.
+Expected: both `PASS` lines, confirming the archived run records, artifact hashes and dataset-summary counts. This command checks saved files; it does not run Docker, call a model or rebuild a package.
 
-We plan to run course-scale experiments on AWS with reproducible x86_64 and ARM64 environments. We will provision and verify those environments before running comparisons. The VPS was used only for the initial Starter Kit smoke test.
-
-The recorded final validator build took 9 seconds. The supplied hello agent uses a known marker replacement and no LLM. It does not establish repair performance on the 200 Debian development cases.
+We plan to run course-scale experiments on AWS with reproducible x86_64 and ARM64 environments. We will provision and verify those environments before running comparisons.
 
 ## Repository layout
 

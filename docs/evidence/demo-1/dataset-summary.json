@@ -1,0 +1,74 @@
+{
+  "provenance": {
+    "source": "analysis/dataset-analysis.json within materials/downloaded-materials.tar.zst",
+    "archive_sha256": "61adae40957fb644e9ca4381718129b301d7a0a270b416fa290e2630924a6912",
+    "scope": "Dataset inspection, not a build evaluation"
+  },
+  "summary": {
+    "scope": "All case metadata and complete log streams inspected programmatically. Signals are overlapping text matches, not verified root causes. No package builds executed.",
+    "case_count": 200,
+    "unique_packages": 188,
+    "directions": {
+      "aarch64-to-x86_64": 100,
+      "x86_64-to-aarch64": 100
+    },
+    "ubuntu_series": {
+      "focal": 8,
+      "groovy": 2,
+      "hirsute": 2,
+      "jammy": 22,
+      "kinetic": 13,
+      "lunar": 1,
+      "mantic": 12,
+      "noble": 35,
+      "oracular": 21,
+      "plucky": 30,
+      "questing": 12,
+      "resolute": 42
+    },
+    "fail_stages": {
+      "build": 199,
+      "not recorded": 1
+    },
+    "signals": {
+      "packaging_or_documentation": 16,
+      "architecture_or_instruction": 14,
+      "compiler_diagnostic": 42,
+      "linker_diagnostic": 8,
+      "missing_input_or_dependency": 33,
+      "resource_or_timeout": 5,
+      "test_failure": 48
+    },
+    "checksum_entries": 1510,
+    "checksum_failures": [],
+    "source_checksum_entries": 705,
+    "source_checksum_failures": [],
+    "metadata_manifest_mismatches": [],
+    "total_log_bytes": 2662363931,
+    "source_archive_count": 402,
+    "source_archive_members": 92306,
+    "source_expanded_bytes": 819461145,
+    "largest_logs": [
+      {
+        "case_id": "launchpad-oracular-amd64-arm64-libyuv-91738d032815",
+        "bytes": 2370517311
+      },
+      {
+        "case_id": "launchpad-focal-arm64-amd64-gcc-9-cross-d6df5b73fd91",
+        "bytes": 125339083
+      },
+      {
+        "case_id": "launchpad-oracular-amd64-arm64-ocaml-eb69da357af5",
+        "bytes": 31187628
+      },
+      {
+        "case_id": "launchpad-oracular-arm64-amd64-ocaml-0add7438dc87",
+        "bytes": 31185724
+      },
+      {
+        "case_id": "launchpad-plucky-amd64-arm64-gcc-15-cross-26cf66d777b8",
+        "bytes": 29855446
+      }
+    ]
+  }
+}

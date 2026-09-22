@@ -1,0 +1,8 @@
+{
+  "message": "Removed the intentional hello build failure.",
+  "modified_paths": [
+    "input/buildbench-hello.spec"
+  ],
+  "schema_version": "0.1",
+  "status": "completed"
+}

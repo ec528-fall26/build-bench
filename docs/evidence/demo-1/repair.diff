@@ -1,0 +1,15 @@
+diff --git a/input/buildbench-hello.spec b/input/buildbench-hello.spec
+--- a/input/buildbench-hello.spec
++++ b/input/buildbench-hello.spec
+@@ -11,9 +11,8 @@
+ %prep
+ 
+ %build
+-# BUILD-BENCH-DEMO-BROKEN
+-echo "intentional Build-Bench demo failure" >&2
+-exit 1
++# BUILD-BENCH-DEMO-REPAIRED
++echo "Build-Bench Example Agent repaired the package"
+ 
+ %install
+ mkdir -p %{buildroot}%{_datadir}/buildbench-hello

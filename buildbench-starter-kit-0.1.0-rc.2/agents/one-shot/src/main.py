@@ -2,45 +2,78 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
+def write_json(path: Path, data: dict) -> None:
+    path.write_text(
+        json.dumps(data, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 def main() -> int:
-    # Use BB_WORKSPACE when set; otherwise use /workspace.
+    # Use BB_WORKSPACE when set, otherwise use /workspace.
     workspace = Path(os.environ.get("BB_WORKSPACE", "/workspace"))
     input_dir = workspace / "input"
     worktree = workspace / "work" / "repo"
     output_dir = workspace / "output"
 
-    output_dir.mkdir(parents=True, exist_ok=True)
 
-    required_paths = [
-        input_dir / "task.json",
-        input_dir / "initial-build.log",
-    ]
 
-    for path in required_paths:
-        if not path.is_file():
-            raise FileNotFoundError(f"Required input file is missing: {path}")
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-    if not worktree.is_dir():
-        raise FileNotFoundError(f"Package worktree is missing: {worktree}")
+        required_paths = [
+            input_dir / "task.json",
+            input_dir / "initial-build.log",
+        ]
 
-    result = {
-        "schema_version": "0.1",
-        "status": "completed",
-        "message": "Agent shell completed. No repair was attempted.",
-        "modified_paths": [],
-    }
+        for path in required_paths:
+            if not path.is_file():
+                raise FileNotFoundError(
+                    f"Required input file is missing: {path}"
+                )
 
-    result_path = output_dir / "agent-result.json"
-    result_path.write_text(
-        json.dumps(result, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+        if not worktree.is_dir():
+            raise FileNotFoundError(
+                f"Package worktree is missing: {worktree}"
+            )
 
-    print(result["message"])
-    return 0
+        task_metadata = json.loads(
+            (input_dir / "task.json").read_text(encoding="utf-8")
+        )
+        if not isinstance(task_metadata, dict):
+            raise ValueError("task.json must contain a JSON object")
+
+        result = {
+            "schema_version": "0.1",
+            "status": "completed",
+            "message": "Agent shell completed. No repair was attempted.",
+            "modified_paths": [],
+        }
+
+        write_json(output_dir / "agent-result.json", result)
+        print(result["message"])
+        return 0
+
+    except Exception as exc:
+        diagnostic = {
+            "status": "agent_error",
+            "error_type": type(exc).__name__,
+            "message": str(exc),
+        }
+        print(json.dumps(diagnostic), file=sys.stderr)
+
+        try:
+            write_json(output_dir / "agent-error.json", diagnostic)
+        except OSError as output_error:
+            print(
+                f"Could not write error diagnostics: {output_error}",
+                file=sys.stderr,
+            )
+
+        return 1
+
 
 
 if __name__ == "__main__":

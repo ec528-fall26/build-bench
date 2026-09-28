@@ -1,5 +1,6 @@
 from __future__ import annotations
-
+from .edit_applier import apply_edits
+from .types import CaseContext, EditPlan
 import json
 import os
 import sys
@@ -10,6 +11,26 @@ def write_json(path: Path, data: dict) -> None:
         json.dumps(data, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+def run_repair(
+    context: CaseContext,
+    log_path: Path,
+    extract_tail,
+    model_client,
+    *,
+    patch_policy=None,
+) -> tuple[EditPlan, int]:
+    context.log_tail = extract_tail(log_path, n_lines=500)
+
+    plan = model_client.propose(context)
+
+    applied_count = apply_edits(
+        context.worktree,
+        plan.edits,
+        patch_policy=patch_policy,
+    )
+
+    return plan, applied_count
 
 def main() -> int:
     # Use BB_WORKSPACE when set, otherwise use /workspace.

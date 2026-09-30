@@ -99,6 +99,11 @@ Can start immediately.
 or `runs/` output in the ZIP. Catch exceptions and record them as
 `agent_error` — a crash must still produce output, not a silent failure.
 
+**Graceful stop — raised directly by the organizers.** On a self-imposed timeout,
+keep the best candidate in the worktree. **Never restore the original files**: a
+revert discards a repair that might have built. Reserve wall-clock time for the
+stop path rather than being cut off mid-write.
+
 ---
 
 ## Part 2 — Log tail extractor
@@ -133,22 +138,56 @@ is what makes it a control.
 the prompt, makes exactly one call, parses the response into `Edit` objects,
 records token usage.
 
-**What it needs.** A decided model and provider, an API key, and a spending
-ceiling. **These are open team decisions — resolve them first.**
+**The edit format is now fixed by Part 4.** `apply_edits` accepts only literal
+replacements in files that already exist:
 
-**Blocked on:** how a submitted agent reaches a model at all. The sandbox runs
-with `--network none`. Until the organizers confirm the gateway, develop against
-a **recorded-response stub**: a directory of saved model responses keyed by case,
-so Parts 1, 4 and 5 can be built and tested without network or spend.
+- `old_text` must appear **exactly once** in the file — zero matches or two
+  matches are both rejected;
+- no new files, no deletions, no renames, no symlinks, no permission changes;
+- UTF-8 text only, resulting file under 8 MiB;
+- paths must sit under the case's allowed prefix (`input/` by default).
+
+The prompt must say all of this, and must tell the model to quote enough
+surrounding context to make `old_text` unique.
+
+**Context handed to the model.** The log tail from Part 2, plus a **fixed,
+non-adaptive** set of files — the same file list for every case, regardless of
+what the log says. Choosing files based on the failure is evidence selection,
+which belongs to the full agent. If the comparator gets clever it stops being a
+control and the Demo 3 comparison means nothing. Write the chosen file list into
+this document once decided.
+
+**Pre-flight validation.** Before returning, check each proposed edit against the
+real file: does `old_text` occur exactly once? A one-shot agent gets no retry, so
+an edit that Part 4 will reject is a wasted case. Report these as a distinct
+outcome — `unusable_edit` — separate from "applied but did not repair." The rate
+of unusable edits is a result worth reporting on its own.
+
+**The interface is now known — this part is unblocked.** The organizers confirmed
+hosted model access is an **organizer-managed, OpenAI-compatible endpoint**
+serving the same undisclosed model to every team, with a common per-case usage
+budget. Build against the chat-completions request shape with a **configurable
+base URL and no hardcoded model name**, so the same client points at a local
+provider during development and at theirs at evaluation. No credentials in the
+ZIP.
+
+Because every team gets the identical model, prompts must be **model-agnostic** —
+do not tune to one provider's quirks.
+
+**What it needs.** A provider and spending ceiling for local development only.
+
+**Still worth building:** a **recorded-response stub** — saved responses keyed by
+case — so Parts 1 and 5 can be tested offline with no spend.
 
 **Done when.** Given a `CaseContext`, it returns a parsed `EditPlan` with usage
-recorded, deterministically (temperature 0, fixed prompt), and the stub mode
-works offline.
+recorded, and the stub mode works offline. Use temperature 0 and a fixed prompt
+for our own comparison repeatability — the organizers have confirmed determinism
+is **not** a competition requirement, only non-interactive execution, so treat it
+as a research setting we can relax if it costs repairs.
 
-**Watch for.** Unknown token usage is recorded as `None`, **never zero** — §4
-depends on this. Malformed model output returns an empty `EditPlan` with a
-reason, it does not raise. Decide the response format up front (search/replace
-blocks are easier to validate than unified diffs) and write it down here.
+**Watch for.** Unknown token usage is recorded as `None`, **never zero** — §4 of
+the proposal depends on this. Malformed model output returns an empty `EditPlan`
+with a reason; it does not raise.
 
 ---
 
@@ -182,25 +221,58 @@ edited file is not a reliable fix. Test this case explicitly. If it breaks,
 
 ## Part 5 — Harness and case runner
 
-**Owner:** _______
+**Owner:** _______ (plus one — see below)
 
-**What it does.** Everything outside the sandbox. Takes a case, runs the agent
-against it, invokes the official validator on a clean copy with the generated
-patch, collects `build-result.json`, and writes a `RunRecord` per case plus a
-summary table.
+**What it does.** Everything outside the sandbox. Materializes a case, runs the
+agent against it, invokes the official validator on a clean copy with the
+generated patch, collects `build-result.json`, and writes a `RunRecord` per case
+plus a summary table.
+
+**This part carries case materialization**, which is risk #1 in the design
+proposal and the longest pole in the project. The packed cases are compressed
+source packages and historical logs, not runnable validator cases — the harness
+has to reconstruct the source tree, build configuration and dependency snapshot,
+then reproduce the original failure. Nothing downstream can be measured until one
+case works. **Put two people on this**; the Part 3 owner is a natural pair while
+the protocol question is unanswered.
+
+**Three things Part 4 explicitly hands to this part:**
+
+1. **Canonical patch verification.** `apply_edits` warns when a file lacks a
+   final newline, because rc.2 can then emit a malformed diff. Its docstring
+   assigns the check here: after every run, generate the canonical patch with
+   `runner/generate_patch.py` and confirm it applies to a clean copy. Record a
+   compatibility failure rather than patching the official runner.
+2. **`allowed_prefix` per case layout.** It defaults to `input/`, which matches
+   the released RPM hello case. Debian cases will differ, and the hosted worktree
+   layout is still unconfirmed with the organizers. The harness sets this.
+3. **Rejection visibility.** `apply_edits` returns only a count; every rejection
+   reason goes to `logging` at WARNING. Attach a handler that captures those
+   records into the `RunRecord`, otherwise failure analysis has nothing to work
+   with. No change to Part 4 is needed.
+
+**Ask about Development Validation first.** The organizers named it as the route
+for official-environment checks of repaired public cases. If it covers enough,
+the reconstruction scope here shrinks substantially — so find out what it can
+build, whether it covers all 200 cases, and its rate limits **before**
+reconstructing anything by hand.
+
+**The harness also stands in for build feedback.** In-loop feedback is confirmed
+for hosted evaluation, but local tests do not simulate in-run build requests. The
+one-shot agent does not use it; the full agent will, so this part eventually
+serves it locally. Record the mode on every row.
 
 **What it needs.** A Linux host with Docker, and eventually AWS for real builds.
 Holds the API credentials — **the agent never does.**
 
 **Done when.** One command runs the agent over a list of cases and produces a
 results file with every field in `RunRecord`, including rows for cases that
-crashed or timed out.
+crashed, timed out, or produced unusable edits.
 
 **Watch for.** Crashes and timeouts are rows in the output, not omissions — §4
 requires them in the denominator. Record the mode (one-shot vs iterative) on
 every row. Keep this out of the submission ZIP entirely.
 
----
 
 ## Integration order
 
@@ -226,21 +298,40 @@ unanswered, we can still reach step 4.**
 
 ## Open decisions
 
-Resolve in the first team meeting — each one blocks a part:
+Resolve in the next team meeting — each one blocks a part:
 
-1. **Model and provider**, plus a spending ceiling → blocks Part 3.
-2. **Edit response format** (search/replace blocks vs unified diff) → blocks
-   Parts 3 and 4.
+1. **Local provider and spending ceiling** for development → blocks Part 3.
+   The hosted interface is settled (OpenAI-compatible, organizer-managed); this
+   is only about what we develop against.
+2. **The fixed file list** handed to the model alongside the log tail → blocks
+   Part 3. Must be identical for every case.
 3. **AWS account, budget, and native ARM vs qemu emulation** → blocks Part 5.
-4. **Owners for the five parts.**
+4. **Owners for the remaining parts**, and the second person on case
+   materialization.
+
+*Settled:* the edit response format. Part 4 fixed it — literal unique
+`old_text`/`new_text` against existing files.
+
 
 ## Questions for the organizers
 
-Send this week; the answers have lead time.
+**Answered** (reply received September 2026):
 
-1. How does a submitted agent reach a model, given the sandbox runs with
-   `--network none` and credentials may not ship in the ZIP?
-2. What is the in-loop build-feedback API, and how many requests are permitted?
-3. Does the validator support execution under qemu emulation, or is native
+1. ~~How does a submitted agent reach a model?~~ Organizer-managed,
+   OpenAI-compatible endpoint; same undisclosed model for every team; common
+   per-case usage budget; no personal credentials in the ZIP.
+2. ~~Is there in-loop build feedback?~~ Yes — modify worktree, request a
+   target-architecture build, inspect outcome and diagnostic excerpts, continue
+   repairing. Uniform per-case request limit, **not yet finalized**.
+
+**Still open — send this week:**
+
+3. **What does Development Validation cover?** Can it build an unrepaired public
+   case, does it cover all 200, and what are its rate limits? This directly
+   determines how much case reconstruction Part 5 must do.
+4. What is the per-case build-request limit, once finalized?
+5. Does the validator support execution under qemu emulation, or is native
    target-architecture hardware required?
-4. What is the hosted Debian worktree layout, and which paths may an agent edit?
+6. What is the hosted Debian worktree layout, and which paths may an agent edit?
+   (Part 4 defaults `allowed_prefix` to `input/`, which matches the RPM hello
+   case.)

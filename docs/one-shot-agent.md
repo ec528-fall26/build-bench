@@ -83,7 +83,7 @@ Runtime paths are fixed by the platform:
 
 ## Part 1 — Agent shell and submission contract
 
-**Owner:** _______
+**Owner:** Juliette
 
 **What it does.** Owns `agents/one-shot/`: `agent.yaml`, `requirements.lock`,
 `src/main.py`. Reads the workspace, calls Parts 2–4 in order, writes
@@ -108,7 +108,7 @@ stop path rather than being cut off mid-write.
 
 ## Part 2 — Log tail extractor
 
-**Owner:** _______
+**Owner:** Anthony
 
 **What it does.** `extract_tail(path: Path, n_lines: int) -> str`. Returns the
 last N lines of the build log.
@@ -132,7 +132,7 @@ is what makes it a control.
 
 ## Part 3 — Model adapter
 
-**Owner:** _______
+**Owner:** Austin
 
 **What it does.** `ModelClient.propose(context: CaseContext) -> EditPlan`. Builds
 the prompt, makes exactly one call, parses the response into `Edit` objects,
@@ -193,7 +193,7 @@ with a reason; it does not raise.
 
 ## Part 4 — Edit applier
 
-**Owner:** _______
+**Owner:** Owen
 
 **What it does.** `apply_edits(worktree: Path, edits: list[Edit]) -> int`.
 Validates each edit, applies it, returns how many landed.
@@ -221,7 +221,7 @@ edited file is not a reliable fix. Test this case explicitly. If it breaks,
 
 ## Part 5 — Harness and case runner
 
-**Owner:** _______ (plus one — see below)
+**Owner:** Joonseo (plus one — see below)
 
 **What it does.** Everything outside the sandbox. Materializes a case, runs the
 agent against it, invokes the official validator on a clean copy with the

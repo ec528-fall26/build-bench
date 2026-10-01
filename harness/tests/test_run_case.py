@@ -1,0 +1,204 @@
+"""Orchestration checks for run_case, runnable on macOS.
+
+Parts 1, 2 and 4 run for real. dpkg-source and run.sh are replaced by FakeHost,
+which imitates their file effects and exit codes; the real versions are
+exercised on the ARM64 host.
+
+Run from the repository root:  python3 -m unittest discover -s harness/tests -t .
+"""
+
+from contextlib import redirect_stdout
+from functools import partial
+import io
+import json
+import os
+from pathlib import Path
+import shutil
+import tempfile
+import unittest
+from unittest.mock import patch
+
+import harness.run_case as run_case_module
+from harness.run_case import CommandFailed, main, run_case
+
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+REPLAY = Path(__file__).resolve().parents[1] / "replays" / "rcran-known-fix.json"
+DSC = "r-cran-digest_0.6.32-1.dsc"
+
+
+class FakeHost:
+    """Imitates dpkg-source and run.sh well enough to drive run_case."""
+
+    def __init__(self, baseline_passes=False, fail_on=None, build_hangs=False):
+        self.baseline_passes = baseline_passes
+        self.fail_on = fail_on
+        self.build_hangs = build_hangs
+        self.calls = []
+
+    def __call__(self, cmd, cwd, log, timeout):
+        cmd = [str(c) for c in cmd]
+        self.calls.append(cmd)
+        if self.fail_on and self.fail_on in cmd:
+            raise CommandFailed(f"{cmd[0]} exited 2")
+        if cmd[:2] == ["dpkg-source", "-x"]:
+            src = Path(cwd) / cmd[3] / "src" / "crc32c"
+            src.mkdir(parents=True)
+            shutil.copy(FIXTURES / "crc32c_config.h", src)
+            (Path(cwd) / "r-cran-digest_0.6.32.orig.tar.gz").write_text("orig")
+        elif cmd[:2] == ["dpkg-source", "--auto-commit"]:
+            (Path(cwd).parent / DSC).write_text("rebuilt dsc")
+            (Path(cwd).parent / "r-cran-digest_0.6.32-1.debian.tar.xz").write_text("rebuilt debian")
+        elif cmd[0] == "bash":
+            self._build(cmd)
+
+    def _build(self, cmd):
+        repair = "--input" in cmd
+        if repair and self.build_hangs:
+            raise CommandFailed("bash timed out after 4200s")
+        out = Path(cmd[cmd.index("--output") + 1])
+        out.mkdir()
+        if repair:
+            run_dir = Path(cmd[cmd.index("--input") + 1]).parent
+            config = (run_dir / "work/input/src/crc32c/crc32c_config.h").read_text()
+            passes = "#define HAVE_MM_PREFETCH 0" in config
+        else:
+            passes = self.baseline_passes
+        fixture = "fix-1" if passes else "baseline-1"
+        shutil.copy(FIXTURES / fixture / "build-result.json", out)
+        (out / "build.log").write_text(
+            "noise\n" * 50
+            + "crc32c/crc32c_prefetch.h:18:10: fatal error: xmmintrin.h: No such file or directory\n"
+        )
+        if not passes:
+            raise CommandFailed("bash exited 1")  # run.sh exits nonzero on a failed build
+
+
+class RunCaseTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        root = Path(self.temp.name)
+        self.bundle = root / "bundle"
+        case = self.bundle / "case"
+        (case / "input").mkdir(parents=True)
+        (case / "config").mkdir()
+        (case / "dependencies" / "ubuntu-mantic-arm64").mkdir(parents=True)
+        (self.bundle / "run.sh").write_text("")
+        shutil.copy(FIXTURES / "rcran-manifest.json", case / "manifest.json")
+        (case / "input" / DSC).write_text("original signed dsc")
+        (case / "config" / "dependency-lock.json").write_text("{}")
+        (case / "dependencies" / "ubuntu-mantic-arm64" / "libc6.deb").write_text("deb")
+        self.runs = root / "runs"
+
+    def run_with(self, host, run_id="r1", replay=REPLAY, **kwargs):
+        return run_case(self.bundle, run_id, self.runs, replay, runner=host, **kwargs)
+
+    def replay_file(self, **changes):
+        data = json.loads(REPLAY.read_text())
+        data.update(changes)
+        path = Path(self.temp.name) / "replay.json"
+        path.write_text(json.dumps(data))
+        return path
+
+    def test_known_fix_is_repaired_end_to_end(self):
+        row = self.run_with(FakeHost())
+        self.assertTrue(row["repaired"])
+        self.assertEqual(row["termination_reason"], "build_succeeded")
+        self.assertEqual((row["edits_applied"], row["edits_proposed"]), (1, 1))
+        self.assertEqual(row["baseline"]["status"], "failed")
+        self.assertEqual(row["result"]["status"], "succeeded")
+        self.assertEqual(row["edit_warnings"], [])
+
+    def test_assembled_case_swaps_only_input(self):
+        self.run_with(FakeHost())
+        built = self.runs / "r1" / "case"
+        self.assertEqual(sorted(p.name for p in (built / "input").iterdir()), [
+            "r-cran-digest_0.6.32-1.debian.tar.xz", DSC, "r-cran-digest_0.6.32.orig.tar.gz"])
+        self.assertEqual((built / "input" / DSC).read_text(), "rebuilt dsc")
+        self.assertEqual((self.bundle / "case" / "input" / DSC).read_text(), "original signed dsc")
+        self.assertTrue(os.path.samefile(
+            built / "dependencies/ubuntu-mantic-arm64/libc6.deb",
+            self.bundle / "case/dependencies/ubuntu-mantic-arm64/libc6.deb"))
+        self.assertTrue((built / "manifest.json").is_file())
+
+    def test_repack_uses_auto_commit(self):
+        host = FakeHost()
+        self.run_with(host)
+        self.assertIn(["dpkg-source", "--auto-commit", "-b", "."], host.calls)
+
+    def test_every_run_appends_one_row(self):
+        self.run_with(FakeHost(), run_id="a")
+        self.run_with(FakeHost(), run_id="b", replay=self.replay_file(case_id="other-case"))
+        rows = [json.loads(line) for line in (self.runs / "runs.jsonl").read_text().splitlines()]
+        self.assertEqual([(r["run_id"], r["repaired"]) for r in rows], [("a", True), ("b", False)])
+        self.assertTrue((self.runs / "a" / "record.json").is_file())
+
+    def test_forbidden_edit_is_rejected_and_recorded(self):
+        edits = json.loads(REPLAY.read_text())["edits"] + [
+            {"path": "config/dependency-lock.json", "old_text": "{}", "new_text": "[]"}]
+        row = self.run_with(FakeHost(), replay=self.replay_file(edits=edits))
+        self.assertEqual((row["edits_applied"], row["edits_proposed"]), (1, 2))
+        self.assertEqual(len(row["edit_warnings"]), 1)
+        self.assertIn("edit_rejected", row["edit_warnings"][0])
+        self.assertTrue(row["repaired"])
+        self.assertEqual((self.bundle / "case/config/dependency-lock.json").read_text(), "{}")
+
+    def test_no_applied_edit_skips_the_build(self):
+        host = FakeHost()
+        row = self.run_with(host, replay=self.replay_file(case_id="other-case"))
+        self.assertEqual(row["termination_reason"], "no_edit_applied")
+        self.assertFalse(any("--auto-commit" in c for c in host.calls))
+        self.assertFalse(any("--input" in c for c in host.calls))
+
+    def test_case_that_already_builds_is_not_used(self):
+        host = FakeHost(baseline_passes=True)
+        row = self.run_with(host)
+        self.assertEqual(row["termination_reason"], "case_not_failing")
+        self.assertFalse(any(c[0] == "dpkg-source" for c in host.calls))
+
+    def test_supplied_log_skips_the_baseline(self):
+        log = Path(self.temp.name) / "build.log"
+        log.write_text("fatal error: xmmintrin.h\n")
+        host = FakeHost()
+        row = self.run_with(host, log=log)
+        self.assertIsNone(row["baseline"])
+        self.assertEqual(sum(c[0] == "bash" for c in host.calls), 1)
+        self.assertTrue(row["repaired"])
+
+    def test_unpack_failure_is_recorded(self):
+        row = self.run_with(FakeHost(fail_on="-x"))
+        self.assertEqual(row["termination_reason"], "unpack_failed")
+        self.assertFalse(row["repaired"])
+        self.assertEqual(len((self.runs / "runs.jsonl").read_text().splitlines()), 1)
+
+    def test_build_timeout_is_reported_not_swallowed(self):
+        row = self.run_with(FakeHost(build_hangs=True))
+        self.assertEqual(row["termination_reason"], "build_error")
+        self.assertIn("timed out", row["error"])
+
+    def test_run_id_cannot_be_reused(self):
+        self.run_with(FakeHost())
+        with self.assertRaises(FileExistsError):
+            self.run_with(FakeHost())
+
+    def cli(self, host, run_id):
+        args = ["--bundle", str(self.bundle), "--replay", str(REPLAY),
+                "--run-id", run_id, "--runs-dir", str(self.runs)]
+        with patch.object(run_case_module, "run_case", partial(run_case, runner=host)), \
+                redirect_stdout(io.StringIO()) as out:
+            code = main(args)
+        return code, out.getvalue()
+
+    def test_cli_exits_zero_on_a_completed_run(self):
+        code, out = self.cli(FakeHost(), "ok")
+        self.assertEqual(code, 0)
+        self.assertIn("REPAIRED", out)
+
+    def test_cli_exits_nonzero_on_infrastructure_failure(self):
+        code, out = self.cli(FakeHost(fail_on="-x"), "broken")
+        self.assertEqual(code, 1)
+        self.assertIn("unpack_failed", out)
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,11 @@
+{
+  "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+  "rationale": "Known-correct repair verified on 1 October 2026 (docs/part5-findings.md section 8): crc32c_config.h hardcodes HAVE_MM_PREFETCH 1, which pulls the x86-only xmmintrin.h into the ARM64 build.",
+  "edits": [
+    {
+      "path": "input/src/crc32c/crc32c_config.h",
+      "old_text": "#define HAVE_MM_PREFETCH 1\n",
+      "new_text": "#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)\n#define HAVE_MM_PREFETCH 1\n#else\n#define HAVE_MM_PREFETCH 0\n#endif\n"
+    }
+  ]
+}

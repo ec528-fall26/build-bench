@@ -22,3 +22,4 @@ node_modules/
 *.pem
 *.key
 credentials
+materials/buildbench-local-rcran-v1.tar

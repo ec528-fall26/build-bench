@@ -1,0 +1,39 @@
+{
+  "artifact_validation_passed": false,
+  "artifacts": [
+    {
+      "kind": "source",
+      "path": "artifacts/r-cran-digest_0.6.32-1.debian.tar.xz",
+      "rpm_query_ok": true,
+      "sha256": "40c192d470cc431ae99df4b9a2c8e9db73ca405204f0e5eae5908d88e523393a",
+      "size_bytes": 3236
+    },
+    {
+      "kind": "source",
+      "path": "artifacts/r-cran-digest_0.6.32-1.dsc",
+      "rpm_query_ok": true,
+      "sha256": "a74a71ccbd3968cf0beb71ff1261d38a24f18f6eeb730c08e9f91f43c98e6251",
+      "size_bytes": 1032
+    },
+    {
+      "kind": "source",
+      "path": "artifacts/r-cran-digest_0.6.32.orig.tar.gz",
+      "rpm_query_ok": true,
+      "sha256": "f319ffc05f017b873ad890026e0d998bc570afe2fe8bf3a23f46e77cc44739b1",
+      "size_bytes": 177411
+    }
+  ],
+  "build_exit_code": 1,
+  "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+  "duration_seconds": 89,
+  "message": "build failed; expected binary artifact pattern 'r-cran-digest_*_arm64.deb' was not matched",
+  "patch_applied": false,
+  "schema_version": "1.0",
+  "security": {
+    "mode": "privileged",
+    "safe_for_untrusted_submission": false
+  },
+  "status": "failed",
+  "target_arch": "aarch64",
+  "timed_out": false
+}

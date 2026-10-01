@@ -1,0 +1,11 @@
+{
+  "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+  "rationale": "Negative control: edits a comment only and fixes nothing. The harness must report this as not repaired.",
+  "edits": [
+    {
+      "path": "input/src/crc32c/crc32c_config.h",
+      "old_text": "// Define to 1 if building for a big-endian platform.\n",
+      "new_text": "// Define to 1 when building for a big-endian platform.\n"
+    }
+  ]
+}

@@ -21,6 +21,7 @@
 | `docs/` | Design proposal and design document |
 | `slides/` | Demo slides (`demo-1.pdf`, `demo-2.pdf`, ...) |
 | `src/` | Source code |
+| `harness/` | Part 5 local evaluation harness — not part of the agent submission |
 | `experiments/` | Scripts that reproduce every result you claim |
 
 ## Reproducing our results

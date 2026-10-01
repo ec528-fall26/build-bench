@@ -228,13 +228,58 @@ agent against it, invokes the official validator on a clean copy with the
 generated patch, collects `build-result.json`, and writes a `RunRecord` per case
 plus a summary table.
 
-**This part carries case materialization**, which is risk #1 in the design
-proposal and the longest pole in the project. The packed cases are compressed
-source packages and historical logs, not runnable validator cases — the harness
-has to reconstruct the source tree, build configuration and dependency snapshot,
-then reproduce the original failure. Nothing downstream can be measured until one
-case works. **Put two people on this**; the Part 3 owner is a natural pair while
-the protocol question is unanswered.
+**Do not build a case-materialization pipeline.** The organizers state plainly:
+local validation needs the matching target buildconfig and frozen dependencies,
+and *"do not generate these from the public dataset metadata."* [rcran-v1 README]
+The 200 public cases ship source and failure logs only.
+
+**Develop against `buildbench-local-rcran-v1` instead.** It is one complete local
+environment for case `launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f`
+(x86_64 → aarch64), containing `case/manifest.json` (validator schema 1.0), the
+original `.dsc` and archives under `case/input/`, the official buildconfig and
+`dependency-lock.json` under `case/config/`, frozen `.deb` files under
+`case/dependencies/`, an ARM64 runtime image, `tools/build-case-docker`, and
+`run.sh`. It is 388 MB for a single case — which is why all 200 are not shipped
+this way.
+
+```bash
+sha256sum -c SHA256SUMS
+docker load -i runtime-image.tar.gz
+bash run.sh --check                        # manifest + dependency hashes only
+bash run.sh --output "$PWD/results/baseline-1"
+```
+
+For a second local case, **contact the organizers with the Case ID.** Otherwise
+the only route for the other 199 is website Development Validation, which is a
+web form running one task at a time.
+
+**Host requirements are stricter than assumed.** Native **Linux ARM64** with
+Docker Engine, ≥8 GiB RAM, ≥10 GiB free disk, and a disposable or dedicated
+machine — validation runs a **privileged container**. An x86_64 host needs a
+`qemu-aarch64` binfmt handler with the `F` flag *even for `--check`*, and the
+organizers have not tested that combination end to end.
+
+**The harness must repackage the repair.** This is the biggest new requirement.
+`run.sh --input` expects `input/` to hold a **complete rebuilt Debian source
+package** — the correctly named `.dsc` plus every referenced archive with updated
+checksums, produced by `dpkg-source -b`, preserving the package name and version.
+Editing a tarball without rebuilding the `.dsc` is invalid, and a bare `debian/`
+tree where a `.dsc` is expected is rejected. So the local loop is:
+
+1. unpack `case/input/*.dsc` into a source tree
+2. let the agent edit that tree (Part 4 applies literal edits under `input/`)
+3. **`dpkg-source -b` to rebuild the source package**
+4. copy `case/` to `repaired-case/`, keeping `manifest.json`, `config/` and
+   `dependencies/` unchanged, and replace only `repaired-case/input/`
+5. `bash run.sh --input "$PWD/repaired-case" --output results/repair-N`
+
+Step 3 is work the hosted platform does for us ("the platform supplies Case
+metadata and dependencies, and packages unpacked source before the target
+build"), so it exists only in our local harness.
+
+**Results to record:** `build-result.json`, `build-diagnostics.json`, `build.log`
+and `artifacts/`. Exit 0 means the build succeeded; an unrepaired case is expected
+to fail, and a source compilation failure is a legitimate case result.
 
 **Three things Part 4 explicitly hands to this part:**
 
@@ -243,19 +288,26 @@ the protocol question is unanswered.
    assigns the check here: after every run, generate the canonical patch with
    `runner/generate_patch.py` and confirm it applies to a clean copy. Record a
    compatibility failure rather than patching the official runner.
-2. **`allowed_prefix` per case layout.** It defaults to `input/`, which matches
-   the released RPM hello case. Debian cases will differ, and the hosted worktree
-   layout is still unconfirmed with the organizers. The harness sets this.
+2. **`allowed_prefix` and `patch_policy`.** Confirmed by the rcran manifest:
+   `allowed_paths: ["input/**"]`, `forbidden_paths: ["manifest.json", "config/**",
+   "dependencies/**"]`. Part 4's `input/` default is correct, and its
+   `patch_policy` argument takes these values straight from the case manifest.
 3. **Rejection visibility.** `apply_edits` returns only a count; every rejection
    reason goes to `logging` at WARNING. Attach a handler that captures those
    records into the `RunRecord`, otherwise failure analysis has nothing to work
    with. No change to Part 4 is needed.
 
-**Ask about Development Validation first.** The organizers named it as the route
-for official-environment checks of repaired public cases. If it covers enough,
-the reconstruction scope here shrinks substantially — so find out what it can
-build, whether it covers all 200 cases, and its rate limits **before**
-reconstructing anything by hand.
+**Development Validation is the only route for the other 199 cases.** It accepts
+a repaired bundle — a root upload manifest (**schema_version 0.1**, with
+`suite_id` and `cases`, *not* the validator's 1.0 case manifest) plus repaired
+source under `cases/<case-id>/worktree/input/`, as either an unpacked tree with a
+complete `debian/` directory or a rebuilt `.dsc` with all archives and updated
+checksums. Do not mix the two formats, and do not upload the rcran archive or its
+dependencies. The platform supplies case metadata and dependencies itself.
+
+It will not run an unrepaired case, it is a web form with no API, and a team may
+run **one task at a time** — so it cannot carry a repeated-run evaluation. Treat
+it as a ground-truth spot check.
 
 **The harness also stands in for build feedback.** In-loop feedback is confirmed
 for hosted evaluation, but local tests do not simulate in-run build requests. The
@@ -295,6 +347,8 @@ unanswered, we can still reach step 4.**
 | 10/07 | Steps 1–3 done. One Debian case materialized and reproducing its failure. Organizer protocol question answered or documented as unanswered. |
 | 10/14 | Step 4 done — full pipeline running offline against recorded responses. |
 | 10/21 | Step 6 on the 10 frozen cases. Demo 2. |
+| — | **Host:** native Linux ARM64 (Graviton), Docker, ≥8 GiB RAM, ≥10 GiB disk, disposable. Not x86_64. |
+| 11/13 | **External:** a qualified version selected in My Submissions by end of day Beijing time (UTC+8). Team registration closed 30 September and ours is done. Qualification needs an upload that passes platform checks and the Hosted Smoke Test, which shares the Agent Runner, workspace layout and status schema with Full Evaluation. |
 
 ## Open decisions
 
@@ -305,7 +359,9 @@ Resolve in the next team meeting — each one blocks a part:
    is only about what we develop against.
 2. **The fixed file list** handed to the model alongside the log tail → blocks
    Part 3. Must be identical for every case.
-3. **AWS account, budget, and native ARM vs qemu emulation** → blocks Part 5.
+3. **AWS budget** → Part 5. *Settled:* the host must be native Linux **ARM64**
+   (Graviton), because the rcran runtime image is `linux/arm64` and the x86_64 +
+   QEMU path is untested by the organizers.
 4. **Owners for the remaining parts**, and the second person on case
    materialization.
 
@@ -315,7 +371,8 @@ Resolve in the next team meeting — each one blocks a part:
 
 ## Questions for the organizers
 
-**Answered** (reply received September 2026):
+**Answered** (organizer reply, September 2026, plus the competition website
+inspected 30 September 2026):
 
 1. ~~How does a submitted agent reach a model?~~ Organizer-managed,
    OpenAI-compatible endpoint; same undisclosed model for every team; common
@@ -326,12 +383,20 @@ Resolve in the next team meeting — each one blocks a part:
 
 **Still open — send this week:**
 
-3. **What does Development Validation cover?** Can it build an unrepaired public
-   case, does it cover all 200, and what are its rate limits? This directly
-   determines how much case reconstruction Part 5 must do.
-4. What is the per-case build-request limit, once finalized?
-5. Does the validator support execution under qemu emulation, or is native
+3. ~~What does Development Validation cover?~~ Answered from the website:
+   repaired worktree bundles only, no unrepaired reproduction, web form, one task
+   per team at a time. It cannot carry an evaluation.
+4. ~~Which paths may an agent edit?~~ Development Validation expects
+   `worktree/input/` per case, which matches Part 4's `allowed_prefix="input/"`
+   default. Confirm it still holds for hosted Debian cases.
+
+**Still open — send this week:**
+
+5. What is the per-case build-request limit, once finalized? The rules say
+   build-feedback, iteration and tool-call budgets will be published before
+   public evaluation opens.
+6. Does the validator support execution under qemu emulation, or is native
    target-architecture hardware required?
-6. What is the hosted Debian worktree layout, and which paths may an agent edit?
-   (Part 4 defaults `allowed_prefix` to `input/`, which matches the RPM hello
-   case.)
+7. Is there guidance for reconstructing a public case's build environment
+   locally — particularly the historical dependency snapshot, which the released
+   dataset omits?

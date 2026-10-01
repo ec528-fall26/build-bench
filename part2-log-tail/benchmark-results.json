@@ -1,0 +1,44 @@
+{
+  "recorded_date": "2026-09-26",
+  "kind": "synthetic_sparse",
+  "memory_measurement": "tracemalloc Python allocations; not process RSS",
+  "timing_note": "local filesystem; OS caches are not flushed",
+  "measurements": [
+    {
+      "size_bytes": 2370000,
+      "n_lines": 500,
+      "repeats": 7,
+      "seconds_first": 0.0008700999896973372,
+      "seconds_median": 0.0006480999873019755,
+      "seconds_max": 0.0008700999896973372,
+      "peak_python_bytes_max": 98091,
+      "returned_characters": 16000,
+      "under_one_second_all_runs": true,
+      "known_tail_verified": true
+    },
+    {
+      "size_bytes": 237000000,
+      "n_lines": 500,
+      "repeats": 7,
+      "seconds_first": 0.000956700008828193,
+      "seconds_median": 0.0007597000221721828,
+      "seconds_max": 0.0012873000232502818,
+      "peak_python_bytes_max": 98091,
+      "returned_characters": 16000,
+      "under_one_second_all_runs": true,
+      "known_tail_verified": true
+    },
+    {
+      "size_bytes": 2370000000,
+      "n_lines": 500,
+      "repeats": 7,
+      "seconds_first": 0.000700299977324903,
+      "seconds_median": 0.0006107999943196774,
+      "seconds_max": 0.000700299977324903,
+      "peak_python_bytes_max": 98091,
+      "returned_characters": 16000,
+      "under_one_second_all_runs": true,
+      "known_tail_verified": true
+    }
+  ]
+}

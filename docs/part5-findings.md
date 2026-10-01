@@ -141,24 +141,34 @@ crc32c/crc32c_prefetch.h:18:10: fatal error: xmmintrin.h: No such file or direct
 ```
 
 `xmmintrin.h` is the **x86 SSE intrinsics header**. It does not exist on ARM64.
-The source includes it unconditionally, with no architecture guard.
+The include is guarded by `HAVE_MM_PREFETCH`, but that flag is hardcoded to 1 in a
+vendored config header, so the guard never fires on ARM64 — see §8.
 
-### This log is the argument for evidence selection
-
-The structure is worth keeping for Demo 2 — it demonstrates on a real case what
-the proposal otherwise only asserts:
+### What this log does and does not show
 
 | Log line | Content | Useful? |
 | --- | --- | --- |
 | 1872 (last) | `dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2` | Generic |
 | 1871, 1869, 1866 | `make: *** Error 2`, `Error 25`, `compilation failed for package 'digest'` | Downstream noise |
-| **1858** | `fatal error: xmmintrin.h: No such file or directory` | **Root cause** |
+| **1858** | `fatal error: xmmintrin.h: No such file or directory` | **Symptom** — names the failing include |
 | 51–1176 | eight matches for `libgpg-error0` | False positives on a keyword grep |
 
-A log-tail agent sees only lines 1860–1872 and never reaches the cause. A naive
-`grep -i error` surfaces a package *named* `libgpg-error0` eight times before
-anything relevant. Both failure modes are visible in one 1,872-line log — and
-production logs run to gigabytes.
+**Correction (1 October).** An earlier version of this section claimed a log-tail
+agent "sees only lines 1860–1872 and never reaches the cause." That was wrong.
+Line 1858 is 14 lines from the end, and Part 1 passes the model the last 500
+lines, so on this case a log-tail agent *does* see the error.
+
+What the case actually demonstrates is stronger, and different: **the fix is in a
+file the log never mentions.** The log names `crc32c_prefetch.h` and
+`xmmintrin.h`; the repair is to `crc32c_config.h` (§8). An agent working from the
+log alone can see the symptom but cannot locate the cause — it has to open source
+files and follow the `HAVE_MM_PREFETCH` guard back to where it is defined. That
+is the argument for file inspection and evidence gathering beyond the log.
+
+Two smaller points still hold: a naive `grep -i error` surfaces a package
+*named* `libgpg-error0` eight times before anything relevant, and the final
+lines are generic. Whether the tail misses the cause on much larger logs — one
+in the dataset is 2.37 GB — is untested; this 1,872-line log cannot show it.
 
 ---
 

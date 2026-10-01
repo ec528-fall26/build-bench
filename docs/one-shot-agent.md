@@ -57,18 +57,12 @@ class EditPlan:
     edits: list[Edit]
     rationale: str
     usage: dict             # {"input_tokens": int|None, "output_tokens": int|None}
-
-@dataclass
-class RunRecord:
-    case_id: str
-    agent_version: str
-    model: str
-    status: str             # completed | agent_error | no_edit
-    edits_applied: int
-    usage: dict
-    wall_seconds: float
-    termination_reason: str
 ```
+
+**No `RunRecord` type.** It was planned here but removed on 1 October: a run's
+outcome (did the build succeed?) only exists after the agent exits, so the agent
+cannot write a complete record of its own run. The harness writes the run record
+instead — see [`harness/README.md`](../harness/README.md).
 
 Runtime paths are fixed by the platform:
 
@@ -225,7 +219,7 @@ edited file is not a reliable fix. Test this case explicitly. If it breaks,
 
 **What it does.** Everything outside the sandbox. Materializes a case, runs the
 agent against it, invokes the official validator on a clean copy with the
-generated patch, collects `build-result.json`, and writes a `RunRecord` per case
+generated patch, collects `build-result.json`, and writes one run record per case
 plus a summary table.
 
 **Do not build a case-materialization pipeline.** The organizers state plainly:
@@ -302,7 +296,7 @@ to fail, and a source compilation failure is a legitimate case result.
    `patch_policy` argument takes these values straight from the case manifest.
 3. **Rejection visibility.** `apply_edits` returns only a count; every rejection
    reason goes to `logging` at WARNING. Attach a handler that captures those
-   records into the `RunRecord`, otherwise failure analysis has nothing to work
+   records into the run record, otherwise failure analysis has nothing to work
    with. No change to Part 4 is needed.
 
 **Development Validation is the only route for the other 199 cases.** It accepts
@@ -326,7 +320,7 @@ serves it locally. Record the mode on every row.
 Holds the API credentials — **the agent never does.**
 
 **Done when.** One command runs the agent over a list of cases and produces a
-results file with every field in `RunRecord`, including rows for cases that
+results file with a complete run record per attempt, including rows for cases that
 crashed, timed out, or produced unusable edits.
 
 **Watch for.** Crashes and timeouts are rows in the output, not omissions — §4

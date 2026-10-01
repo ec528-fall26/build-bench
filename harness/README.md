@@ -19,6 +19,23 @@ Background and measured results: [`docs/part5-findings.md`](../docs/part5-findin
 | `run_case.py` | One case end to end: baseline build → `dpkg-source -x` → agent edits → `dpkg-source --auto-commit -b` → `run.sh` → record | Done — verified on the ARM64 host 1 October (see below) |
 | `replays/` | Edit files for the stand-in model: `rcran-known-fix.json` (the verified repair) and `rcran-comment-only.json` (negative control) | Done |
 
+## What each run records
+
+One row per attempt in `runs.jsonl`, and the same row as `record.json` in the run
+folder. This is the project's run record; the agent's `types.py` has no
+`RunRecord`, because a run's outcome only exists after the agent has exited.
+
+| Field | Meaning |
+| --- | --- |
+| `run_id`, `case_id`, `started_at`, `wall_seconds` | which run, which case, when, how long |
+| `agent_version` | `agent.yaml` version + fingerprint of the agent's source, e.g. `0.1.0+3f9a1c2b4d5e`. Changes whenever any agent `.py` file changes, committed or not |
+| `model`, `mode` | the model used (`replay:<file>` for the stand-in) and `one-shot` |
+| `edits_proposed`, `edits_applied`, `edit_warnings` | what the model asked for, what Part 4 accepted, and Part 4's rejection reasons |
+| `diff_path` | `repair.diff`: the agent's actual change, or `null` if nothing changed. Taken before repacking, so it shows only the agent's edit |
+| `rationale`, `usage` | the model's explanation and token counts (`null` = unknown, never 0) |
+| `baseline`, `result` | the validator's verdict before and after the repair |
+| `repaired`, `termination_reason`, `error` | the verdict and why the run stopped |
+
 ## Repaired means
 
 `status == "succeeded"` **and** `artifact_validation_passed == true`.

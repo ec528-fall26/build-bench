@@ -22,15 +22,3 @@ class EditPlan:
     edits: list[Edit]
     rationale: str
     usage: dict
-
-
-@dataclass
-class RunRecord:
-    case_id: str
-    agent_version: str
-    model: str
-    status: str
-    edits_applied: int
-    usage: dict
-    wall_seconds: float
-    termination_reason: str

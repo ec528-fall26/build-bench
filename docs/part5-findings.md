@@ -193,7 +193,7 @@ declares `timeout_seconds: 3600` and `jobs: 2`, so 3600 is a ceiling for
 pathological cases, not a typical duration. Do not generalise from one small R
 package; re-measure as more cases become available.
 
-**Result files for `RunRecord`:** `build-result.json`, `build-diagnostics.json`,
+**Result files for the harness run record:** `build-result.json`, `build-diagnostics.json`,
 `build.log`, `artifacts/`. Map `build-result.json` fields directly rather than
 inventing our own.
 

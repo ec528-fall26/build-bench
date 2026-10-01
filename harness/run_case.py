@@ -21,6 +21,8 @@ import argparse
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timezone
+import difflib
+import hashlib
 import json
 import logging
 import os
@@ -83,6 +85,63 @@ def load_agent(agent_dir: Path) -> SimpleNamespace:
         run_repair=run_repair, extract_tail=extract_tail, edit_applier=edit_applier,
         CaseContext=CaseContext, Edit=Edit, EditPlan=EditPlan,
     )
+
+
+def agent_version(agent_dir: Path) -> str:
+    """agent.yaml's declared version plus a fingerprint of the agent's source.
+
+    Not a git commit: the cloud host receives the code by tar copy, without
+    .git, and a fingerprint also catches uncommitted changes.
+    """
+    declared, in_agent = "unknown", False
+    yaml = agent_dir / "agent.yaml"
+    for line in yaml.read_text(encoding="utf-8").splitlines() if yaml.is_file() else []:
+        if not line.startswith((" ", "\t")):
+            in_agent = line.strip() == "agent:"
+        elif in_agent and line.strip().startswith("version:"):
+            declared = line.split(":", 1)[1].strip().strip("\"'")
+            break
+    digest = hashlib.sha256()
+    for path in sorted((agent_dir / "src").rglob("*.py")):
+        digest.update(path.relative_to(agent_dir).as_posix().encode() + b"\0")
+        digest.update(path.read_bytes() + b"\0")
+    return f"{declared}+{digest.hexdigest()[:12]}"
+
+
+def write_diff(before: Path, after: Path, out: Path) -> bool:
+    """Write a unified diff of two source trees as input/... paths.
+
+    Returns False, writing nothing, when the trees are identical.
+    """
+    def files(root):
+        return {p.relative_to(root).as_posix() for p in root.rglob("*")
+                if p.is_file() and not p.is_symlink()}
+
+    lines = []
+    for rel in sorted(files(before) | files(after)):
+        a, b = before / rel, after / rel
+        old = a.read_bytes() if a.is_file() else b""
+        new = b.read_bytes() if b.is_file() else b""
+        if old == new:
+            continue
+        name = f"input/{rel}"
+        try:
+            old_text, new_text = old.decode("utf-8"), new.decode("utf-8")
+        except UnicodeDecodeError:
+            lines.append(f"Binary files a/{name} and b/{name} differ\n")
+            continue
+        for line in difflib.unified_diff(
+            old_text.splitlines(True), new_text.splitlines(True),
+            fromfile=f"a/{name}" if a.is_file() else "/dev/null",
+            tofile=f"b/{name}" if b.is_file() else "/dev/null",
+        ):
+            if not line.endswith("\n"):
+                line += "\n\\ No newline at end of file\n"
+            lines.append(line)
+    if not lines:
+        return False
+    out.write_text("".join(lines), encoding="utf-8")
+    return True
 
 
 class ReplayModel:
@@ -167,6 +226,7 @@ def run_case(
     started, clock = datetime.now(timezone.utc), time.monotonic()
     row = {
         "run_id": run_id, "case_id": manifest["case_id"], "mode": "one-shot",
+        "agent_version": agent_version(agent_dir), "diff_path": None,
         "model": model.name, "started_at": started.isoformat(timespec="seconds"),
         "edits_proposed": 0, "edits_applied": 0, "edit_warnings": [],
         "rationale": "", "usage": {}, "baseline": None, "result": None,
@@ -205,6 +265,8 @@ def run_case(
                    work, harness_log, DPKG_TIMEOUT)
         except CommandFailed as error:
             raise _Stop("unpack_failed", str(error)) from None
+        pristine = run_dir / "pristine"
+        shutil.copytree(work / "input", pristine, symlinks=True)
 
         context = agent.CaseContext(
             case_id=manifest["case_id"], worktree=work, log_tail="",
@@ -222,6 +284,10 @@ def run_case(
                 raise _Stop("agent_error", f"{type(error).__name__}: {error}") from None
             finally:
                 row["edit_warnings"] = list(warnings)
+                # Before repacking: --auto-commit adds its own patch files to the tree.
+                if write_diff(pristine, work / "input", run_dir / "repair.diff"):
+                    row["diff_path"] = str(run_dir / "repair.diff")
+                shutil.rmtree(pristine)
         row.update(edits_proposed=len(plan.edits), edits_applied=applied,
                    rationale=plan.rationale, usage=plan.usage)
         if applied == 0:

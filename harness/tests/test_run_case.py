@@ -19,7 +19,7 @@ import unittest
 from unittest.mock import patch
 
 import harness.run_case as run_case_module
-from harness.run_case import CommandFailed, main, run_case
+from harness.run_case import AGENT_DIR, CommandFailed, agent_version, main, run_case, write_diff
 
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -47,6 +47,10 @@ class FakeHost:
             shutil.copy(FIXTURES / "crc32c_config.h", src)
             (Path(cwd) / "r-cran-digest_0.6.32.orig.tar.gz").write_text("orig")
         elif cmd[:2] == ["dpkg-source", "--auto-commit"]:
+            # Real --auto-commit records the edit as a patch inside the tree.
+            patches = Path(cwd) / "debian" / "patches"
+            patches.mkdir(parents=True, exist_ok=True)
+            (patches / "debian-changes-0.6.32-1").write_text("auto-commit patch")
             (Path(cwd).parent / DSC).write_text("rebuilt dsc")
             (Path(cwd).parent / "r-cran-digest_0.6.32-1.debian.tar.xz").write_text("rebuilt debian")
         elif cmd[0] == "bash":
@@ -182,6 +186,30 @@ class RunCaseTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             self.run_with(FakeHost())
 
+    def test_repair_diff_shows_only_the_agents_change(self):
+        row = self.run_with(FakeHost())
+        diff = Path(row["diff_path"]).read_text()
+        self.assertIn("--- a/input/src/crc32c/crc32c_config.h", diff)
+        # Same hunk dpkg-source wrote on the ARM64 host: the original define stays
+        # as context and the architecture guard is inserted around it.
+        self.assertIn("@@ -12,7 +12,11 @@", diff)
+        self.assertIn("+#if defined(__x86_64__)", diff)
+        self.assertIn(" #define HAVE_MM_PREFETCH 1\n+#else\n+#define HAVE_MM_PREFETCH 0\n+#endif", diff)
+        self.assertNotIn("debian/patches", diff)  # taken before --auto-commit
+        self.assertFalse((self.runs / "r1" / "pristine").exists())
+
+    def test_run_without_a_change_has_no_diff(self):
+        row = self.run_with(FakeHost(), replay=self.replay_file(case_id="other-case"))
+        self.assertIsNone(row["diff_path"])
+        self.assertFalse((self.runs / "r1" / "repair.diff").exists())
+        self.assertFalse((self.runs / "r1" / "pristine").exists())
+
+    def test_agent_version_is_recorded_and_stable(self):
+        first = self.run_with(FakeHost(), run_id="a")["agent_version"]
+        second = self.run_with(FakeHost(), run_id="b")["agent_version"]
+        self.assertRegex(first, r"^0\.1\.0\+[0-9a-f]{12}$")
+        self.assertEqual(first, second)
+
     def cli(self, host, run_id):
         args = ["--bundle", str(self.bundle), "--replay", str(REPLAY),
                 "--run-id", run_id, "--runs-dir", str(self.runs)]
@@ -199,6 +227,49 @@ class RunCaseTests(unittest.TestCase):
         code, out = self.cli(FakeHost(fail_on="-x"), "broken")
         self.assertEqual(code, 1)
         self.assertIn("unpack_failed", out)
+
+
+class HelperTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    def test_agent_version_changes_when_the_code_changes(self):
+        copy = self.root / "agent"
+        shutil.copytree(AGENT_DIR, copy, ignore=shutil.ignore_patterns("__pycache__"))
+        before = agent_version(copy)
+        with (copy / "src" / "types.py").open("a") as f:
+            f.write("# changed\n")
+        self.assertNotEqual(before, agent_version(copy))
+        self.assertEqual(before.split("+")[0], agent_version(copy).split("+")[0])
+
+    def tree(self, name, files):
+        root = self.root / name
+        for rel, text in files.items():
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(text)
+        return root
+
+    def test_identical_trees_write_nothing(self):
+        a = self.tree("a", {"x.c": "int x;\n"})
+        b = self.tree("b", {"x.c": "int x;\n"})
+        self.assertFalse(write_diff(a, b, self.root / "d.diff"))
+        self.assertFalse((self.root / "d.diff").exists())
+
+    def test_missing_final_newline_is_marked(self):
+        a = self.tree("a", {"x.c": "a\n"})
+        b = self.tree("b", {"x.c": "a\nb"})
+        self.assertTrue(write_diff(a, b, self.root / "d.diff"))
+        self.assertIn("+b\n\\ No newline at end of file\n", (self.root / "d.diff").read_text())
+
+    def test_added_file_diffs_against_dev_null(self):
+        a = self.tree("a", {"x.c": "a\n"})
+        b = self.tree("b", {"x.c": "a\n", "new.h": "#pragma once\n"})
+        write_diff(a, b, self.root / "d.diff")
+        diff = (self.root / "d.diff").read_text()
+        self.assertIn("--- /dev/null\n+++ b/input/new.h", diff)
+
 
 if __name__ == "__main__":
     unittest.main()

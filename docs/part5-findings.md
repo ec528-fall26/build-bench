@@ -1,7 +1,7 @@
 # Part 5 — Environment and Baseline Findings
 
 **Owner:** Joonseo Moon · **Last updated:** 1 October 2026
-**Status:** first verified repair — rcran case goes from `failed` to `succeeded`
+**Status:** harness automated and verified — real fix REPAIRED, negative control not repaired
 
 Working notes for the harness and case runner. Numbers here are measured, not
 estimated. Related: [`one-shot-agent.md`](one-shot-agent.md),
@@ -361,12 +361,14 @@ patch itself. Success is `status == "succeeded"` and
 ## 9. Next
 
 - [x] ~~First end-to-end verified repair~~ — §8
-- [ ] `RunRecord` schema and result recording. Record `status` and
+- [x] ~~Result recording~~ — `harness/record.py`. Record `status` and
       `artifact_validation_passed`; **not** `patch_applied` (see §8)
-- [ ] Rejection-capture `logging.Handler` for `edit_applier` warnings
-- [ ] Harness module wrapping the §6 loop, using `--auto-commit`, driven by a
-      stub model client that returns the §8 `Edit`. Done when it reproduces
-      `fix-1` without manual steps
+- [x] ~~Rejection capture~~ — `run_case.capture_warnings`, stored per run as `edit_warnings`
+- [x] ~~Harness loop~~ — `harness/run_case.py`. Reproduced `fix-1` with no
+      manual steps on 1 October (`fix-auto-1`: REPAIRED, 174.5 s), and a
+      comment-only negative control was correctly reported as not repaired
+      (`control-1`: `build_failed`, 83.2 s). Parts 1, 2 and 4 run for real;
+      only the model is replayed from `harness/replays/`
 - [ ] **Ask at the 2 October mentor meeting** for local environments for the frozen
       development Case IDs, and asking how teams are expected to measure repair
       rate across multiple cases during development

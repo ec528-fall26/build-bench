@@ -1,0 +1,101 @@
+from __future__ import annotations
+from .edit_applier import apply_edits
+from .types import CaseContext, EditPlan
+import json
+import os
+import sys
+from pathlib import Path
+
+def write_json(path: Path, data: dict) -> None:
+    path.write_text(
+        json.dumps(data, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+def run_repair(
+    context: CaseContext,
+    log_path: Path,
+    extract_tail,
+    model_client,
+    *,
+    patch_policy=None,
+) -> tuple[EditPlan, int]:
+    context.log_tail = extract_tail(log_path, n_lines=500)
+
+    plan = model_client.propose(context)
+
+    applied_count = apply_edits(
+        context.worktree,
+        plan.edits,
+        patch_policy=patch_policy,
+    )
+
+    return plan, applied_count
+
+def main() -> int:
+    # Use BB_WORKSPACE when set, otherwise use /workspace.
+    workspace = Path(os.environ.get("BB_WORKSPACE", "/workspace"))
+    input_dir = workspace / "input"
+    worktree = workspace / "work" / "repo"
+    output_dir = workspace / "output"
+
+
+
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        required_paths = [
+            input_dir / "task.json",
+            input_dir / "initial-build.log",
+        ]
+
+        for path in required_paths:
+            if not path.is_file():
+                raise FileNotFoundError(
+                    f"Required input file is missing: {path}"
+                )
+
+        if not worktree.is_dir():
+            raise FileNotFoundError(
+                f"Package worktree is missing: {worktree}"
+            )
+
+        task_metadata = json.loads(
+            (input_dir / "task.json").read_text(encoding="utf-8")
+        )
+        if not isinstance(task_metadata, dict):
+            raise ValueError("task.json must contain a JSON object")
+
+        result = {
+            "schema_version": "0.1",
+            "status": "completed",
+            "message": "Agent shell completed. No repair was attempted.",
+            "modified_paths": [],
+        }
+
+        write_json(output_dir / "agent-result.json", result)
+        print(result["message"])
+        return 0
+
+    except Exception as exc:
+        diagnostic = {
+            "status": "agent_error",
+            "error_type": type(exc).__name__,
+            "message": str(exc),
+        }
+        print(json.dumps(diagnostic), file=sys.stderr)
+
+        try:
+            write_json(output_dir / "agent-error.json", diagnostic)
+        except OSError as output_error:
+            print(
+                f"Could not write error diagnostics: {output_error}",
+                file=sys.stderr,
+            )
+
+        return 1
+
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

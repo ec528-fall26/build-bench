@@ -1,0 +1,2 @@
+# Preserve the original demo logs, including line endings and whitespace.
+*.log -text -whitespace

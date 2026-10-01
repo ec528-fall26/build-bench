@@ -1,7 +1,7 @@
 # Part 5 — Environment and Baseline Findings
 
-**Owner:** Joonseo Moon · **Last updated:** 30 September 2026
-**Status:** local validation environment working; first baseline measured
+**Owner:** Joonseo Moon · **Last updated:** 1 October 2026
+**Status:** first verified repair — rcran case goes from `failed` to `succeeded`
 
 Working notes for the harness and case runner. Numbers here are measured, not
 estimated. Related: [`one-shot-agent.md`](one-shot-agent.md),
@@ -13,12 +13,14 @@ estimated. Related: [`one-shot-agent.md`](one-shot-agent.md),
 
 | Finding | Value | Why it matters |
 | --- | --- | --- |
+| **First verified repair** | **`failed` → `succeeded`, binary `.deb` produced** | The full unpack → edit → repack → build loop works end to end on a real case, confirmed by the organizers' validator |
 | Baseline build duration | **86 seconds** | Our provisional 30-minute per-case cap is generous, not tight |
 | Unrepaired case status | **`failed`** | The case is a valid test — it reproduces its failure |
-| Root cause | `xmmintrin.h` missing on ARM64 | Textbook x86-intrinsics failure, exactly the class the proposal predicted |
+| Root cause | `crc32c_config.h` hardcodes `HAVE_MM_PREFETCH 1`, pulling in x86-only `xmmintrin.h` | The log points at the header include; the real fault is a vendored config file one level up |
 | Frozen dependencies | 361, all checksums verified | Supplied by the organizers; we could not have reconstructed these |
 | Local case coverage | **1 of 200** | Everything else needs website Development Validation or an organizer request |
 | `dpkg-source` round trip | **verified safe** | Unpack/repack does not alter the outcome — the harness can repackage repairs |
+| Repack after an edit | **requires `--auto-commit`** | Plain `dpkg-source -b` aborts on any upstream edit; the round trip could not catch this |
 
 ---
 
@@ -197,13 +199,26 @@ rebuilding the `.dsc` is invalid, and a bare `debian/` tree where a `.dsc` is
 expected is rejected.
 
 ```text
-1. dpkg-source -x case/input/*.dsc extracted/
-2. agent edits extracted/          (apply_edits, allowed_prefix input/)
-3. dpkg-source -b extracted/       ← the step hosted evaluation does for us
-4. cp -a case repaired-case; replace only repaired-case/input/
+1. mkdir work && cd work
+   dpkg-source -x ../case/input/*.dsc input
+2. agent edits work/input/            (paths like input/src/..., matching input/**)
+3. cd work/input && dpkg-source --auto-commit -b .
+                                      ← the step hosted evaluation does for us
+4. cp -a case repaired-case; replace only repaired-case/input/ with
+   work/*.dsc and work/*.tar.*
    (manifest.json, config/, dependencies/ stay untouched)
 5. bash run.sh --input "$PWD/repaired-case" --output results/<run-id>
 ```
+
+Two details that matter:
+
+- **Unpack into `work/input/`, run `-x` from inside `work/`.** The agent's paths
+  then read `input/src/...`, matching the manifest's `allowed_paths: ["input/**"]`
+  and Part 4's default `allowed_prefix`. It is also the `worktree/input/` layout
+  website Development Validation expects. Running `-x` from `work/` puts the
+  `.orig.tar.gz` where `-b` will look for it.
+- **`--auto-commit` is mandatory** — see §8. Use `--auto-commit`, not `--commit`:
+  the latter is interactive and would hang a script.
 
 Step 3 exists only in our local harness. The hosted platform "supplies Case
 metadata and dependencies, and packages unpacked source before the target
@@ -242,16 +257,111 @@ case builds, so agent edits applied between those steps can be trusted.
 Harmless — it cannot verify Ubuntu's signature without their keyring, and
 extraction proceeds. The rebuilt `.dsc` is unsigned, which the validator accepts.
 
-## 8. Next
+## 8. First verified repair — PASSED
 
-- [ ] `RunRecord` schema and result recording
+With the loop proven safe without edits (§7), we applied one real fix by hand.
+
+### The real root cause
+
+The log points at the `#include <xmmintrin.h>` in `crc32c_prefetch.h`, but that
+include is guarded. The fault is one level up, in a CMake-generated config header
+that was produced on an x86 machine and vendored into the package:
+
+```c
+// src/crc32c/crc32c_config.h, line 15
+// Define to 1 if targeting X86 and the compiler has the _mm_prefetch intrinsic.
+#define HAVE_MM_PREFETCH 1
+```
+
+It declares x86 prefetch support unconditionally. `HAVE_BUILTIN_PREFETCH` is
+already 1, and `crc32c_prefetch.h` prefers `__builtin_prefetch` over
+`_mm_prefetch`, so the x86 path is never actually used — the only effect of the
+bad flag is the include that fails on ARM64.
+
+### The fix
+
+```diff
+ // Define to 1 if targeting X86 and the compiler has the _mm_prefetch intrinsic.
++#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
+ #define HAVE_MM_PREFETCH 1
++#else
++#define HAVE_MM_PREFETCH 0
++#endif
+```
+
+Unchanged on x86; on ARM64 the flag is 0, the x86 header is skipped, and the
+already-preferred `__builtin_prefetch` path is used. A genuine portability fix:
+no test disabled, no architecture excluded.
+
+As an `Edit` for `apply_edits` — **the known-correct answer for this case, and a
+test fixture for Part 3:**
+
+```python
+Edit(path="input/src/crc32c/crc32c_config.h",
+     old_text="#define HAVE_MM_PREFETCH 1\n",
+     new_text=("#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)\n"
+               "#define HAVE_MM_PREFETCH 1\n#else\n#define HAVE_MM_PREFETCH 0\n#endif\n"))
+```
+
+`old_text` occurs exactly once, as Part 4 requires.
+
+### The repack trap
+
+Plain `dpkg-source -b` refuses an edited tree:
+
+```text
+dpkg-source: info: local changes detected, the modified files are:
+ input/src/crc32c/crc32c_config.h
+dpkg-source: error: aborting due to unexpected upstream changes
+```
+
+The package uses source format `3.0 (quilt)`, which will not rebuild with
+unrecorded changes to upstream files. `dpkg-source --auto-commit -b .` records
+the edit as `debian/patches/debian-changes-0.6.32-1`, appends it to
+`debian/patches/series`, and builds. The `.debian.tar.xz` grows from 3236 to
+4012 bytes — the patch is inside it.
+
+The generated patch carries a DEP-3 template header full of `TODO`
+placeholders. Cosmetic: it does not affect the build.
+
+### Result
+
+```json
+{
+  "status": "succeeded",
+  "build_exit_code": 0,
+  "duration_seconds": 87,
+  "artifact_validation_passed": true,
+  "message": "build completed successfully",
+  "timed_out": false,
+  "patch_applied": false
+}
+```
+
+Artifacts now include the binary that never appeared before:
+`r-cran-digest_0.6.32-1_arm64.deb` (181,994 bytes), plus the `-dbgsym` `.ddeb`,
+`.buildinfo` and `.changes`.
+
+**`patch_applied: false` is expected, and the harness must not read it as
+failure.** That field reports the validator's own `--patch` mechanism. Our repair
+travels inside the rebuilt source package, so the validator never applies a
+patch itself. Success is `status == "succeeded"` and
+`artifact_validation_passed == true`.
+
+## 9. Next
+
+- [x] ~~First end-to-end verified repair~~ — §8
+- [ ] `RunRecord` schema and result recording. Record `status` and
+      `artifact_validation_passed`; **not** `patch_applied` (see §8)
 - [ ] Rejection-capture `logging.Handler` for `edit_applier` warnings
-- [ ] Harness module wrapping steps 1–5 above
-- [ ] **Email the organizers** requesting local environments for the frozen
+- [ ] Harness module wrapping the §6 loop, using `--auto-commit`, driven by a
+      stub model client that returns the §8 `Edit`. Done when it reproduces
+      `fix-1` without manual steps
+- [ ] **Ask at the 2 October mentor meeting** for local environments for the frozen
       development Case IDs, and asking how teams are expected to measure repair
       rate across multiple cases during development
 
-## 9. Open questions
+## 10. Open questions
 
 - Source artifact checksums were not stable across two runs of the *same*
   unmodified case: the first run emitted a 1875-byte `.dsc`, later runs a
@@ -268,7 +378,7 @@ extraction proceeds. The rebuilt `.dsc` is unsigned, which the validator accepts
   byte-stable — the rebuilt `.dsc` differs from the signed original. That is
   expected and accepted by the validator.
 
-## 10. Operational notes
+## 11. Operational notes
 
 - `run.sh` refuses to overwrite an existing `--output` directory and exits in
   under a second. Always pass a fresh path; a suspiciously fast run means the

@@ -266,12 +266,20 @@ checksums, produced by `dpkg-source -b`, preserving the package name and version
 Editing a tarball without rebuilding the `.dsc` is invalid, and a bare `debian/`
 tree where a `.dsc` is expected is rejected. So the local loop is:
 
-1. unpack `case/input/*.dsc` into a source tree
-2. let the agent edit that tree (Part 4 applies literal edits under `input/`)
-3. **`dpkg-source -b` to rebuild the source package**
+1. from inside `work/`, `dpkg-source -x ../case/input/*.dsc input` — so agent
+   paths read `input/src/...`, matching the `input/**` policy
+2. let the agent edit `work/input/` (Part 4 applies literal edits under `input/`)
+3. **`dpkg-source --auto-commit -b .`** from inside `work/input/` to rebuild the
+   source package. Plain `-b` aborts on any upstream edit; `--commit` is
+   interactive and hangs a script. Verified on rcran — see
+   [`part5-findings.md`](part5-findings.md) §8
 4. copy `case/` to `repaired-case/`, keeping `manifest.json`, `config/` and
    `dependencies/` unchanged, and replace only `repaired-case/input/`
 5. `bash run.sh --input "$PWD/repaired-case" --output results/repair-N`
+
+Success is `status == "succeeded"` with `artifact_validation_passed == true`. Ignore
+`patch_applied` — it stays `false` because the repair travels inside the rebuilt
+source package, not through the validator's own patch mechanism.
 
 Step 3 is work the hosted platform does for us ("the platform supplies Case
 metadata and dependencies, and packages unpacked source before the target

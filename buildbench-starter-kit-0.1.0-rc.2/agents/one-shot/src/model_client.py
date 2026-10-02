@@ -1,5 +1,6 @@
 from .types import CaseContext, Edit, EditPlan
 import json
+import re
 from pathlib import Path
 
 def request_bedrock(prompt: str, client, model_id: str) -> EditPlan:
@@ -28,6 +29,9 @@ def request_bedrock(prompt: str, client, model_id: str) -> EditPlan:
     try: 
         blocks = response["output"]["message"]["content"]
         text = "".join(block["text"] for block in blocks if "text" in block)
+        Path("/tmp/austin-bedrock-response.txt").write_text(
+        text, encoding="utf-8"
+        )
 
         text = text.strip()
         lines = text.splitlines()
@@ -236,6 +240,12 @@ class ModelClient:
         self.bedrock_client = bedrock_client
         self.model_id = model_id
         self.source_paths = source_paths
+        self.name = (
+            f"bedrock:{model_id}"
+            if bedrock_client is not None
+            else f"replay:{Path(response_path).name}"
+        )   
+
 
     def propose(self, context: CaseContext) -> EditPlan:
         usage = {"input_tokens": None, "output_tokens": None}

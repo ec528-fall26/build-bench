@@ -210,9 +210,11 @@ def assemble_case(case_dir: Path, work_dir: Path, dest: Path) -> None:
 
 
 def run_case(
-    bundle: Path, run_id: str, runs_dir: Path, replay: Path, *,
+    bundle: Path, run_id: str, runs_dir: Path, replay: Path | None = None, *, model = None,
     log: Path | None = None, agent_dir: Path = AGENT_DIR, runner: Runner = sh,
 ) -> dict:
+    if (replay is None) == (model is None):
+        raise ValueError("Provide either a replay file or a model client.")
     bundle, runs_dir = bundle.resolve(), runs_dir.resolve()
     run_dir = runs_dir / run_id
     run_dir.mkdir(parents=True)  # refuses to reuse a run id
@@ -222,7 +224,8 @@ def run_case(
     build_timeout = manifest["build"].get("timeout_seconds", 3600) + BUILD_MARGIN
 
     agent = load_agent(agent_dir)
-    model = ReplayModel(replay, agent)
+    if model is None:
+        model = ReplayModel(replay, agent)
     started, clock = datetime.now(timezone.utc), time.monotonic()
     row = {
         "run_id": run_id, "case_id": manifest["case_id"], "mode": "one-shot",
@@ -320,23 +323,82 @@ INFRA_FAILURES = {"baseline_error", "unpack_failed", "repack_failed", "build_err
 
 def main(argv: list) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--bundle", type=Path, required=True,
-                        help="local validator bundle containing run.sh and case/")
-    parser.add_argument("--replay", type=Path, required=True,
-                        help="JSON file of edits for the stand-in model")
-    parser.add_argument("--run-id", required=True)
-    parser.add_argument("--runs-dir", type=Path, help="default: <bundle>/harness-runs")
-    parser.add_argument("--log", type=Path,
-                        help="failure log for the agent; default: run a baseline build first")
-    args = parser.parse_args(argv)
 
-    row = run_case(args.bundle, args.run_id, args.runs_dir or args.bundle / "harness-runs",
-                   args.replay, log=args.log)
+    parser.add_argument("--bundle", type=Path, required=True)
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--runs-dir", type=Path)
+    parser.add_argument("--log", type=Path)
+
+    # Choose exactly one source of repair suggestions.
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--replay", type=Path)
+    mode.add_argument("--bedrock-model")
+
+    parser.add_argument("--region", default="us-east-1")
+    parser.add_argument("--profile")
+    parser.add_argument(
+        "--source-file",
+        action="append",
+        default=[],
+        help="Fixed source path to include; repeat for multiple files.",
+    )
+
+    args = parser.parse_args(argv)
+    model = None
+
+    if args.bedrock_model:
+        if not args.source_file:
+            parser.error("Bedrock mode requires at least one --source-file.")
+
+        # Make the agent's src package available for importing.
+        load_agent(AGENT_DIR)
+        from src.model_client import ModelClient
+
+        try:
+            import boto3
+            from botocore.config import Config
+        except ImportError:
+            parser.error("Install boto3[crt] to use Bedrock mode.")
+
+        session = boto3.Session(
+            profile_name=args.profile,
+            region_name=args.region,
+        )
+
+        bedrock = session.client(
+            "bedrock-runtime",
+            config=Config(
+                retries={"total_max_attempts": 1},
+                connect_timeout=10,
+                read_timeout=60,
+            ),
+        )
+
+        model = ModelClient(
+            bedrock_client=bedrock,
+            model_id=args.bedrock_model,
+            source_paths=tuple(args.source_file),
+        )
+
+    row = run_case(
+        args.bundle,
+        args.run_id,
+        args.runs_dir or args.bundle / "harness-runs",
+        replay=args.replay,
+        model=model,
+        log=args.log,
+    )
+
     verdict = "REPAIRED" if row["repaired"] else "not repaired"
-    print(f"{row['run_id']}: {verdict} ({row['termination_reason']}), "
-          f"{row['edits_applied']}/{row['edits_proposed']} edits applied, {row['wall_seconds']}s")
+    print(
+        f"{row['run_id']}: {verdict} ({row['termination_reason']}), "
+        f"{row['edits_applied']}/{row['edits_proposed']} edits applied, "
+        f"{row['wall_seconds']}s"
+    )
+
     if row["error"]:
         print(f"  {row['error']}")
+
     return 1 if row["termination_reason"] in INFRA_FAILURES else 0
 
 

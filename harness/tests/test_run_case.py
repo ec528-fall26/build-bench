@@ -211,7 +211,7 @@ class RunCaseTests(unittest.TestCase):
     def test_agent_version_is_recorded_and_stable(self):
         first = self.run_with(FakeHost(), run_id="a")["agent_version"]
         second = self.run_with(FakeHost(), run_id="b")["agent_version"]
-        self.assertRegex(first, r"^0\.1\.0\+[0-9a-f]{12}$")
+        self.assertRegex(first, r"^\d+\.\d+\.\d+\+[0-9a-f]{12}$")
         self.assertEqual(first, second)
 
     def cli(self, host, run_id):

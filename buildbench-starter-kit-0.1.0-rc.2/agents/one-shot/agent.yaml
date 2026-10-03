@@ -2,7 +2,7 @@ schema_version: "0.1"
 
 agent:
   name: "one-shot"
-  version: "0.1.0"
+  version: "1.0.0"
 
 runtime:
   type: "managed"

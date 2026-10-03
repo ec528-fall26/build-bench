@@ -158,12 +158,14 @@ agent "sees only lines 1860–1872 and never reaches the cause." That was wrong.
 Line 1858 is 14 lines from the end, and Part 1 passes the model the last 500
 lines, so on this case a log-tail agent *does* see the error.
 
-What the case actually demonstrates is stronger, and different: **the fix is in a
-file the log never mentions.** The log names `crc32c_prefetch.h` and
-`xmmintrin.h`; the repair is to `crc32c_config.h` (§8). An agent working from the
-log alone can see the symptom but cannot locate the cause — it has to open source
-files and follow the `HAVE_MM_PREFETCH` guard back to where it is defined. That
-is the argument for file inspection and evidence gathering beyond the log.
+**Second correction (3 October).** A second version of this section argued that
+the fix lives in a file the log never mentions, so an agent "working from the
+log alone ... cannot locate the cause." The first live run disproved that too.
+There are two valid fixes: guard `HAVE_MM_PREFETCH` in `crc32c_config.h` (§8),
+or guard the include at the line the log shows. GCC prints that line verbatim
+(`18 | #include <xmmintrin.h>`), so the one-shot model, given only the log tail
+and `debian/rules`, repaired the case by adding a build-time `sed` to
+`debian/rules` (§9). The log is more informative than this section assumed.
 
 Two smaller points still hold: a naive `grep -i error` surfaces a package
 *named* `libgpg-error0` eight times before anything relevant, and the final
@@ -358,7 +360,46 @@ travels inside the rebuilt source package, so the validator never applies a
 patch itself. Success is `status == "succeeded"` and
 `artifact_validation_passed == true`.
 
-## 9. Next
+## 9. Live-model runs (3 October): rcran repaired 3 of 3
+
+`python3 -m harness.run_case --live`, model `openai.gpt-oss-120b-1:0` through
+Bedrock's OpenAI-compatible endpoint, all three reusing `fix-auto-1`'s baseline
+log and the same agent code (`0.1.0+b7956fa2035c`; `live-1` recorded
+`dc00112aabf2` only because a macOS `._edit_applier.py` metadata file polluted the
+fingerprint — since fixed to ignore hidden files).
+
+| Run | Result | Tokens in / out | Wall | Fix |
+| --- | --- | --- | --- | --- |
+| `live-1` | **REPAIRED** | 11,096 / 1,241 | 120 s | `override_dh_auto_configure`: keeps `dh_auto_configure`, then `sed` guards the include **for x86 only** |
+| `live-2` | **REPAIRED** | 11,096 / 1,211 | 112 s | `override_dh_auto_build`: comments the include out **on every arch**, and duplicates `dh_auto_install` + the `rm` from the existing install override |
+| `live-3` | **REPAIRED** | 11,096 / 1,594 | 111 s | `override_dh_auto_build`: runs `dh_auto_build` **first**, then comments the include out on every arch |
+
+All three are legitimate by the benchmark's rules: the build passes, the expected
+artifacts are produced, and none disables tests, excludes the architecture or
+replaces configure. Removing the include everywhere is harmless here because the
+`_mm_prefetch` path it served is already bypassed (`__builtin_prefetch` takes
+priority). `live-3` works only because the R build system compiles during
+`dh_auto_install` (the original error came from there), so the edit made after
+`dh_auto_build` still lands before compilation; in most build systems it would be
+too late.
+
+**Findings.**
+
+- **Not deterministic at temperature 0.** Identical prompts (11,096 tokens each
+  time) produced three different fixes. The proposal's three-runs rule is needed.
+- **"Repaired" hides fix quality.** The benchmark scores all three the same; a
+  reviewer would rank `live-1` well above the other two. A manually reviewed
+  quality label alongside the repair rate would capture this.
+- **The naive baseline solves rcran.** rcran cannot show the full agent is
+  better; that needs cases the baseline fails.
+- **Every fix used build-time commands in `debian/rules`.** Part 4's checks see the
+  edit to `debian/rules`, not what its commands do to other files, so a
+  build-time command could delete tests without tripping them. These were benign,
+  but results that add build-time commands need a human look at the diff.
+
+Cost of all three runs: under 1¢.
+
+## 10. Next
 
 - [x] ~~First end-to-end verified repair~~ — §8
 - [x] ~~Result recording~~ — `harness/record.py`. Record `status` and
@@ -373,7 +414,7 @@ patch itself. Success is `status == "succeeded"` and
       development Case IDs, and asking how teams are expected to measure repair
       rate across multiple cases during development
 
-## 10. Open questions
+## 11. Open questions
 
 - Source artifact checksums were not stable across two runs of the *same*
   unmodified case: the first run emitted a 1875-byte `.dsc`, later runs a
@@ -390,7 +431,7 @@ patch itself. Success is `status == "succeeded"` and
   byte-stable — the rebuilt `.dsc` differs from the signed original. That is
   expected and accepted by the validator.
 
-## 11. Operational notes
+## 12. Operational notes
 
 - `run.sh` refuses to overwrite an existing `--output` directory and exits in
   under a second. Always pass a fresh path; a suspiciously fast run means the

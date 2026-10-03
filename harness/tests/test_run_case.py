@@ -7,7 +7,7 @@ exercised on the ARM64 host.
 Run from the repository root:  python3 -m unittest discover -s harness/tests -t .
 """
 
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from functools import partial
 import io
 import json
@@ -228,6 +228,50 @@ class RunCaseTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("unpack_failed", out)
 
+    def test_real_part3_client_end_to_end(self):
+        # Part 3's real client; only the HTTP endpoint and the build are faked.
+        reply = {"choices": [{"message": {"content": "Here is the fix:\n" + REPLAY.read_text()},
+                              "finish_reason": "stop"}],
+                 "usage": {"prompt_tokens": 2000, "completion_tokens": 400}}
+        requests = []
+
+        def opener(request, timeout):
+            requests.append(request)
+            return io.BytesIO(json.dumps(reply).encode())
+
+        client = run_case_module.load_agent(AGENT_DIR).ModelClient("test-key", opener=opener)
+        row = run_case(self.bundle, "live", self.runs, model=client, runner=FakeHost())
+        self.assertTrue(row["repaired"])
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(row["model"], "openai-compatible:openai.gpt-oss-120b-1:0")
+        self.assertEqual(row["usage"], {"input_tokens": 2000, "output_tokens": 400})
+        prompt = json.loads(requests[0].data)["messages"][1]["content"]
+        log_section = prompt.split("=== End of build log ===")[0]
+        self.assertIn("fatal error: xmmintrin.h", log_section)  # the baseline's failure log
+
+    def test_cli_live_passes_part3_client_to_run_case(self):
+        calls = []
+        fake_run_case = lambda *args, **kwargs: calls.append(kwargs) or {
+            "run_id": "x", "repaired": False, "termination_reason": "no_edit_applied",
+            "edits_applied": 0, "edits_proposed": 0, "wall_seconds": 0.0, "error": None}
+        args = ["--bundle", str(self.bundle), "--live", "--run-id", "x", "--runs-dir", str(self.runs)]
+        with patch.dict(os.environ, {"BB_MODEL_API_KEY": "test-key"}), \
+                patch.object(run_case_module, "run_case", fake_run_case), \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(main(args), 0)
+        self.assertIsNone(calls[0]["replay"])
+        self.assertEqual(calls[0]["model"].name, "openai-compatible:openai.gpt-oss-120b-1:0")
+
+    def test_cli_live_without_a_key_is_refused(self):
+        args = ["--bundle", str(self.bundle), "--live", "--run-id", "x", "--runs-dir", str(self.runs)]
+        env = {k: v for k, v in os.environ.items() if k != "BB_MODEL_API_KEY"}
+        with patch.dict(os.environ, env, clear=True), redirect_stderr(io.StringIO()) as err, \
+                self.assertRaises(SystemExit) as stop:
+            main(args)
+        self.assertEqual(stop.exception.code, 2)
+        self.assertIn("BB_MODEL_API_KEY", err.getvalue())
+        self.assertFalse((self.runs / "x").exists())
+
 
 class HelperTests(unittest.TestCase):
     def setUp(self):
@@ -243,6 +287,17 @@ class HelperTests(unittest.TestCase):
             f.write("# changed\n")
         self.assertNotEqual(before, agent_version(copy))
         self.assertEqual(before.split("+")[0], agent_version(copy).split("+")[0])
+
+    def test_agent_version_ignores_hidden_files(self):
+        # A Mac tar copy without COPYFILE_DISABLE left ._edit_applier.py on the
+        # ARM64 host and changed the fingerprint of otherwise identical code.
+        copy = self.root / "agent"
+        shutil.copytree(AGENT_DIR, copy, ignore=shutil.ignore_patterns("__pycache__"))
+        before = agent_version(copy)
+        (copy / "src" / "._edit_applier.py").write_bytes(b"\x00\x05\x16\x07 AppleDouble")
+        (copy / "src" / ".hidden").mkdir()
+        (copy / "src" / ".hidden" / "x.py").write_text("x = 1\n")
+        self.assertEqual(agent_version(copy), before)
 
     def tree(self, name, files):
         root = self.root / name

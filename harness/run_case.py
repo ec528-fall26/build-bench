@@ -3,9 +3,10 @@
     baseline build (unless --log) -> dpkg-source -x -> agent edits ->
     dpkg-source --auto-commit -b -> assemble case -> run.sh -> record
 
-Parts 1, 2 and 4 run for real: Part 1's run_repair drives Part 2's extract_tail
-and Part 4's apply_edits. Only the model is replaced, by ReplayModel, which
-returns edits from a JSON file. Swap in Part 3's client when it lands.
+Parts 1, 2 and 4 always run for real: Part 1's run_repair drives Part 2's
+extract_tail and Part 4's apply_edits. The model is either Part 3's real client
+(--live) or ReplayModel (--replay), which returns known edits from a JSON file
+so the pipeline itself can be checked with answers known to be right or wrong.
 
 Every attempt appends one row to <runs-dir>/runs.jsonl, including runs that
 stop early: failures stay in the evaluation denominator.
@@ -13,6 +14,8 @@ stop early: failures stay in the evaluation denominator.
 Usage (on the ARM64 host, from the repository root):
     python3 -m harness.run_case --bundle ~/buildbench-local-rcran-v1 \\
         --replay harness/replays/rcran-known-fix.json --run-id fix-auto-1
+    BB_MODEL_API_KEY=... python3 -m harness.run_case --bundle ~/buildbench-local-rcran-v1 \\
+        --live --run-id live-1
 """
 
 from __future__ import annotations
@@ -73,17 +76,18 @@ def sh(cmd: list, cwd: Path, log: Path, timeout: float) -> None:
 
 
 def load_agent(agent_dir: Path) -> SimpleNamespace:
-    """Import the agent's src package (Parts 1, 2 and 4) from the starter kit."""
+    """Import the agent's src package (Parts 1-4) from the starter kit."""
     if str(agent_dir) not in sys.path:
         sys.path.insert(0, str(agent_dir))
     from src import edit_applier
     from src.log_tail import extract_tail
     from src.main import run_repair
+    from src.model_client import ModelClient
     from src.types import CaseContext, Edit, EditPlan
 
     return SimpleNamespace(
         run_repair=run_repair, extract_tail=extract_tail, edit_applier=edit_applier,
-        CaseContext=CaseContext, Edit=Edit, EditPlan=EditPlan,
+        CaseContext=CaseContext, Edit=Edit, EditPlan=EditPlan, ModelClient=ModelClient,
     )
 
 
@@ -103,6 +107,8 @@ def agent_version(agent_dir: Path) -> str:
             break
     digest = hashlib.sha256()
     for path in sorted((agent_dir / "src").rglob("*.py")):
+        if any(part.startswith(".") for part in path.relative_to(agent_dir / "src").parts):
+            continue  # hidden files, e.g. macOS "._" metadata left by a tar copy
         digest.update(path.relative_to(agent_dir).as_posix().encode() + b"\0")
         digest.update(path.read_bytes() + b"\0")
     return f"{declared}+{digest.hexdigest()[:12]}"
@@ -323,82 +329,33 @@ INFRA_FAILURES = {"baseline_error", "unpack_failed", "repack_failed", "build_err
 
 def main(argv: list) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-
-    parser.add_argument("--bundle", type=Path, required=True)
+    parser.add_argument("--bundle", type=Path, required=True,
+                        help="local validator bundle containing run.sh and case/")
+    model_source = parser.add_mutually_exclusive_group(required=True)
+    model_source.add_argument("--replay", type=Path,
+                              help="JSON file of edits for the stand-in model")
+    model_source.add_argument("--live", action="store_true",
+                              help="ask the real model; needs BB_MODEL_API_KEY "
+                                   "(see harness/README.md)")
     parser.add_argument("--run-id", required=True)
-    parser.add_argument("--runs-dir", type=Path)
-    parser.add_argument("--log", type=Path)
-
-    # Choose exactly one source of repair suggestions.
-    mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--replay", type=Path)
-    mode.add_argument("--bedrock-model")
-
-    parser.add_argument("--region", default="us-east-1")
-    parser.add_argument("--profile")
-    parser.add_argument(
-        "--source-file",
-        action="append",
-        default=[],
-        help="Fixed source path to include; repeat for multiple files.",
-    )
-
+    parser.add_argument("--runs-dir", type=Path, help="default: <bundle>/harness-runs")
+    parser.add_argument("--log", type=Path,
+                        help="failure log for the agent; default: run a baseline build first")
     args = parser.parse_args(argv)
+
     model = None
+    if args.live:
+        model = load_agent(AGENT_DIR).ModelClient.from_env()
+        if not model.api_key:
+            parser.error("--live needs BB_MODEL_API_KEY set to a Bedrock API key")
 
-    if args.bedrock_model:
-        if not args.source_file:
-            parser.error("Bedrock mode requires at least one --source-file.")
-
-        # Make the agent's src package available for importing.
-        load_agent(AGENT_DIR)
-        from src.model_client import ModelClient
-
-        try:
-            import boto3
-            from botocore.config import Config
-        except ImportError:
-            parser.error("Install boto3[crt] to use Bedrock mode.")
-
-        session = boto3.Session(
-            profile_name=args.profile,
-            region_name=args.region,
-        )
-
-        bedrock = session.client(
-            "bedrock-runtime",
-            config=Config(
-                retries={"total_max_attempts": 1},
-                connect_timeout=10,
-                read_timeout=60,
-            ),
-        )
-
-        model = ModelClient(
-            bedrock_client=bedrock,
-            model_id=args.bedrock_model,
-            source_paths=tuple(args.source_file),
-        )
-
-    row = run_case(
-        args.bundle,
-        args.run_id,
-        args.runs_dir or args.bundle / "harness-runs",
-        replay=args.replay,
-        model=model,
-        log=args.log,
-    )
-
+    row = run_case(args.bundle, args.run_id, args.runs_dir or args.bundle / "harness-runs",
+                   replay=args.replay, model=model, log=args.log)
     verdict = "REPAIRED" if row["repaired"] else "not repaired"
-    print(
-        f"{row['run_id']}: {verdict} ({row['termination_reason']}), "
-        f"{row['edits_applied']}/{row['edits_proposed']} edits applied, "
-        f"{row['wall_seconds']}s"
-    )
-
+    print(f"{row['run_id']}: {verdict} ({row['termination_reason']}), "
+          f"{row['edits_applied']}/{row['edits_proposed']} edits applied, {row['wall_seconds']}s")
     if row["error"]:
         print(f"  {row['error']}")
-
     return 1 if row["termination_reason"] in INFRA_FAILURES else 0
 
 

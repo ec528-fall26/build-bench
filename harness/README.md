@@ -56,11 +56,28 @@ failure. That is what makes a REPAIRED verdict meaningful.
 
 ## How the agent is wired in
 
-Parts 1, 2 and 4 run for real: `run_case` calls Part 1's `run_repair`, which
-calls Part 2's `extract_tail` and Part 4's `apply_edits`. Only the model is a
-stand-in — `ReplayModel` returns the edits stored in a `replays/*.json` file.
-When Part 3's model client is ready, it replaces `ReplayModel` and nothing else
-changes.
+Parts 1, 2 and 4 always run for real: `run_case` calls Part 1's `run_repair`,
+which calls Part 2's `extract_tail` and Part 4's `apply_edits`. The model is one of:
+
+| Flag | Model | Use |
+| --- | --- | --- |
+| `--replay FILE` | `ReplayModel`: returns the edits stored in `replays/*.json` | Checking the pipeline with answers known to be right (`rcran-known-fix.json`) or wrong (`rcran-comment-only.json`) |
+| `--live` | Part 3's `ModelClient`: one call to `openai.gpt-oss-120b-1:0` through Bedrock's OpenAI-compatible endpoint | Measuring the agent |
+
+## Live runs
+
+`--live` needs a Bedrock API key in the environment (enable `gpt-oss-120b`
+model access in the Bedrock console, `us-east-1`, then create the key there):
+
+```bash
+export BB_MODEL_API_KEY=...          # never commit it; ./bb check does not detect Bedrock keys
+python3 -m harness.run_case --bundle ~/buildbench-local-rcran-v1 --live --run-id live-1 \
+    --log ~/buildbench-local-rcran-v1/harness-runs/fix-auto-1/baseline/build.log
+```
+
+`--log` reuses an earlier baseline's failure log to skip the baseline build. The
+run record's `model` field is `openai-compatible:openai.gpt-oss-120b-1:0` and
+`usage` holds the token counts. About 1¢ per case.
 
 ## Usage
 

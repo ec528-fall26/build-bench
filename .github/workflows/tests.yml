@@ -25,6 +25,7 @@ jobs:
             harness
             part1-agent-shell
             part2-log-tail
+            part3-model-client
             part4-edit-applier
 
       - uses: actions/setup-python@v5
@@ -38,6 +39,9 @@ jobs:
 
       - name: Part 2 — log tail
         run: python -m unittest discover -s part2-log-tail/tests -v
+
+      - name: Part 3 — model client
+        run: python -m unittest discover -s part3-model-client/tests -v
 
       - name: Part 4 — edit applier
         run: python -m unittest discover -s part4-edit-applier/tests -v

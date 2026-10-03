@@ -23,3 +23,6 @@ node_modules/
 *.key
 credentials
 materials/buildbench-local-rcran-v1.tar
+
+# Starter-kit run output (disposable; ./bb demo and ./bb test write here)
+buildbench-starter-kit-0.1.0-rc.2/runs/

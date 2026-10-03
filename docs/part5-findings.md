@@ -401,6 +401,34 @@ too late.
 
 Cost of all three runs: under 1¢.
 
+## 9a. Official baseline on `one-shot-v1` (3 October): rcran repaired 1 of 3
+
+Frozen agent `1.0.0+16e31a424d0d`, same model and prompt as §9; the only change
+since `live-1`–`live-3` is recording the server-reported model. Summary from
+`python3 -m harness.summarize … --agent-version 1.0.0+16e31a424d0d`:
+
+| Run | Result | Fix type | Tokens in / out | What happened |
+| --- | --- | --- | --- | --- |
+| `v1-rcran-1` | **REPAIRED** | build_commands | — | Same fix as `live-1`: configure override, include guarded for x86 |
+| `v1-rcran-2` | not repaired (`build_failed`) | build_commands | — | `sed -i … crc32c/crc32c_prefetch.h`: the **wrong path**, copied from the log, which reports paths relative to `src/`. Build log: `sed: can't read crc32c/crc32c_prefetch.h`. The override also ran `dh $@` instead of `dh_auto_configure`; never reached |
+| `v1-rcran-3` | not repaired (`no_edit_applied`) | none | 11,096 / 1,157 | The model **declined**: it believed only the files it was shown exist and that fixing source would require creating files, so "a supported repair cannot be made" |
+
+`served_model` confirms `openai.gpt-oss-120b-1:0` for the runs that got a reply.
+
+**Official result: 1 of 3.** Pooled with the pre-freeze runs, whose repair behavior
+is identical: **4 of 6**. The variance is the finding — one case and three runs
+swung between 3/3 and 1/3.
+
+**Failure modes, for Demo 3** (the proposal's failure taxonomy):
+
+1. **Path taken from the log as-is.** Compilers print paths relative to their
+   working directory. An agent that checks a path exists before using it, or
+   reads the build error after a failed attempt, would catch this.
+2. **Declining a feasible repair.** The model didn't know it may edit unseen files
+   under `input/`, nor that a direct source edit becomes a Debian patch
+   automatically. A clearer prompt fixes this, but the baseline is frozen, so
+   it is a full-agent change to measure, not a baseline edit.
+
 ## 10. Next
 
 - [x] ~~First end-to-end verified repair~~ — §8

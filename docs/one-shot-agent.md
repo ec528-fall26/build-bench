@@ -31,6 +31,11 @@ The `live-1`–`live-3` rcran runs (3 of 3 repaired; `part5-findings.md` §9) pr
 the freeze (`0.1.0+b7956fa2035c`; the only later change records the server's
 model name). Official baseline numbers come from runs on `one-shot-v1`.
 
+**Official result so far:** rcran repaired **1 of 3** on `one-shot-v1`
+(4 of 6 pooled with the behavior-identical pre-freeze runs). Failures: a wrong
+path copied from the log, and the model declining a feasible repair.
+`part5-findings.md` §9a.
+
 ## What we are building
 
 The simplest agent that can repair a package: read the tail of the failure log,

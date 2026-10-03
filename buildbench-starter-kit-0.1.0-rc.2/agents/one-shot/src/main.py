@@ -91,6 +91,7 @@ def main() -> int:
             "status": "completed",
             "message": plan.rationale[:500] or "The model gave no rationale.",
             "model": model.name,
+            "served_model": getattr(model, "served_model", None),
             "edits_proposed": len(plan.edits),
             "edits_applied": applied,
         }

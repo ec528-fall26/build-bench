@@ -34,8 +34,9 @@ FIX = {"edits": [{"path": "input/src/crc32c/crc32c_config.h",
 FIX_JSON = json.dumps(FIX, indent=2)
 
 
-def completion(content, finish="stop", usage=None):
-    return {"choices": [{"message": {"role": "assistant", "content": content},
+def completion(content, finish="stop", usage=None, model="openai.gpt-oss-120b-1:0"):
+    return {"model": model,
+            "choices": [{"message": {"role": "assistant", "content": content},
                          "finish_reason": finish}],
             "usage": {"prompt_tokens": 1200, "completion_tokens": 300} if usage is None else usage}
 
@@ -136,6 +137,31 @@ class ReplyParsing(Case):
         self.assertEqual(plan.usage, {"input_tokens": 1200, "output_tokens": 300})
         plan, _ = self.propose(completion(FIX_JSON, usage={}))
         self.assertEqual(plan.usage, {"input_tokens": None, "output_tokens": None})
+
+
+class ServedModel(Case):
+    """The server's own report of which model answered, recorded per call."""
+
+    def test_recorded_from_the_reply(self):
+        client, _ = self.client(completion(FIX_JSON))
+        client.propose(self.context())
+        self.assertEqual(client.served_model, "openai.gpt-oss-120b-1:0")
+
+    def test_reset_when_a_later_call_fails(self):
+        client, _ = self.client(completion(FIX_JSON), http_error(400))
+        client.propose(self.context())
+        client.propose(self.context())
+        self.assertIsNone(client.served_model)
+
+    def test_absent_without_a_key_or_a_model_field(self):
+        client, _ = self.client(key=None)
+        client.propose(self.context())
+        self.assertIsNone(client.served_model)
+        reply = completion(FIX_JSON)
+        del reply["model"]
+        client, _ = self.client(reply)
+        client.propose(self.context())
+        self.assertIsNone(client.served_model)
 
 
 class Request(Case):

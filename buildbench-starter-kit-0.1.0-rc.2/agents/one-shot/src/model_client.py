@@ -239,6 +239,8 @@ class ModelClient:
         self.max_attempts = max_attempts
         self.timeout = timeout
         self.name = f"openai-compatible:{MODEL_ID}"
+        # The model the server says answered the last call; None if no reply.
+        self.served_model: str | None = None
 
     @classmethod
     def from_env(cls) -> "ModelClient":
@@ -246,6 +248,7 @@ class ModelClient:
                    os.environ.get("BB_MODEL_BASE_URL") or DEFAULT_BASE_URL)
 
     def propose(self, context: CaseContext) -> EditPlan:
+        self.served_model = None
         if not self.api_key:
             return _empty("No model API key configured (set BB_MODEL_API_KEY).")
         try:
@@ -257,6 +260,8 @@ class ModelClient:
         except (ModelCallFailed, ValueError) as exc:
             return _empty(f"Model call failed: {exc}")
 
+        served = body.get("model") if isinstance(body, dict) else None
+        self.served_model = served if isinstance(served, str) else None
         counts = body.get("usage") if isinstance(body, dict) else None
         counts = counts if isinstance(counts, dict) else {}
         usage = {"input_tokens": counts.get("prompt_tokens"),

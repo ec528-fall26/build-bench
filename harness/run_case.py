@@ -235,7 +235,7 @@ def run_case(
     started, clock = datetime.now(timezone.utc), time.monotonic()
     row = {
         "run_id": run_id, "case_id": manifest["case_id"], "mode": "one-shot",
-        "agent_version": agent_version(agent_dir), "diff_path": None,
+        "agent_version": agent_version(agent_dir), "diff_path": None, "served_model": None,
         "model": model.name, "started_at": started.isoformat(timespec="seconds"),
         "edits_proposed": 0, "edits_applied": 0, "edit_warnings": [],
         "rationale": "", "usage": {}, "baseline": None, "result": None,
@@ -293,6 +293,7 @@ def run_case(
                 raise _Stop("agent_error", f"{type(error).__name__}: {error}") from None
             finally:
                 row["edit_warnings"] = list(warnings)
+                row["served_model"] = getattr(model, "served_model", None)
                 # Before repacking: --auto-commit adds its own patch files to the tree.
                 if write_diff(pristine, work / "input", run_dir / "repair.diff"):
                     row["diff_path"] = str(run_dir / "repair.diff")

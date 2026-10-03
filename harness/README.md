@@ -30,6 +30,7 @@ folder. This is the project's run record; the agent's `types.py` has no
 | `run_id`, `case_id`, `started_at`, `wall_seconds` | which run, which case, when, how long |
 | `agent_version` | `agent.yaml` version + fingerprint of the agent's source, e.g. `0.1.0+3f9a1c2b4d5e`. Changes whenever any agent `.py` file changes, committed or not |
 | `model`, `mode` | the model used (`replay:<file>` for the stand-in) and `one-shot` |
+| `served_model` | the model the endpoint **reports** answered, e.g. `openai.gpt-oss-120b-1:0`; `null` for replays or when no reply arrived. Confirms `model` rather than inferring it |
 | `edits_proposed`, `edits_applied`, `edit_warnings` | what the model asked for, what Part 4 accepted, and Part 4's rejection reasons |
 | `diff_path` | `repair.diff`: the agent's actual change, or `null` if nothing changed. Taken before repacking, so it shows only the agent's edit |
 | `rationale`, `usage` | the model's explanation and token counts (`null` = unknown, never 0) |

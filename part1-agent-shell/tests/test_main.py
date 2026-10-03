@@ -71,6 +71,7 @@ class MainTests(unittest.TestCase):
         self.assertEqual(result["status"], "completed")
         self.assertEqual((result["edits_proposed"], result["edits_applied"]), (1, 1))
         self.assertEqual(result["model"], "recording")
+        self.assertIsNone(result["served_model"])  # stand-in model has no server
         self.assertIn("#if defined(__x86_64__)", self.source.read_text())
         context = model.contexts[0]
         self.assertEqual(context.case_id, "case-1")

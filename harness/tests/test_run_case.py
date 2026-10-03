@@ -107,6 +107,7 @@ class RunCaseTests(unittest.TestCase):
 
     def test_known_fix_is_repaired_end_to_end(self):
         row = self.run_with(FakeHost())
+        self.assertIsNone(row["served_model"])  # replays have no server
         self.assertTrue(row["repaired"])
         self.assertEqual(row["termination_reason"], "build_succeeded")
         self.assertEqual((row["edits_applied"], row["edits_proposed"]), (1, 1))
@@ -230,7 +231,8 @@ class RunCaseTests(unittest.TestCase):
 
     def test_real_part3_client_end_to_end(self):
         # Part 3's real client; only the HTTP endpoint and the build are faked.
-        reply = {"choices": [{"message": {"content": "Here is the fix:\n" + REPLAY.read_text()},
+        reply = {"model": "openai.gpt-oss-120b-1:0",
+                 "choices": [{"message": {"content": "Here is the fix:\n" + REPLAY.read_text()},
                               "finish_reason": "stop"}],
                  "usage": {"prompt_tokens": 2000, "completion_tokens": 400}}
         requests = []
@@ -244,6 +246,7 @@ class RunCaseTests(unittest.TestCase):
         self.assertTrue(row["repaired"])
         self.assertEqual(len(requests), 1)
         self.assertEqual(row["model"], "openai-compatible:openai.gpt-oss-120b-1:0")
+        self.assertEqual(row["served_model"], "openai.gpt-oss-120b-1:0")
         self.assertEqual(row["usage"], {"input_tokens": 2000, "output_tokens": 400})
         prompt = json.loads(requests[0].data)["messages"][1]["content"]
         log_section = prompt.split("=== End of build log ===")[0]

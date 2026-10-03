@@ -1,7 +1,10 @@
 from __future__ import annotations
 from .edit_applier import apply_edits
+from .log_tail import extract_tail
+from .model_client import ModelClient
 from .types import CaseContext, EditPlan
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -41,6 +44,10 @@ def main() -> int:
 
 
 
+    # Part 4 logs each accepted and rejected edit; stderr is captured by the platform.
+    logging.basicConfig(level=logging.INFO, stream=sys.stderr,
+                        format="%(levelname)s %(name)s %(message)s")
+
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -66,11 +73,27 @@ def main() -> int:
         if not isinstance(task_metadata, dict):
             raise ValueError("task.json must contain a JSON object")
 
+        context = CaseContext(
+            case_id=str(task_metadata.get("case_id", "")),
+            worktree=worktree,
+            log_tail="",
+            task_metadata=task_metadata,
+        )
+        model = ModelClient.from_env()
+        plan, applied = run_repair(
+            context, input_dir / "initial-build.log", extract_tail, model,
+        )
+
+        # "completed" means the agent finished, even with no repair: the
+        # platform's clean build decides whether anything was fixed.
         result = {
             "schema_version": "0.1",
             "status": "completed",
-            "message": "Agent shell completed. No repair was attempted.",
-            "modified_paths": [],
+            "message": plan.rationale[:500] or "The model gave no rationale.",
+            "model": model.name,
+            "served_model": getattr(model, "served_model", None),
+            "edits_proposed": len(plan.edits),
+            "edits_applied": applied,
         }
 
         write_json(output_dir / "agent-result.json", result)

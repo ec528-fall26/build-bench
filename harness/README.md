@@ -30,11 +30,36 @@ folder. This is the project's run record; the agent's `types.py` has no
 | `run_id`, `case_id`, `started_at`, `wall_seconds` | which run, which case, when, how long |
 | `agent_version` | `agent.yaml` version + fingerprint of the agent's source, e.g. `0.1.0+3f9a1c2b4d5e`. Changes whenever any agent `.py` file changes, committed or not |
 | `model`, `mode` | the model used (`replay:<file>` for the stand-in) and `one-shot` |
+| `served_model` | the model the endpoint **reports** answered, e.g. `openai.gpt-oss-120b-1:0`; `null` for replays or when no reply arrived. Confirms `model` rather than inferring it |
 | `edits_proposed`, `edits_applied`, `edit_warnings` | what the model asked for, what Part 4 accepted, and Part 4's rejection reasons |
+| `fix_type`, `changed_files` | what the repair touched: `build_commands`, `source` (upstream files), `packaging` (only `input/debian/`), or `none` |
+| `build_commands`, `needs_review` | added build-time commands that modify files (`sed -i`, `rm`, `>` redirects, …) and whether a person must read the diff |
 | `diff_path` | `repair.diff`: the agent's actual change, or `null` if nothing changed. Taken before repacking, so it shows only the agent's edit |
 | `rationale`, `usage` | the model's explanation and token counts (`null` = unknown, never 0) |
 | `baseline`, `result` | the validator's verdict before and after the repair |
 | `repaired`, `termination_reason`, `error` | the verdict and why the run stopped |
+
+## Reviewing results
+
+Commands added to a build file run during the build and can change any file;
+Part 4 checks the edit, not what those commands do. `diff_scan.py` flags them so
+only those runs need a person to read the diff. It is a heuristic: commands
+hidden behind variables, `eval` or scripts are not detected.
+
+```bash
+python3 -m harness.summarize ~/buildbench-local-rcran-v1/harness-runs/runs.jsonl \
+    --model openai-compatible:openai.gpt-oss-120b-1:0
+```
+
+```text
+runs: 3   repaired: 3
+fix type          runs  repaired
+build_commands       3         3
+needs review (build-time commands): live-1, live-2, live-3
+```
+
+Report repair rates split by fix type, and count a flagged run only after its
+diff has been read. Older rows are classified from their `repair.diff`.
 
 ## Repaired means
 
@@ -56,11 +81,28 @@ failure. That is what makes a REPAIRED verdict meaningful.
 
 ## How the agent is wired in
 
-Parts 1, 2 and 4 run for real: `run_case` calls Part 1's `run_repair`, which
-calls Part 2's `extract_tail` and Part 4's `apply_edits`. Only the model is a
-stand-in — `ReplayModel` returns the edits stored in a `replays/*.json` file.
-When Part 3's model client is ready, it replaces `ReplayModel` and nothing else
-changes.
+Parts 1, 2 and 4 always run for real: `run_case` calls Part 1's `run_repair`,
+which calls Part 2's `extract_tail` and Part 4's `apply_edits`. The model is one of:
+
+| Flag | Model | Use |
+| --- | --- | --- |
+| `--replay FILE` | `ReplayModel`: returns the edits stored in `replays/*.json` | Checking the pipeline with answers known to be right (`rcran-known-fix.json`) or wrong (`rcran-comment-only.json`) |
+| `--live` | Part 3's `ModelClient`: one call to `openai.gpt-oss-120b-1:0` through Bedrock's OpenAI-compatible endpoint | Measuring the agent |
+
+## Live runs
+
+`--live` needs a Bedrock API key in the environment (enable `gpt-oss-120b`
+model access in the Bedrock console, `us-east-1`, then create the key there):
+
+```bash
+export BB_MODEL_API_KEY=...          # never commit it; ./bb check does not detect Bedrock keys
+python3 -m harness.run_case --bundle ~/buildbench-local-rcran-v1 --live --run-id live-1 \
+    --log ~/buildbench-local-rcran-v1/harness-runs/fix-auto-1/baseline/build.log
+```
+
+`--log` reuses an earlier baseline's failure log to skip the baseline build. The
+run record's `model` field is `openai-compatible:openai.gpt-oss-120b-1:0` and
+`usage` holds the token counts. About 1¢ per case.
 
 ## Usage
 

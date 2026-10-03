@@ -124,64 +124,74 @@ is what makes it a control.
 
 ---
 
-## Part 3 — Model adapter
+## Part 3 — Model adapter — **DONE**
 
-**Owner:** Austin
+**Owner:** Austin · `agents/one-shot/src/model_client.py`, tests in
+`part3-model-client/tests/`
 
-**What it does.** `ModelClient.propose(context: CaseContext) -> EditPlan`. Builds
-the prompt, makes exactly one call, parses the response into `Edit` objects,
-records token usage.
+**What it does.** `ModelClient.propose(context) -> EditPlan`: builds the prompt,
+makes **exactly one** chat-completion call, and turns the reply into `Edit`s.
+It never raises; every failure becomes an empty plan whose `rationale` says why.
 
-**The edit format is now fixed by Part 4.** `apply_edits` accepts only literal
-replacements in files that already exist:
+**Endpoint.** Amazon Bedrock's **OpenAI-compatible** Chat Completions endpoint,
+billed to the team's AWS credits. The competition serves its model through an
+organizer-managed endpoint in the same format, so switching is configuration:
 
-- `old_text` must appear **exactly once** in the file — zero matches or two
-  matches are both rejected;
-- no new files, no deletions, no renames, no symlinks, no permission changes;
-- UTF-8 text only, resulting file under 8 MiB;
-- paths must sit under the case's allowed prefix (`input/` by default).
+| Setting | Where | Value |
+| --- | --- | --- |
+| Model | `MODEL_ID` in code | `openai.gpt-oss-120b-1:0` |
+| Endpoint | `BB_MODEL_BASE_URL` (optional) | default `https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1` |
+| Key | `BB_MODEL_API_KEY` | a Bedrock API key; **environment only** |
 
-The prompt must say all of this, and must tell the model to quote enough
-surrounding context to make `old_text` unique.
+**One model, fixed in code.** The baseline and the full agent must use the same
+model, or their comparison means nothing, so `MODEL_ID` is a constant rather
+than a flag. When the competition model is announced, changing it means re-running
+*both* agents on it; never mix results across models.
 
-**Context handed to the model.** The log tail from Part 2, plus a **fixed,
-non-adaptive** set of files — the same file list for every case, regardless of
-what the log says. Choosing files based on the failure is evidence selection,
-which belongs to the full agent. If the comparator gets clever it stops being a
-control and the Demo 3 comparison means nothing. Write the chosen file list into
-this document once decided.
+**Keys never go in the repo or the ZIP.** `./bb check` scans for private keys,
+AWS access key IDs and `sk-…` keys, but **not Bedrock API keys**, so it would not
+catch one pasted into the code.
 
-**Pre-flight validation.** Before returning, check each proposed edit against the
-real file: does `old_text` occur exactly once? A one-shot agent gets no retry, so
-an edit that Part 4 will reject is a wasted case. Report these as a distinct
-outcome — `unusable_edit` — separate from "applied but did not repair." The rate
-of unusable edits is a result worth reporting on its own.
+**The prompt.** A system message with the rules Part 4 enforces, then a user
+message with the case id, target architecture, the last 500 log lines, and a
+**fixed** list of files — the same for every case, chosen without looking at the
+log, so the baseline stays naive:
 
-**The interface is now known — this part is unblocked.** The organizers confirmed
-hosted model access is an **organizer-managed, OpenAI-compatible endpoint**
-serving the same undisclosed model to every team, with a common per-case usage
-budget. Build against the chat-completions request shape with a **configurable
-base URL and no hardcoded model name**, so the same client points at a local
-provider during development and at theirs at evaluation. No credentials in the
-ZIP.
+`input/debian/{rules,control,patches/series}`, then
+`input/{CMakeLists.txt,configure.ac,Makefile,setup.py,Cargo.toml,meson.build}`.
 
-Because every team gets the identical model, prompts must be **model-agnostic** —
-do not tune to one provider's quirks.
+Files appear as plain text (real tabs, not escaped JSON) under `=== path ===`
+labels kept outside the file text. Each is capped at 8 KB, cut at a line boundary
+and labelled as truncated; 32 KB in total. Missing, non-UTF-8 or symlinked files
+are shown as `unavailable (reason)`.
 
-**What it needs.** A provider and spending ceiling for local development only.
+**Reading the reply.** `gpt-oss` is a reasoning model, so replies may contain
+thinking and draft JSON before the answer. The client strips any `<reasoning>`
+block and takes the **last** JSON object with an `"edits"` key, ignoring
+surrounding prose. A reply cut off at the token limit (8,192, reasoning included)
+is reported as such.
 
-**Still worth building:** a **recorded-response stub** — saved responses keyed by
-case — so Parts 1 and 5 can be tested offline with no spend.
+**Reliability.** Throttling (429), server errors (5xx), timeouts and dropped
+connections are retried up to 3 attempts — the endpoint failing is not the model
+failing. Client errors (4xx) are not retried, and their message is kept, with the
+key redacted. Token usage is recorded; unknown is `None`, never 0.
 
-**Done when.** Given a `CaseContext`, it returns a parsed `EditPlan` with usage
-recorded, and the stub mode works offline. Use temperature 0 and a fixed prompt
-for our own comparison repeatability — the organizers have confirmed determinism
-is **not** a competition requirement, only non-interactive execution, so treat it
-as a research setting we can relax if it costs repairs.
+**No pre-flight check.** Edits go to Part 4 unfiltered. Part 4 judges each one
+separately and the harness records its rejection reasons, so one bad edit can no
+longer discard a good one.
 
-**Watch for.** Unknown token usage is recorded as `None`, **never zero** — §4 of
-the proposal depends on this. Malformed model output returns an empty `EditPlan`
-with a reason; it does not raise.
+**Replays live in the harness.** Offline answers for testing the pipeline are the
+harness's `ReplayModel` and `harness/replays/`; the agent only talks to the model.
+
+**First live result (3 October): rcran repaired.** I had predicted a failure,
+because the config-header fix is in a file not on the fixed list. Instead the model
+used the log, which prints the failing path and line
+(`crc32c/crc32c_prefetch.h:18:10 … #include <xmmintrin.h>`), and added an
+`override_dh_auto_configure` to `debian/rules` that keeps `dh_auto_configure` and
+`sed`-guards that include for x86 only. Legitimate (no test or architecture
+bypass) but not idiomatic: a maintainer would add a `debian/patches/` patch.
+Repaired again in two repeat runs, each with a different and less careful fix;
+see `part5-findings.md` §9.
 
 ---
 
@@ -330,14 +340,14 @@ every row. Keep this out of the submission ZIP entirely.
 
 ## Integration order
 
-| Step | Needs | Produces |
-| --- | --- | --- |
-| 1 | Part 1 alone | Agent that passes `./bb ready` and does nothing |
-| 2 | + Part 2 | Agent that reads the log and reports what it saw |
-| 3 | + Part 4 | Agent that applies a hardcoded edit and repairs hello |
-| 4 | + Part 3 (stub) | Full pipeline offline, no spend |
-| 5 | + Part 3 (live) | Real one-shot agent |
-| 6 | + Part 5 | Measured results on real cases |
+| Step | Needs | Produces | Status |
+| --- | --- | --- | --- |
+| 1 | Part 1 alone | Agent shell | ✅ |
+| 2 | + Part 2 | Agent that reads the log | ✅ |
+| 3 | + Part 4 | Agent that applies edits safely | ✅ |
+| 4 | + harness replays | Full pipeline with known answers, no spend | ✅ rcran repaired; negative control rejected |
+| 5 | + Part 3 (live) | Real one-shot agent; `main()` wired | ✅ rcran repaired in 3 of 3 live runs, with three different fixes |
+| 6 | + more cases | Measured results on real cases | ⏳ needs organizer case environments |
 
 Steps 1–4 need no model access and no AWS. **If the protocol question stays
 unanswered, we can still reach step 4.**
@@ -356,15 +366,21 @@ unanswered, we can still reach step 4.**
 
 Resolve in the next team meeting — each one blocks a part:
 
-1. **Local provider and spending ceiling** for development → blocks Part 3.
-   The hosted interface is settled (OpenAI-compatible, organizer-managed); this
-   is only about what we develop against.
-2. **The fixed file list** handed to the model alongside the log tail → blocks
-   Part 3. Must be identical for every case.
-3. **AWS budget** → Part 5. *Settled:* the host must be native Linux **ARM64**
+1. ~~**Local provider**~~ *Settled:* Bedrock's OpenAI-compatible endpoint on the
+   team's AWS credits, model `openai.gpt-oss-120b-1:0` (see Part 3).
+2. ~~**The fixed file list**~~ *Settled:* see Part 3. Still open: a byte cap on the
+   500-line log tail (largest is ~106K tokens; fits the 128K context, but it
+   changes the baseline definition, so it is a team decision).
+3. ~~**Build-time commands**~~ *Settled:* allowed (no agent change). The harness
+   flags added file-modifying build commands (`fix_type: build_commands`,
+   `needs_review`), results are reported split by fix type, and only flagged runs
+   get a manual diff review. Rejecting them in Part 4 was considered and declined:
+   it would have turned all three rcran repairs into failures and also blocks
+   legitimate packaging.
+4. **AWS budget** → Part 5. *Settled:* the host must be native Linux **ARM64**
    (Graviton), because the rcran runtime image is `linux/arm64` and the x86_64 +
    QEMU path is untested by the organizers.
-4. **Owners for the remaining parts**, and the second person on case
+5. **Owners for the remaining parts**, and the second person on case
    materialization.
 
 *Settled:* the edit response format. Part 4 fixed it — literal unique

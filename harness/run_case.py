@@ -3,9 +3,10 @@
     baseline build (unless --log) -> dpkg-source -x -> agent edits ->
     dpkg-source --auto-commit -b -> assemble case -> run.sh -> record
 
-Parts 1, 2 and 4 run for real: Part 1's run_repair drives Part 2's extract_tail
-and Part 4's apply_edits. Only the model is replaced, by ReplayModel, which
-returns edits from a JSON file. Swap in Part 3's client when it lands.
+Parts 1, 2 and 4 always run for real: Part 1's run_repair drives Part 2's
+extract_tail and Part 4's apply_edits. The model is either Part 3's real client
+(--live) or ReplayModel (--replay), which returns known edits from a JSON file
+so the pipeline itself can be checked with answers known to be right or wrong.
 
 Every attempt appends one row to <runs-dir>/runs.jsonl, including runs that
 stop early: failures stay in the evaluation denominator.
@@ -13,6 +14,8 @@ stop early: failures stay in the evaluation denominator.
 Usage (on the ARM64 host, from the repository root):
     python3 -m harness.run_case --bundle ~/buildbench-local-rcran-v1 \\
         --replay harness/replays/rcran-known-fix.json --run-id fix-auto-1
+    BB_MODEL_API_KEY=... python3 -m harness.run_case --bundle ~/buildbench-local-rcran-v1 \\
+        --live --run-id live-1
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ import time
 from types import SimpleNamespace
 from typing import Callable, Iterator
 
+from harness.diff_scan import scan_diff
 from harness.record import append_jsonl, load_outcome, outcome_row
 
 
@@ -73,17 +77,18 @@ def sh(cmd: list, cwd: Path, log: Path, timeout: float) -> None:
 
 
 def load_agent(agent_dir: Path) -> SimpleNamespace:
-    """Import the agent's src package (Parts 1, 2 and 4) from the starter kit."""
+    """Import the agent's src package (Parts 1-4) from the starter kit."""
     if str(agent_dir) not in sys.path:
         sys.path.insert(0, str(agent_dir))
     from src import edit_applier
     from src.log_tail import extract_tail
     from src.main import run_repair
+    from src.model_client import ModelClient
     from src.types import CaseContext, Edit, EditPlan
 
     return SimpleNamespace(
         run_repair=run_repair, extract_tail=extract_tail, edit_applier=edit_applier,
-        CaseContext=CaseContext, Edit=Edit, EditPlan=EditPlan,
+        CaseContext=CaseContext, Edit=Edit, EditPlan=EditPlan, ModelClient=ModelClient,
     )
 
 
@@ -103,6 +108,8 @@ def agent_version(agent_dir: Path) -> str:
             break
     digest = hashlib.sha256()
     for path in sorted((agent_dir / "src").rglob("*.py")):
+        if any(part.startswith(".") for part in path.relative_to(agent_dir / "src").parts):
+            continue  # hidden files, e.g. macOS "._" metadata left by a tar copy
         digest.update(path.relative_to(agent_dir).as_posix().encode() + b"\0")
         digest.update(path.read_bytes() + b"\0")
     return f"{declared}+{digest.hexdigest()[:12]}"
@@ -210,9 +217,11 @@ def assemble_case(case_dir: Path, work_dir: Path, dest: Path) -> None:
 
 
 def run_case(
-    bundle: Path, run_id: str, runs_dir: Path, replay: Path, *,
+    bundle: Path, run_id: str, runs_dir: Path, replay: Path | None = None, *, model = None,
     log: Path | None = None, agent_dir: Path = AGENT_DIR, runner: Runner = sh,
 ) -> dict:
+    if (replay is None) == (model is None):
+        raise ValueError("Provide either a replay file or a model client.")
     bundle, runs_dir = bundle.resolve(), runs_dir.resolve()
     run_dir = runs_dir / run_id
     run_dir.mkdir(parents=True)  # refuses to reuse a run id
@@ -222,11 +231,13 @@ def run_case(
     build_timeout = manifest["build"].get("timeout_seconds", 3600) + BUILD_MARGIN
 
     agent = load_agent(agent_dir)
-    model = ReplayModel(replay, agent)
+    if model is None:
+        model = ReplayModel(replay, agent)
     started, clock = datetime.now(timezone.utc), time.monotonic()
     row = {
         "run_id": run_id, "case_id": manifest["case_id"], "mode": "one-shot",
-        "agent_version": agent_version(agent_dir), "diff_path": None,
+        "agent_version": agent_version(agent_dir), "diff_path": None, "served_model": None,
+        **scan_diff(""),
         "model": model.name, "started_at": started.isoformat(timespec="seconds"),
         "edits_proposed": 0, "edits_applied": 0, "edit_warnings": [],
         "rationale": "", "usage": {}, "baseline": None, "result": None,
@@ -284,9 +295,11 @@ def run_case(
                 raise _Stop("agent_error", f"{type(error).__name__}: {error}") from None
             finally:
                 row["edit_warnings"] = list(warnings)
+                row["served_model"] = getattr(model, "served_model", None)
                 # Before repacking: --auto-commit adds its own patch files to the tree.
                 if write_diff(pristine, work / "input", run_dir / "repair.diff"):
                     row["diff_path"] = str(run_dir / "repair.diff")
+                    row.update(scan_diff((run_dir / "repair.diff").read_text(encoding="utf-8")))
                 shutil.rmtree(pristine)
         row.update(edits_proposed=len(plan.edits), edits_applied=applied,
                    rationale=plan.rationale, usage=plan.usage)
@@ -322,16 +335,26 @@ def main(argv: list) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--bundle", type=Path, required=True,
                         help="local validator bundle containing run.sh and case/")
-    parser.add_argument("--replay", type=Path, required=True,
-                        help="JSON file of edits for the stand-in model")
+    model_source = parser.add_mutually_exclusive_group(required=True)
+    model_source.add_argument("--replay", type=Path,
+                              help="JSON file of edits for the stand-in model")
+    model_source.add_argument("--live", action="store_true",
+                              help="ask the real model; needs BB_MODEL_API_KEY "
+                                   "(see harness/README.md)")
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--runs-dir", type=Path, help="default: <bundle>/harness-runs")
     parser.add_argument("--log", type=Path,
                         help="failure log for the agent; default: run a baseline build first")
     args = parser.parse_args(argv)
 
+    model = None
+    if args.live:
+        model = load_agent(AGENT_DIR).ModelClient.from_env()
+        if not model.api_key:
+            parser.error("--live needs BB_MODEL_API_KEY set to a Bedrock API key")
+
     row = run_case(args.bundle, args.run_id, args.runs_dir or args.bundle / "harness-runs",
-                   args.replay, log=args.log)
+                   replay=args.replay, model=model, log=args.log)
     verdict = "REPAIRED" if row["repaired"] else "not repaired"
     print(f"{row['run_id']}: {verdict} ({row['termination_reason']}), "
           f"{row['edits_applied']}/{row['edits_proposed']} edits applied, {row['wall_seconds']}s")

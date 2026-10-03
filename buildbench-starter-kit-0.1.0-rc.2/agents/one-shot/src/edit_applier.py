@@ -143,38 +143,45 @@ def _command_kind(words: list[str]) -> tuple[str | None, tuple[str, str] | None]
     return None, None
 
 
-def _command_summary(text: str) -> tuple[Counter, Counter, Counter]:
-    tests, builds, masked = Counter(), Counter(), Counter()
-    try:
-        for line in _logical_lines(text):
-            preceding_tests: set[tuple[str, str]] = set()
-            for separator, raw, ignored in _shell_commands(line):
-                words = _command_words(raw)
-                if not words:
-                    continue
-                build, test = _command_kind(words)
-                if build:
-                    builds[build] += 1
-                if test:
-                    tests[test] += 1
-                    preceding_tests.add(test)
-                    if ignored:
-                        masked[(test, "ignore_exit")] += 1
-                if words[0] == "set" and ("+e" in words[1:] or words[1:] == ["+o", "errexit"]):
-                    masked[("shell", "errexit_disabled")] += 1
-                succeeds = words[0] in {"true", ":", "echo", "printf"} or words[:2] in (["exit", "0"], ["return", "0"])
-                propagates_failure = words[0] == "false" or (
-                    words[0] in {"exit", "return"} and len(words) == 2
-                    and (words[1] == "$?" or words[1].isdigit() and int(words[1]) != 0)
-                )
-                if (separator == ";" and succeeds) or (separator == "||" and not propagates_failure):
-                    for previous in preceding_tests:
-                        masked[(previous, "success_after_failure")] += 1
-    except ValueError as error:
-        if isinstance(error, EditRejected):
-            raise
-        raise EditRejected("unparseable_build_command") from error
-    return tests, builds, masked
+def _command_summary(text: str) -> tuple[Counter, Counter, Counter, Counter]:
+    """Count test/build invocations and masked failures, per logical line.
+
+    A line the shell lexer cannot parse is counted in the fourth result rather
+    than rejecting the whole file: build files often contain unparseable text
+    (for example an unquoted apostrophe in an echo) far from the edit. Callers
+    reject edits that introduce new unparseable lines.
+    """
+    tests, builds, masked, unparsed = Counter(), Counter(), Counter(), Counter()
+    for line in _logical_lines(text):
+        try:
+            commands = list(_shell_commands(line))
+        except ValueError:
+            unparsed[line] += 1
+            continue
+        preceding_tests: set[tuple[str, str]] = set()
+        for separator, raw, ignored in commands:
+            words = _command_words(raw)
+            if not words:
+                continue
+            build, test = _command_kind(words)
+            if build:
+                builds[build] += 1
+            if test:
+                tests[test] += 1
+                preceding_tests.add(test)
+                if ignored:
+                    masked[(test, "ignore_exit")] += 1
+            if words[0] == "set" and ("+e" in words[1:] or words[1:] == ["+o", "errexit"]):
+                masked[("shell", "errexit_disabled")] += 1
+            succeeds = words[0] in {"true", ":", "echo", "printf"} or words[:2] in (["exit", "0"], ["return", "0"])
+            propagates_failure = words[0] == "false" or (
+                words[0] in {"exit", "return"} and len(words) == 2
+                and (words[1] == "$?" or words[1].isdecimal() and int(words[1]) != 0)
+            )
+            if (separator == ";" and succeeds) or (separator == "||" and not propagates_failure):
+                for previous in preceding_tests:
+                    masked[(previous, "success_after_failure")] += 1
+    return tests, builds, masked, unparsed
 
 
 def _disabled_test_overrides(text: str) -> set[str]:
@@ -242,8 +249,10 @@ def _policy_reason(path: str, before: str, after: str) -> str | None:
     if not (build_control or debian_control or install_list):
         return None
     if build_control:
-        old_tests, old_builds, old_masked = _command_summary(before)
-        new_tests, new_builds, new_masked = _command_summary(after)
+        old_tests, old_builds, old_masked, old_unparsed = _command_summary(before)
+        new_tests, new_builds, new_masked, new_unparsed = _command_summary(after)
+        if new_unparsed - old_unparsed:
+            return "unparseable_build_command"
         if old_tests - new_tests:
             return "test_invocation_removed"
         if old_builds - new_builds:

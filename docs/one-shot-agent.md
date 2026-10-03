@@ -1,7 +1,35 @@
 # One-Shot Agent — Build Plan
 
-**Status:** planning · **Target:** working end to end before Demo 2 (10/21)
+**Status:** **frozen as `one-shot-v1`** (3 October) · the project's naive baseline
 **Team:** Anthony Capraru, Austin Li, Joonseo Moon, Juliette Jacques, Owen Zhang
+
+## Frozen baseline: `one-shot-v1`
+
+Every Demo 2, Demo 3 and final comparison runs against exactly this agent.
+
+| | |
+| --- | --- |
+| Tag | `one-shot-v1` |
+| Fingerprint | `1.0.0+16e31a424d0d` (`agent_version`: `agent.yaml` version + hash of `src/*.py`) |
+| Model | `openai.gpt-oss-120b-1:0`, Bedrock's OpenAI-compatible endpoint, `us-east-1` |
+| Request | one chat completion; `temperature` 0; `max_completion_tokens` 8,192 |
+| Evidence | last 500 log lines (no byte cap); fixed files `input/debian/{rules,control,patches/series}`, `input/{CMakeLists.txt,configure.ac,Makefile,setup.py,Cargo.toml,meson.build}`; 8 KB per file, 32 KB total |
+| Edits | Part 4 checks each separately; build-time commands allowed, flagged by the harness for manual review |
+
+**Rules.**
+
+- **Never edit `agents/one-shot/`.** The full agent is built in its own folder.
+- CI enforces this: `harness/tests/test_frozen_baseline.py` fails if the
+  fingerprint changes.
+- **A deliberate change — including a bug fix, or a fix to code the full agent
+  shares — creates `one-shot-v2`**: bump the version, update the guard, tag it,
+  re-run every baseline number, and announce it at the next demo.
+- **Switching to the competition's model is also a new version**, and both agents
+  must be re-run on it; results are never compared across models.
+
+The `live-1`–`live-3` rcran runs (3 of 3 repaired; `part5-findings.md` §9) predate
+the freeze (`0.1.0+b7956fa2035c`; the only later change records the server's
+model name). Official baseline numbers come from runs on `one-shot-v1`.
 
 ## What we are building
 

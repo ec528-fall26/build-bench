@@ -371,10 +371,16 @@ Resolve in the next team meeting — each one blocks a part:
 2. ~~**The fixed file list**~~ *Settled:* see Part 3. Still open: a byte cap on the
    500-line log tail (largest is ~106K tokens; fits the 128K context, but it
    changes the baseline definition, so it is a team decision).
-3. **AWS budget** → Part 5. *Settled:* the host must be native Linux **ARM64**
+3. ~~**Build-time commands**~~ *Settled:* allowed (no agent change). The harness
+   flags added file-modifying build commands (`fix_type: build_commands`,
+   `needs_review`), results are reported split by fix type, and only flagged runs
+   get a manual diff review. Rejecting them in Part 4 was considered and declined:
+   it would have turned all three rcran repairs into failures and also blocks
+   legitimate packaging.
+4. **AWS budget** → Part 5. *Settled:* the host must be native Linux **ARM64**
    (Graviton), because the rcran runtime image is `linux/arm64` and the x86_64 +
    QEMU path is untested by the organizers.
-4. **Owners for the remaining parts**, and the second person on case
+5. **Owners for the remaining parts**, and the second person on case
    materialization.
 
 *Settled:* the edit response format. Part 4 fixed it — literal unique

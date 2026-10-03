@@ -394,8 +394,10 @@ too late.
   better; that needs cases the baseline fails.
 - **Every fix used build-time commands in `debian/rules`.** Part 4's checks see the
   edit to `debian/rules`, not what its commands do to other files, so a
-  build-time command could delete tests without tripping them. These were benign,
-  but results that add build-time commands need a human look at the diff.
+  build-time command could delete tests without tripping them. These were benign.
+  **Adopted:** the harness now flags such runs (`harness/diff_scan.py`;
+  `fix_type: build_commands`, `needs_review`) and `harness.summarize` reports
+  repair rates by fix type, so only flagged diffs need a manual read.
 
 Cost of all three runs: under 1¢.
 

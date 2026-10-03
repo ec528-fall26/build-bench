@@ -37,6 +37,7 @@ import time
 from types import SimpleNamespace
 from typing import Callable, Iterator
 
+from harness.diff_scan import scan_diff
 from harness.record import append_jsonl, load_outcome, outcome_row
 
 
@@ -236,6 +237,7 @@ def run_case(
     row = {
         "run_id": run_id, "case_id": manifest["case_id"], "mode": "one-shot",
         "agent_version": agent_version(agent_dir), "diff_path": None, "served_model": None,
+        **scan_diff(""),
         "model": model.name, "started_at": started.isoformat(timespec="seconds"),
         "edits_proposed": 0, "edits_applied": 0, "edit_warnings": [],
         "rationale": "", "usage": {}, "baseline": None, "result": None,
@@ -297,6 +299,7 @@ def run_case(
                 # Before repacking: --auto-commit adds its own patch files to the tree.
                 if write_diff(pristine, work / "input", run_dir / "repair.diff"):
                     row["diff_path"] = str(run_dir / "repair.diff")
+                    row.update(scan_diff((run_dir / "repair.diff").read_text(encoding="utf-8")))
                 shutil.rmtree(pristine)
         row.update(edits_proposed=len(plan.edits), edits_applied=applied,
                    rationale=plan.rationale, usage=plan.usage)

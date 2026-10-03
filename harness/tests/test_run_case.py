@@ -108,6 +108,8 @@ class RunCaseTests(unittest.TestCase):
     def test_known_fix_is_repaired_end_to_end(self):
         row = self.run_with(FakeHost())
         self.assertIsNone(row["served_model"])  # replays have no server
+        self.assertEqual(row["fix_type"], "source")  # edits crc32c_config.h directly
+        self.assertFalse(row["needs_review"])
         self.assertTrue(row["repaired"])
         self.assertEqual(row["termination_reason"], "build_succeeded")
         self.assertEqual((row["edits_applied"], row["edits_proposed"]), (1, 1))
@@ -153,6 +155,7 @@ class RunCaseTests(unittest.TestCase):
         host = FakeHost()
         row = self.run_with(host, replay=self.replay_file(case_id="other-case"))
         self.assertEqual(row["termination_reason"], "no_edit_applied")
+        self.assertEqual((row["fix_type"], row["changed_files"]), ("none", []))
         self.assertFalse(any("--auto-commit" in c for c in host.calls))
         self.assertFalse(any("--input" in c for c in host.calls))
 

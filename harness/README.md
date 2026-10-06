@@ -53,13 +53,24 @@ python3 -m harness.summarize ~/buildbench-local-rcran-v1/harness-runs/runs.jsonl
 
 ```text
 runs: 3   repaired: 3
-fix type          runs  repaired
-build_commands       3         3
+tokens: 33,288 in + 4,046 out = 37,334 over 3 runs (median 12,337 per run); unknown for 0
+
+case                                                       runs  repaired      tokens  median/run  unknown
+launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f       3         3      37,334      12,337        0
+
+fix type          runs  repaired      tokens  median/run  unknown
+build_commands       3         3      37,334      12,337        0
+
 needs review (build-time commands): live-1, live-2, live-3
 ```
 
 Report repair rates split by fix type, and count a flagged run only after its
 diff has been read. Older rows are classified from their `repair.diff`.
+
+**Tokens** are input + output per run. A run whose counts are missing (no reply,
+or a replay) is reported in the `unknown` column and never added as zero, so
+totals and medians cover known runs only. Filter by `--agent-version` (or
+`--model`) so different agent versions are never pooled.
 
 ## Repaired means
 

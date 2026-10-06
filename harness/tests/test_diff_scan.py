@@ -182,8 +182,9 @@ class Summary(unittest.TestCase):
         s = summarize(rows)
         self.assertEqual((s["runs"], s["repaired"]), (3, 2))
         self.assertEqual(s["needs_review"], ["a"])
-        self.assertEqual(s["by_fix_type"]["build_commands"], {"runs": 1, "repaired": 1})
-        self.assertEqual(s["by_fix_type"]["none"], {"runs": 1, "repaired": 0})
+        pick = lambda g: (g["runs"], g["repaired"])
+        self.assertEqual(pick(s["by_fix_type"]["build_commands"]), (1, 1))
+        self.assertEqual(pick(s["by_fix_type"]["none"]), (1, 0))
 
     def test_older_rows_are_classified_from_their_diff(self):
         with tempfile.TemporaryDirectory() as tmp:

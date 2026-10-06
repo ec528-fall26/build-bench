@@ -97,6 +97,11 @@ From the organizers' reply to our Demo 1 questions (proposal reference [4]):
   one contributes. With every flag off, the agent should behave like the baseline.
 - **Every attempt is recorded** in the harness run record — hypothesis, edits,
   build outcome, tokens — including attempts that never reach a build.
+- **The agent reports its own token use.** `agent-result.json` includes total and
+  per-attempt input/output tokens (`null` when unknown, never 0), plus the number
+  of attempts and builds. The baseline omits tokens there — adding them would have
+  changed the frozen `one-shot-v1` — so the harness's record is the only source
+  for the baseline; the full agent should not depend on that.
 - **Standard library only**, as now; keys only in environment variables.
 - **Non-interactive.** The agent never waits for input; every failure becomes a
   recorded outcome, as in the baseline.

@@ -275,7 +275,7 @@ attempts rather than resending everything.
 
 ## Part D — Build feedback
 
-**Owner:** _______ (suggested: the harness owner)
+**Owner:** Joonseo Moon (suggested: the harness owner)
 
 **What it does.** Implements `BuildFeedback.request_build`.
 

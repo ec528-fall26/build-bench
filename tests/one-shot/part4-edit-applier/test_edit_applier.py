@@ -5,7 +5,7 @@ false rejection here makes the baseline fail for a reason that is not the
 model's — and makes every later version look better by comparison. The first
 test class guards against that; the rest keep the anti-cheat layer honest.
 
-Run from the repository root:  python3 -m unittest discover -s part4-edit-applier/tests
+Run from the repository root:  python3 -m unittest discover -s tests/one-shot/part4-edit-applier
 """
 
 import importlib.util
@@ -17,7 +17,7 @@ import unittest
 
 
 MODULE = (
-    Path(__file__).resolve().parents[2]
+    Path(__file__).resolve().parents[3]
     / "buildbench-starter-kit-0.1.0-rc.2/agents/one-shot/src/edit_applier.py"
 )
 spec = importlib.util.spec_from_file_location("edit_applier", MODULE)
@@ -57,7 +57,7 @@ APOSTROPHE_MAKEFILE = (
     "check:\n\t$(MAKE) test\n"
 )
 
-RCRAN_CONFIG = (Path(__file__).resolve().parents[2]
+RCRAN_CONFIG = (Path(__file__).resolve().parents[3]
                 / "harness/tests/fixtures/crc32c_config.h").read_text()
 
 RCRAN_POLICY = {

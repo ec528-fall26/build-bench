@@ -44,9 +44,9 @@ temporary-file creation, or model call.
 Run from the repository root with Python 3.11 or newer:
 
 ```bash
-python -B -m unittest discover -s part2-log-tail/tests -v
-python -B part2-log-tail/benchmark.py --synthetic
-python -B part2-log-tail/benchmark.py --log /path/to/libyuv.log --lines 500 --repeats 7
+python -B -m unittest discover -s tests/one-shot/part2-log-tail -v
+python -B tests/one-shot/part2-log-tail/benchmark.py --synthetic
+python -B tests/one-shot/part2-log-tail/benchmark.py --log /path/to/libyuv.log --lines 500 --repeats 7
 ```
 
 The 11 tests cover edge cases, split Unicode and read boundaries, long lines,

@@ -5,7 +5,7 @@ call, no history. These tests pin that definition. If someone later makes the
 baseline smarter — a second call, a longer or filtered log — a test fails
 instead of the baseline quietly getting stronger between demos.
 
-Run from the repository root:  python3 -m unittest discover -s part1-agent-shell/tests
+Run from the repository root:  python3 -m unittest discover -s tests/one-shot/part1-agent-shell
 """
 
 import logging
@@ -15,7 +15,7 @@ import tempfile
 import unittest
 
 
-AGENT = Path(__file__).resolve().parents[2] / "buildbench-starter-kit-0.1.0-rc.2/agents/one-shot"
+AGENT = Path(__file__).resolve().parents[3] / "buildbench-starter-kit-0.1.0-rc.2/agents/one-shot"
 sys.path.insert(0, str(AGENT))
 
 from src.log_tail import extract_tail  # noqa: E402

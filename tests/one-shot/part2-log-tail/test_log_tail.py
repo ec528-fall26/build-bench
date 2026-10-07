@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 
 MODULE = (
-    Path(__file__).resolve().parents[2]
+    Path(__file__).resolve().parents[3]
     / "buildbench-starter-kit-0.1.0-rc.2/agents/one-shot/src/log_tail.py"
 )
 spec = importlib.util.spec_from_file_location("log_tail", MODULE)

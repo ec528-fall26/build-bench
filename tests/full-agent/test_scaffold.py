@@ -4,7 +4,7 @@ These pin the agreed interfaces (docs/full-agent.md, "Shared contracts") so a
 change to them shows up in CI. When a part replaces its stand-in, it brings
 its own tests; the signature checks here stay.
 
-Run from the repository root:  python3 -m unittest discover -s full-agent-tests/tests
+Run from the repository root:  python3 -m unittest discover -s tests/full-agent
 """
 
 import dataclasses

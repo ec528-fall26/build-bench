@@ -4,7 +4,7 @@ The runner accepts only status "completed" in agent-result.json, so main() must
 write it whether or not a repair was found. No network: the model is either a
 recording stand-in or the real client with no API key, which sends nothing.
 
-Run from the repository root:  python3 -m unittest discover -s part1-agent-shell/tests
+Run from the repository root:  python3 -m unittest discover -s tests/one-shot/part1-agent-shell
 """
 
 from contextlib import redirect_stderr, redirect_stdout
@@ -18,7 +18,7 @@ import unittest
 from unittest.mock import patch
 
 
-AGENT = Path(__file__).resolve().parents[2] / "buildbench-starter-kit-0.1.0-rc.2/agents/one-shot"
+AGENT = Path(__file__).resolve().parents[3] / "buildbench-starter-kit-0.1.0-rc.2/agents/one-shot"
 sys.path.insert(0, str(AGENT))
 
 from src import main as agent_main  # noqa: E402

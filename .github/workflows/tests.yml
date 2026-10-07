@@ -23,33 +23,31 @@ jobs:
           sparse-checkout: |
             buildbench-starter-kit-0.1.0-rc.2/agents/one-shot
             buildbench-starter-kit-0.1.0-rc.2/agents/full-agent
-            full-agent-tests
             harness
-            part1-agent-shell
-            part2-log-tail
-            part3-model-client
-            part4-edit-applier
+            tests
 
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
       # Standard library only: nothing to install.
+      # One step per folder: both agents are packages named `src`, so a
+      # single run would test whichever agent Python imported first.
 
       - name: Part 1 — baseline contract
-        run: python -m unittest discover -s part1-agent-shell/tests -v
+        run: python -m unittest discover -s tests/one-shot/part1-agent-shell -v
 
       - name: Part 2 — log tail
-        run: python -m unittest discover -s part2-log-tail/tests -v
+        run: python -m unittest discover -s tests/one-shot/part2-log-tail -v
 
       - name: Part 3 — model client
-        run: python -m unittest discover -s part3-model-client/tests -v
+        run: python -m unittest discover -s tests/one-shot/part3-model-client -v
 
       - name: Part 4 — edit applier
-        run: python -m unittest discover -s part4-edit-applier/tests -v
+        run: python -m unittest discover -s tests/one-shot/part4-edit-applier -v
 
       - name: Part 5 — harness
         run: python -m unittest discover -s harness/tests -t . -v
 
       - name: Full agent — contracts and stand-ins
-        run: python -m unittest discover -s full-agent-tests/tests -v
+        run: python -m unittest discover -s tests/full-agent -v

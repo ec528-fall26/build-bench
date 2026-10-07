@@ -160,7 +160,7 @@ is what makes it a control.
 ## Part 3 — Model adapter — **DONE**
 
 **Owner:** Austin · `agents/one-shot/src/model_client.py`, tests in
-`part3-model-client/tests/`
+`tests/one-shot/part3-model-client/`
 
 **What it does.** `ModelClient.propose(context) -> EditPlan`: builds the prompt,
 makes **exactly one** chat-completion call, and turns the reply into `Edit`s.

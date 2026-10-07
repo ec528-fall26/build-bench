@@ -18,7 +18,7 @@ Copied from the frozen one-shot baseline (`agents/one-shot`, tag `one-shot-v1`).
 | `main.py` | C | Baseline behaviour for now |
 | `model_client.py`, `log_tail.py`, `edit_applier.py`, `types.py` | baseline Parts 2–4 | Copied, not shared, so the baseline stays frozen |
 
-Tests: `full-agent-tests/tests/` at the repository root.
+Tests: `tests/full-agent/` at the repository root.
 
 ## Model access
 Configured through environment variables, never through files in this folder:

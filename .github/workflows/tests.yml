@@ -22,6 +22,8 @@ jobs:
           # downloading ~1.3 GB of committed starter-kit run output.
           sparse-checkout: |
             buildbench-starter-kit-0.1.0-rc.2/agents/one-shot
+            buildbench-starter-kit-0.1.0-rc.2/agents/full-agent
+            full-agent-tests
             harness
             part1-agent-shell
             part2-log-tail
@@ -48,3 +50,6 @@ jobs:
 
       - name: Part 5 — harness
         run: python -m unittest discover -s harness/tests -t . -v
+
+      - name: Full agent — contracts and stand-ins
+        run: python -m unittest discover -s full-agent-tests/tests -v

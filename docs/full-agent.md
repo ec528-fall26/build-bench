@@ -139,6 +139,15 @@ class ToolResult:                 # Part B -> model
     truncated: bool
 
 @dataclass
+class ModelTurn:                  # one model reply, parsed (see "Model reply format")
+    action: str                   # tool | edit | stop | malformed
+    tool_requests: list[ToolRequest]   # action == "tool"; several allowed per turn
+    hypothesis: str               # action == "edit"
+    evidence: list[str]           # action == "edit": log lines / file:line it rests on
+    edits: list[Edit]             # action == "edit"
+    reason: str                   # stop reason, or why the reply was malformed
+
+@dataclass
 class BuildResult:                # Part D -> Part C
     succeeded: bool
     stage_reached: str            # furthest build stage, used to rank attempts
@@ -224,10 +233,9 @@ history needs anyway — and `patch_series()` — the package's existing
 baseline's convention: labels outside file text, `unavailable (reason)` instead of
 errors.
 
-**How the model asks — decide in week 1.** Native tool calling may not behave the
-same on Bedrock and on the organizers' unknown endpoint. The proposal is a plain
-JSON request in the reply (`{"tool": "read_file", "args": {...}}`), parsed with the
-same last-JSON-object rule that fixed Part 3. One quick test on Bedrock settles it.
+**How the model asks: JSON in the reply text** (decided 7 October; see "Model reply
+format" below). Part B executes the `ToolRequest`s that Part C parses out of a
+`tool` turn.
 
 **What it needs.** Nothing external. Reuse the baseline's symlink and escape
 checks (`model_client._read_source`), copied into the new folder.
@@ -239,6 +247,59 @@ the tool-call budget.
 
 ---
 
+## Model reply format
+
+**Decided 7 October: JSON in the reply text, not native tool calling.**
+
+Each turn the model replies with ordinary text that ends in one JSON object with an
+`"action"` key — exactly one of:
+
+```json
+{"action": "tool",
+ "requests": [
+   {"tool": "read_file", "args": {"path": "input/src/crc32c/crc32c_prefetch.h", "start_line": 1, "end_line": 40}},
+   {"tool": "search", "args": {"regex": "xmmintrin", "path_glob": "input/src/**"}}
+ ],
+ "why": "check how the include is guarded and where else it appears"}
+```
+
+```json
+{"action": "edit",
+ "hypothesis": "crc32c_prefetch.h includes the x86-only xmmintrin.h unconditionally",
+ "evidence": ["log line 1995", "input/src/crc32c/crc32c_prefetch.h:18"],
+ "edits": [{"path": "...", "old_text": "...", "new_text": "..."}]}
+```
+
+```json
+{"action": "stop", "reason": "the failure needs a dependency that is not packaged for arm64"}
+```
+
+**Parsing.** Strip any `<reasoning>…</reasoning>` block and take the **last** JSON
+object with an `"action"` key — the rule that fixed Part 3, already tested against
+reasoning blocks, drafts and surrounding prose. `edits` use Part 4's format
+unchanged. Several tool requests per turn are allowed: each turn resends the
+conversation, so fewer turns means fewer tokens.
+
+**Malformed replies.** No parseable action, an unknown tool, or missing fields
+becomes `ModelTurn(action="malformed", reason=...)`. The agent tells the model what
+was wrong and lets it resend; the retry counts against the budget. Every malformed
+reply is counted in the run record, so the real rate is measured, not guessed.
+
+**Why not native tool calling.** "OpenAI-compatible" fixes the request *format*,
+not which features a server supports (the organizers: it "describes the API
+format, not the model provider"). Tool calling varies by server and by model —
+some OpenAI-compatible servers only enable it with extra configuration — and the
+competition endpoint and model are undisclosed. Text replies are the one thing
+every endpoint guarantees. The baseline already uses JSON in text, so the Demo 3
+comparison does not mix two formats. Six of six real `gpt-oss-120b` replies on
+rcran parsed correctly.
+
+**Switching later.** If the organizers confirm tool calling, only the layer that
+turns a reply into a `ModelTurn` changes; Parts B and C work with `ModelTurn` and
+`ToolRequest`, not with the format.
+
+---
+
 ## Part C — Loop and repair history
 
 **Owner:** _______
@@ -247,6 +308,10 @@ the tool-call budget.
 any tool results, and — with `use_history` on — every earlier `Attempt`. Applies
 edits through Part 4, asks Part D for a build, records the `Attempt`, and decides:
 continue, revise or stop.
+
+**Each turn** is parsed into a `ModelTurn`: `tool` → run Part B and send the
+results back; `edit` → apply, build, record an `Attempt`; `stop` → stop;
+`malformed` → explain and let the model resend (counted against the budget).
 
 **Stop rules.** Build succeeded; any budget exhausted; the same leading diagnostic
 twice in a row after a change; or the model proposing no edits twice.
@@ -359,7 +424,7 @@ published.
 
 | Date | Target |
 | --- | --- |
-| **Oct 10** | Contracts agreed. A tested on the 200 logs. B tested. D returns real build results on rcran. Tool-request format decided. |
+| **Oct 10** | Contracts agreed. A tested on the 200 logs. B tested. D returns real build results on rcran. ~~Tool-request format decided~~ (done: JSON in reply text). |
 | **Oct 17** | C's loop running end to end on rcran with the real model. |
 | **Oct 24** | History, best-attempt tracking and all flags working; first full-agent runs recorded. |
 | When environments arrive | All configurations on the 10 cases; failure taxonomy. |
@@ -372,7 +437,7 @@ published.
 **For the team (week 1):**
 
 1. Owners for A–E.
-2. Tool-request format: JSON in the reply, or native tool calling (one Bedrock test).
+2. ~~Tool-request format~~ *Decided:* JSON in the reply text (see "Model reply format").
 3. Budgets, after measuring on rcran.
 
 **For the organizers / mentor:**
@@ -382,3 +447,6 @@ published.
 3. Packaging: `./bb ready` requires repairing hello with networking off, which no
    model-based agent can do. Is `./bb check` + `./bb package` the intended route?
 4. Status of the 10 case environments (the mentor has agreed to provide them).
+5. Will the evaluation endpoint support tool calling (`tools` / `tool_calls`), or
+   only plain chat completions? Not needed — we use JSON in the reply — but a yes
+   would allow a later comparison of the two.

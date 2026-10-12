@@ -12,7 +12,7 @@ Copied from the frozen one-shot baseline (`agents/one-shot`, tag `one-shot-v1`).
 | File | Part | Status |
 | --- | --- | --- |
 | `contracts.py` | shared | Agreed 7 October. Change only by team agreement |
-| `evidence.py` | A | Stand-in: last log line as one unresolved diagnostic |
+| `evidence.py`, `case.py` | A | Streaming diagnostics, source-path resolution, and read-only case metadata loading. See `docs/part-a-evidence.md` |
 | `tools.py` | B | Stand-in: every tool answers `unavailable` |
 | `build_feedback.py` | D | `NoBuildFeedback`: returns `None` until the organizers publish the protocol. The local build callback lives in the harness, never here |
 | `main.py` | C | Baseline behaviour for now |

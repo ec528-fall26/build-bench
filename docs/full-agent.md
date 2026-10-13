@@ -186,7 +186,9 @@ class BuildFeedback(Protocol):    # Part D implements; Part C calls
 
 ## Part A — Case and Evidence Manager
 
-**Owner:** _______
+**Owner:** Anthony Capraru
+
+Implementation and validation: [`part-a-evidence.md`](part-a-evidence.md).
 
 **Case.** Normalise what the case says about itself — package, target
 architecture, paths — from `task.json` (and the case manifest locally), without

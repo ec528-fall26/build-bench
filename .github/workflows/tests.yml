@@ -24,6 +24,7 @@ jobs:
             buildbench-starter-kit-0.1.0-rc.2/agents/one-shot
             buildbench-starter-kit-0.1.0-rc.2/agents/full-agent
             harness
+            experiments
             tests
 
       - uses: actions/setup-python@v5
@@ -51,3 +52,6 @@ jobs:
 
       - name: Full agent — contracts and stand-ins
         run: python -m unittest discover -s tests/full-agent -v
+
+      - name: Part E — experiment scripts
+        run: python -m unittest discover -s tests/experiments -v

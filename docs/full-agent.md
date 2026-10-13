@@ -371,7 +371,10 @@ recorded in the run record.
 
 ## Part E — Prompts and evaluation
 
-**Owner:** _______
+**Owner:** Owen Zhang
+
+Implementation and validation: [`part-e-prompts-evaluation.md`](part-e-prompts-evaluation.md);
+failure categories: [`failure-taxonomy.md`](failure-taxonomy.md).
 
 **What it does.**
 

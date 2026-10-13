@@ -16,12 +16,16 @@ Copied from the frozen one-shot baseline (`agents/one-shot`, tag `one-shot-v1`).
 | `tools.py`, `path_checks.py`, `diff_tracker.py`, `tool_timeout.py` | B | Six read-only tools implemented; loop integration and per-case call budget pending |
 | `build_feedback.py` | D | `NoBuildFeedback`: returns `None` until the organizers publish the protocol. The local build callback lives in the harness, never here |
 | `main.py` | C | Baseline behaviour for now |
+| `prompts.py`, `reply.py`, `config.py` | E (Owen Zhang) | Instructions and per-turn messages, reply text → `ModelTurn`, and the ablation switches. Unit-tested; not yet called by `main.py` or run against the model. See `docs/part-e-prompts-evaluation.md` |
 | `model_client.py`, `log_tail.py`, `edit_applier.py`, `types.py` | baseline Parts 2–4 | Copied, not shared, so the baseline stays frozen |
 
 Tests: `tests/full-agent/` at the repository root.
 
 Part B arguments, limits, and Part C integration:
 [Read-only tools guide](../../../docs/part-b-tools.md).
+
+Part E prompts, reply parsing, switches and the Demo 3 comparison:
+[Prompts and evaluation guide](../../../docs/part-e-prompts-evaluation.md).
 
 ## Model access
 Configured through environment variables, never through files in this folder:
@@ -32,6 +36,14 @@ Configured through environment variables, never through files in this folder:
 
 The model is fixed in code (`MODEL_ID` in `model_client.py`). Without a key the
 agent still completes, makes no request and proposes no edits.
+
+## Ablation switches
+`src/config.py` reads one variable per `AgentConfig` field. Unset means on, which
+is how the competition runs the agent; experiments set them to `0` to switch one
+capability off. They take effect once Part C's loop calls `config_from_env()`.
+
+- `BB_AGENT_USE_EVIDENCE_MANAGER`, `BB_AGENT_USE_TOOLS`,
+  `BB_AGENT_USE_BUILD_FEEDBACK`, `BB_AGENT_USE_HISTORY`
 
 ## Runtime
 Python 3.11. The current implementation uses only the Python standard library.

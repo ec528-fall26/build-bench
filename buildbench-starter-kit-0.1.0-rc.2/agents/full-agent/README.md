@@ -13,12 +13,15 @@ Copied from the frozen one-shot baseline (`agents/one-shot`, tag `one-shot-v1`).
 | --- | --- | --- |
 | `contracts.py` | shared | Agreed 7 October. Change only by team agreement |
 | `evidence.py`, `case.py` | A | Streaming diagnostics, source-path resolution, and read-only case metadata loading. See `docs/part-a-evidence.md` |
-| `tools.py` | B | Stand-in: every tool answers `unavailable` |
+| `tools.py`, `path_checks.py`, `diff_tracker.py`, `tool_timeout.py` | B | Six read-only tools implemented; loop integration and per-case call budget pending |
 | `build_feedback.py` | D | `NoBuildFeedback`: returns `None` until the organizers publish the protocol. The local build callback lives in the harness, never here |
 | `main.py` | C | Baseline behaviour for now |
 | `model_client.py`, `log_tail.py`, `edit_applier.py`, `types.py` | baseline Parts 2–4 | Copied, not shared, so the baseline stays frozen |
 
 Tests: `tests/full-agent/` at the repository root.
+
+Part B arguments, limits, and Part C integration:
+[Read-only tools guide](../../../docs/part-b-tools.md).
 
 ## Model access
 Configured through environment variables, never through files in this folder:

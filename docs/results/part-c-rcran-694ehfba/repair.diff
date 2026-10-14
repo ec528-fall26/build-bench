@@ -1,0 +1,12 @@
+--- a/input/src/crc32c/crc32c_prefetch.h
++++ b/input/src/crc32c/crc32c_prefetch.h
+@@ -15,7 +15,9 @@
+ #if defined(_MSC_VER)
+ #include <intrin.h>
+ #else  // !defined(_MSC_VER)
++#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
+ #include <xmmintrin.h>
++#endif
+ #endif  // defined(_MSC_VER)
+ 
+ #endif  // HAVE_MM_PREFETCH

@@ -1,0 +1,29 @@
+{
+  "backend": "deb-obs-build",
+  "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+  "dependency_preflight": {
+    "actual_count": 361,
+    "architecture_mismatch_count": 0,
+    "bootstrap_missing_count": 0,
+    "checksum_mismatch_count": 0,
+    "expected_count": 361,
+    "lock_declared": true,
+    "lock_path": "config/dependency-lock.json",
+    "missing_count": 0,
+    "passed": true,
+    "problems": [],
+    "transition_conflict_count": 0,
+    "unexpected_count": 0
+  },
+  "environment": null,
+  "execution": {
+    "launched": true,
+    "reached_real_build": true,
+    "resolver_unresolved_count": 0,
+    "stage": "completed"
+  },
+  "package_type": "deb",
+  "schema_version": "1.0",
+  "status": "succeeded",
+  "target_arch": "aarch64"
+}

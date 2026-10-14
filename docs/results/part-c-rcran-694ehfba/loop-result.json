@@ -1,0 +1,63 @@
+{
+  "termination_reason": "build_succeeded",
+  "message": "The build-feedback adapter reported success.",
+  "attempts": [
+    {
+      "number": 1,
+      "hypothesis": "The build fails on aarch64 because src/crc32c/crc32c_prefetch.h unconditionally includes <xmmintrin.h>, which is only available on x86 architectures. Guard the include with an architecture check so that the header is only included on x86, allowing the portable implementation to compile on ARM.",
+      "edits": [
+        {
+          "path": "input/src/crc32c/crc32c_prefetch.h",
+          "old_text": "#include <xmmintrin.h>",
+          "new_text": "#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)\n#include <xmmintrin.h>\n#endif"
+        }
+      ],
+      "applied": 1,
+      "build": {
+        "succeeded": true,
+        "stage_reached": "packaging",
+        "diagnostics": [],
+        "duration_seconds": 34.494253291748464
+      },
+      "tokens": {
+        "input_tokens": 8298,
+        "output_tokens": 1435
+      }
+    }
+  ],
+  "usage": {
+    "input_tokens": 24804,
+    "output_tokens": 1846
+  },
+  "malformed_count": 1,
+  "known_usage": {
+    "input_tokens": 24804,
+    "output_tokens": 1846
+  },
+  "current_build": {
+    "succeeded": true,
+    "stage_reached": "packaging",
+    "diagnostics": [],
+    "duration_seconds": 34.494253291748464
+  },
+  "kept_attempts": [
+    1
+  ],
+  "model": "openai.gpt-oss-120b-1:0",
+  "agent_config": {
+    "use_evidence_manager": true,
+    "use_tools": true,
+    "use_build_feedback": true,
+    "use_history": true
+  },
+  "budget": {
+    "max_attempts": 5,
+    "max_builds": 3,
+    "max_tokens": 30000,
+    "max_seconds": 900,
+    "reserve_seconds": 120
+  },
+  "model_calls": 3,
+  "build_calls": 1,
+  "wall_seconds": 43.54164499975741
+}

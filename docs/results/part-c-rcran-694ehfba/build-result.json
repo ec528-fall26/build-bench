@@ -1,0 +1,67 @@
+{
+  "artifact_validation_passed": true,
+  "artifacts": [
+    {
+      "kind": "binary",
+      "path": "artifacts/r-cran-digest-dbgsym_0.6.32-1_arm64.ddeb",
+      "rpm_query_ok": true,
+      "sha256": "f2475cd7ac448d4f584b5a01783d6b2c5dccfe92e5d02ab0cf4298e04edf134a",
+      "size_bytes": 145830
+    },
+    {
+      "kind": "source",
+      "path": "artifacts/r-cran-digest_0.6.32-1.debian.tar.xz",
+      "rpm_query_ok": true,
+      "sha256": "23960b1bb7438a2c707f901f62507dc48b7d397c047eca357c95fef040e3fef5",
+      "size_bytes": 3972
+    },
+    {
+      "kind": "source",
+      "path": "artifacts/r-cran-digest_0.6.32-1.dsc",
+      "rpm_query_ok": true,
+      "sha256": "19ddd4cb77ac39fb6496622165c0af73aae06837a208ba4e5a06225112b04608",
+      "size_bytes": 1032
+    },
+    {
+      "kind": "source",
+      "path": "artifacts/r-cran-digest_0.6.32-1_arm64.buildinfo",
+      "rpm_query_ok": true,
+      "sha256": "85a0957ceda36d190d4b1acaacbe309d2ebdc88eacca44b2c4c3f08f2ec316eb",
+      "size_bytes": 10709
+    },
+    {
+      "kind": "source",
+      "path": "artifacts/r-cran-digest_0.6.32-1_arm64.changes",
+      "rpm_query_ok": true,
+      "sha256": "f77de4acf042088d2300e63f440eb3f38adfdd69aeb90f45f2bca1f8ce3dae53",
+      "size_bytes": 2324
+    },
+    {
+      "kind": "binary",
+      "path": "artifacts/r-cran-digest_0.6.32-1_arm64.deb",
+      "rpm_query_ok": true,
+      "sha256": "cd156ad6e8557de55d7588637ae4e8dc6fbf2049f61ce7d7ce834f2d477bdbed",
+      "size_bytes": 182004
+    },
+    {
+      "kind": "source",
+      "path": "artifacts/r-cran-digest_0.6.32.orig.tar.gz",
+      "rpm_query_ok": true,
+      "sha256": "f319ffc05f017b873ad890026e0d998bc570afe2fe8bf3a23f46e77cc44739b1",
+      "size_bytes": 177411
+    }
+  ],
+  "build_exit_code": 0,
+  "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+  "duration_seconds": 30,
+  "message": "build completed successfully",
+  "patch_applied": false,
+  "schema_version": "1.0",
+  "security": {
+    "mode": "privileged",
+    "safe_for_untrusted_submission": false
+  },
+  "status": "succeeded",
+  "target_arch": "aarch64",
+  "timed_out": false
+}

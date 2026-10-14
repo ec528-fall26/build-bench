@@ -17,6 +17,7 @@ Background and measured results: [`docs/part5-findings.md`](../docs/part5-findin
 | `record.py` | Read a validator result folder into one outcome; append JSONL rows | Done |
 | `tests/` | Unit tests, using real `build-result.json` files from the rcran runs | Done |
 | `run_case.py` | One case end to end: baseline build → `dpkg-source -x` → agent edits → `dpkg-source --auto-commit -b` → `run.sh` → record | Done — verified on the ARM64 host 1 October (see below) |
+| `build_feedback.py` | Part D: the full agent's local build callback — repacks a copy of the worktree, runs `run.sh`, returns a `BuildResult` with Part A applied | Done offline (fake validator); real validator run pending on the ARM64 host |
 | `replays/` | Edit files for the stand-in model: `rcran-known-fix.json` (the verified repair) and `rcran-comment-only.json` (negative control) | Done |
 
 ## What each run records
@@ -71,6 +72,34 @@ diff has been read. Older rows are classified from their `repair.diff`.
 or a replay) is reported in the `unknown` column and never added as zero, so
 totals and medians cover known runs only. Filter by `--agent-version` (or
 `--model`) so different agent versions are never pooled.
+
+## Build feedback for the full agent (Part D)
+
+`LocalBuildFeedback` implements the agent's `BuildFeedback` contract on the local
+bundle. The full agent's loop calls `request_build(worktree)` after each edit:
+
+- The agent's worktree is never changed: `input/` is copied, repacked with
+  `dpkg-source --auto-commit -b`, assembled into a case and built with `run.sh`.
+- A bad candidate is a **failed build, not an error**, so the loop can rank it and
+  revise. Each build's `kind` says why: `succeeded`, `build_failed`, `timed_out`,
+  `no_real_build` (never reached compilation, e.g. a broken `debian/control`) or
+  `repack_failed` (dpkg-source rejected it). The last two rank lowest.
+- Only a validator that writes no `build-result.json` raises (`validator_error`).
+- `excerpt=True` gives Part A only the lines around the first 5 errors and the
+  last 20 lines, our stand-in for the competition's "diagnostic excerpts".
+- Every build gets `build-NN/` with the copy, the case, the validator output and
+  `feedback.json`; `feedback.records` holds the same rows for the run record.
+
+By hand, on the ARM64 host:
+
+```bash
+python3 -m harness.build_feedback --bundle ~/buildbench-local-rcran-v1 --prepare ~/wt
+# edit ~/wt/input/... (or leave it unchanged to reproduce the failure), then:
+python3 -m harness.build_feedback --bundle ~/buildbench-local-rcran-v1 --worktree ~/wt [--excerpt]
+```
+
+`harness/part_c_build.py` (Part C's checkpoint adapter for Docker Desktop on
+macOS) is superseded by this module.
 
 ## Repaired means
 

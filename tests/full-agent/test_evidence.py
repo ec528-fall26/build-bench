@@ -40,6 +40,19 @@ class Evidence(unittest.TestCase):
             "resolved": ["input/src/crc32c/crc32c_prefetch.h"],
             "source_line": "#include <xmmintrin.h>", "log_offset": len(prefix.encode())})
 
+    def test_validator_elapsed_time_prefix(self):
+        # The local validator's build.log starts every line with "[   Ns] ".
+        self.source("src/crc32c/crc32c_prefetch.h")
+        prefix = "[   80s]    dh_auto_install\n"
+        result = self.parse(prefix + "[   93s] crc32c/crc32c_prefetch.h:18:10: fatal error: "
+                            "xmmintrin.h: No such file or directory\n"
+                            "[   93s]    18 | #include <xmmintrin.h>\n")
+        self.assertEqual((result[0].log_path, result[0].stage, result[0].resolved,
+                          result[0].source_line, result[0].log_offset),
+                         ("crc32c/crc32c_prefetch.h", "install",
+                          ["input/src/crc32c/crc32c_prefetch.h"],
+                          "#include <xmmintrin.h>", len(prefix)))
+
     def test_duplicate_across_files_keeps_first(self):
         result = self.parse("a.c:1: error: bad type\n 1 | first\nb.c:2: error: bad type\n 2 | second\n"
                             "make[2]: *** [all] Error 1\nmake[2]: *** [all] Error 1\n")

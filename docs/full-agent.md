@@ -344,6 +344,12 @@ attempts rather than resending everything.
 
 **Owner:** Joonseo Moon (suggested: the harness owner)
 
+**Status (14 October).** Local callback done and tested offline:
+`harness/build_feedback.py` (`LocalBuildFeedback`), with the loop revising after a
+failed build in `tests/full-agent/test_local_build_feedback.py`. Still to do: the
+"Done when" runs below on the real validator, and wiring into a harness run of
+the full agent once `main.py` calls the loop.
+
 **What it does.** Implements `BuildFeedback.request_build`.
 
 - **Locally:** the harness — never the agent ZIP — hands the agent a callback that copies the current

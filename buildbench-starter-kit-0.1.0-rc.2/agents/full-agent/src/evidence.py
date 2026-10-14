@@ -11,6 +11,8 @@ import re
 from .contracts import Diagnostic
 
 _ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+# The local validator (OBS build) starts every log line with elapsed time: "[   12s] ".
+_ELAPSED = re.compile(r"^\[\s*\d+s\] ?")
 _COMPILER = re.compile(
     r"^(?P<path>.+?):(?P<line>\d+)(?::\d+)?:\s*(?P<message>(?:fatal )?error:.*|Failure)$"
 )
@@ -79,6 +81,7 @@ def diagnose(log_path: Path, worktree: Path) -> list[Diagnostic]:
                 if pending is None and not _RELEVANT.search(raw):
                     continue
                 text = _ANSI.sub("", raw.decode("utf-8", errors="replace").rstrip("\r\n"))
+                text = _ELAPSED.sub("", text)
                 marker = _STAGE.search(text)
                 if marker:
                     stage = marker.group(1)

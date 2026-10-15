@@ -13,7 +13,14 @@ model sees each turn, all worded by Part E (prompts.py):
              the results of tool requests made since the latest edit
              what is left of the budget
 
-Replies are parsed by Part E (reply.py). Standard library only.
+Replies are parsed by Part E (reply.py). A reply that is only reasoning, with
+no answer after it, gets one follow-up in the same turn: the model's reasoning
+is sent back and only the JSON object is asked for. gpt-oss-120b did this on 6
+of 11 turns in the first two live rcran runs (docs/part5-findings.md), always
+right after deciding what to do; with temperature 0 and a near-identical
+request, asking again from scratch repeated it.
+
+Standard library only.
 """
 
 from __future__ import annotations
@@ -28,7 +35,7 @@ from .contracts import AgentConfig, Budget, BuildResult, Diagnostic, ModelTurn
 from .edit_applier import LOGGER as EDIT_LOGGER
 from .loop import LoopRequest
 from .model_client import ModelCallFailed, request_completion
-from .reply import parse_turn
+from .reply import _THINKING, parse_turn
 from .types import CaseContext
 
 
@@ -37,6 +44,8 @@ Completion = tuple[str, "str | None", dict]
 Complete = Callable[[list[dict]], Completion]
 
 MAX_TOOL_RESULTS = 8  # most recent results shown; older ones are counted
+FOLLOW_UP = ("You ended your reply after your reasoning, without the JSON object. "
+             "Reply now with only the JSON object for the action you decided on.")
 
 
 def client_completion(client) -> Complete:
@@ -90,6 +99,19 @@ def _first_error(build: BuildResult | None) -> tuple | None:
     return first.message, first.log_path, first.line
 
 
+def _reasoning_only(text: str) -> bool:
+    return bool(text.strip()) and not _THINKING.sub("", text).strip()
+
+
+def _add(first: dict, second: dict) -> dict:
+    """Token counts of two calls; unknown if either is unknown, never 0."""
+    total = {}
+    for name in ("input_tokens", "output_tokens"):
+        a, b = first.get(name), second.get(name)
+        total[name] = a + b if type(a) is int and type(b) is int else None
+    return total
+
+
 def _body(text: str) -> str:
     """A Part E message without its closing "decide what to do next" line."""
     return text.rstrip("\n").removesuffix(prompts._NEXT).rstrip("\n")
@@ -112,7 +134,7 @@ class ModelAdapter:
         self.clock = clock
         self.started = clock()
         self.turns: list[dict] = []    # one summary per model call, for the run record
-        self.replies: list[str] = []   # raw reply texts, for the harness only
+        self.replies: list[dict] = []  # raw replies {turn, follow_up, reply}, for the harness
         self._last_turn: ModelTurn | None = None
         self._seen_attempt = 0
         self._builds = 0
@@ -130,17 +152,27 @@ class ModelAdapter:
         started = self.clock()
         text, finish, usage = self.complete(messages)
         turn = parse_turn(text, finish_reason=finish, allow_tools=self.config.use_tools)
+        follow_up = turn.action == "malformed" and finish != "length" and _reasoning_only(text)
+        number = len(self.turns) + 1
+        if follow_up:
+            self.replies.append({"turn": number, "follow_up": False, "reply": text})
+            text, finish, more = self.complete(messages + [
+                {"role": "assistant", "content": text},
+                {"role": "user", "content": FOLLOW_UP}])
+            usage = _add(usage, more)
+            turn = parse_turn(text, finish_reason=finish, allow_tools=self.config.use_tools)
         self._last_turn = turn
         counts = [usage.get("input_tokens"), usage.get("output_tokens")]
         if self._tokens is not None and all(type(c) is int for c in counts):
             self._tokens += sum(counts)
         else:
             self._tokens = None
-        self.replies.append(text)
+        self.replies.append({"turn": number, "follow_up": follow_up, "reply": text})
         self.turns.append({
-            "turn": len(self.turns) + 1, "action": turn.action,
+            "turn": number, "action": turn.action,
             "tools": [r.tool for r in turn.tool_requests], "edits": len(turn.edits),
             "reason": turn.reason, "finish_reason": finish, "usage": dict(usage),
+            "follow_up": follow_up,
             "seconds": round(self.clock() - started, 1),
         })
         return turn, usage

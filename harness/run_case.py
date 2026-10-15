@@ -279,8 +279,8 @@ def run_full_agent(agent, context, log: Path, model, manifest: dict, bundle: Pat
     finally:
         row["builds"] = feedback.records
     with (run_dir / "replies.jsonl").open("w", encoding="utf-8") as out:
-        for number, text in enumerate(adapter.replies, start=1):
-            out.write(json.dumps({"turn": number, "reply": text}) + "\n")
+        for entry in adapter.replies:
+            out.write(json.dumps(entry) + "\n")
     record = agent.result_record(result, adapter, config)
     row.update(agent_termination=record["termination_reason"],
                agent_message=record["termination_message"], config=record["config"],

@@ -150,6 +150,32 @@ class Adapter(unittest.TestCase):
         self.assertIn("=== Attempt 1 ===", second)
         self.assertIn("real file: input/src/crc32c/crc32c_prefetch.h", second)
 
+    def test_reasoning_only_reply_gets_a_follow_up_in_the_same_turn(self):
+        script = Script("<reasoning>The config header decides this. Let's view it.</reasoning>",
+                        reply(action="stop", reason="done"))
+        result, adapter = self.run_with(script)
+        self.assertEqual((result.termination_reason, result.malformed_count), ("model_stop", 0))
+        follow = script.sent[1]
+        self.assertEqual([m["role"] for m in follow], ["system", "user", "assistant", "user"])
+        self.assertIn("Let's view it", follow[2]["content"])
+        self.assertIn("only the JSON object", follow[3]["content"])
+        self.assertEqual(adapter.turns[0]["follow_up"], True)
+        self.assertEqual(adapter.turns[0]["usage"], {"input_tokens": 200, "output_tokens": 20})
+        self.assertEqual(len(adapter.replies), 2)
+
+    def test_follow_up_happens_once_per_turn(self):
+        script = Script("<reasoning>a</reasoning>", "<reasoning>b</reasoning>",
+                        reply(action="stop", reason="done"))
+        result, adapter = self.run_with(script)
+        self.assertEqual(result.malformed_count, 1)
+        self.assertEqual([t["follow_up"] for t in adapter.turns], [True, False])
+
+    def test_prose_without_json_is_not_followed_up(self):
+        script = Script("I am not sure what to do.", reply(action="stop", reason="done"))
+        result, adapter = self.run_with(script)
+        self.assertEqual(result.malformed_count, 1)
+        self.assertFalse(adapter.turns[0]["follow_up"])
+
     def test_rejected_edit_reason_is_passed_on(self):
         script = Script(edit("text that is not in the file\n", "x\n"),
                         reply(action="stop", reason="done"))

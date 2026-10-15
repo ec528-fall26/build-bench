@@ -1,0 +1,9 @@
+{
+  "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+  "rationale": "Scripted full-agent run, NOT a model result: a tool request, a deliberately wrong first edit, then the verified fix. Exercises the revise path (Part C) with real builds (Part D) at no model cost.",
+  "replies": [
+    "Scripted turn 1, not a model reply. {\"action\": \"tool\", \"requests\": [{\"tool\": \"read_file\", \"args\": {\"path\": \"input/src/crc32c/crc32c_config.h\", \"start_line\": 1, \"end_line\": 40}}], \"why\": \"scripted: check that tool results reach the next turn\"}",
+    "Scripted turn 2: a deliberately wrong first attempt (comment only). {\"action\": \"edit\", \"hypothesis\": \"scripted wrong attempt: a comment changes nothing\", \"evidence\": [\"scripted\"], \"edits\": [{\"path\": \"input/src/crc32c/crc32c_config.h\", \"old_text\": \"#define HAVE_MM_PREFETCH 1\\n\", \"new_text\": \"#define HAVE_MM_PREFETCH 1  /* scripted wrong first attempt */\\n\"}]}",
+    "Scripted turn 3: the known fix, after seeing the failed build. {\"action\": \"edit\", \"hypothesis\": \"crc32c_config.h enables the x86-only prefetch intrinsic on every architecture\", \"evidence\": [\"input/src/crc32c/crc32c_prefetch.h:18 fatal error: xmmintrin.h\"], \"edits\": [{\"path\": \"input/src/crc32c/crc32c_config.h\", \"old_text\": \"#define HAVE_MM_PREFETCH 1  /* scripted wrong first attempt */\\n\", \"new_text\": \"#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)\\n#define HAVE_MM_PREFETCH 1\\n#else\\n#define HAVE_MM_PREFETCH 0\\n#endif\\n\"}]}"
+  ]
+}

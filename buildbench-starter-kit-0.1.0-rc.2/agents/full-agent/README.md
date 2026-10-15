@@ -5,18 +5,23 @@ The project's full agent: it reads the failure, investigates the package with
 read-only tools, proposes a repair with a stated hypothesis, tests it when build
 feedback is available, and revises. Plan: `docs/full-agent.md`.
 
-## Status: scaffold
-Copied from the frozen one-shot baseline (`agents/one-shot`, tag `one-shot-v1`).
-`main.py` still runs the baseline's single attempt until Part C's loop replaces it.
+## Status: wired, not yet run live
+All parts are connected (14 October): `main.py` diagnoses the failure log (Part A),
+runs Part C's loop with Part E's prompts and parser, and writes
+`agent-result.json` with every attempt, model turn and token count. Submitted,
+it has no build feedback, so edits are investigated and revised but submitted
+untested. Locally, `harness/run_case.py --agent full-agent` runs the same loop
+with real builds (Part D). Tested offline; no live-model run yet.
 
 | File | Part | Status |
 | --- | --- | --- |
 | `contracts.py` | shared | Agreed 7 October. Change only by team agreement |
 | `evidence.py`, `case.py` | A | Streaming diagnostics, source-path resolution, and read-only case metadata loading. See `docs/part-a-evidence.md` |
-| `tools.py`, `path_checks.py`, `diff_tracker.py`, `tool_timeout.py` | B | Six read-only tools implemented; loop integration and per-case call budget pending |
+| `tools.py`, `path_checks.py`, `diff_tracker.py`, `tool_timeout.py` | B | Six read-only tools; called by the loop, which caps tool calls per case (`max_tool_calls`) |
 | `build_feedback.py` | D | `NoBuildFeedback`: returns `None` until the organizers publish the protocol. The local build callback lives in the harness, never here |
-| `main.py` | C | Baseline behaviour for now |
-| `prompts.py`, `reply.py`, `config.py` | E (Owen Zhang) | Instructions and per-turn messages, reply text → `ModelTurn`, and the ablation switches. Unit-tested; not yet called by `main.py` or run against the model. See `docs/part-e-prompts-evaluation.md` |
+| `loop.py`, `candidates.py` | C (Juliette Jacques) | The repair loop and candidate retention. See `docs/part-c-loop.md` |
+| `model_adapter.py`, `main.py` | C (wiring) | The loop's `next_turn`: rebuilds each request from the loop's snapshot with Part E's text, one model call per turn. `main.py` is the entry point; `run_agent()` is shared with the harness |
+| `prompts.py`, `reply.py`, `config.py` | E (Owen Zhang) | Instructions and per-turn messages, reply text → `ModelTurn`, and the ablation switches. Used every turn through `model_adapter.py`. See `docs/part-e-prompts-evaluation.md` |
 | `model_client.py`, `log_tail.py`, `edit_applier.py`, `types.py` | baseline Parts 2–4 | Copied, not shared, so the baseline stays frozen |
 
 Tests: `tests/full-agent/` at the repository root.

@@ -155,6 +155,35 @@ which calls Part 2's `extract_tail` and Part 4's `apply_edits`. The model is one
 | `--replay FILE` | `ReplayModel`: returns the edits stored in `replays/*.json` | Checking the pipeline with answers known to be right (`rcran-known-fix.json`) or wrong (`rcran-comment-only.json`) |
 | `--live` | Part 3's `ModelClient`: one call to `openai.gpt-oss-120b-1:0` through Bedrock's OpenAI-compatible endpoint | Measuring the agent |
 
+### The full agent (`--agent full-agent`)
+
+`run_case` detects the full agent (its `main.py` has `run_agent`) and runs its
+repair loop instead of one attempt. Every edit the loop tries is built by
+`LocalBuildFeedback` in `<run-dir>/builds/build-NN/`; the verdict still comes
+from one more clean build of the final worktree, as on the platform. The ablation
+switches are read from `BB_AGENT_USE_*` (`agents/full-agent/src/config.py`), and
+`--excerpt` makes the loop's builds return diagnostic excerpts.
+
+Extra fields in its rows: `agent_termination` (why the loop stopped), `attempts`
+(hypothesis, files, applied, build summary, tokens), `builds` (Part D's records),
+`turns` (one per model call: action, tools, usage, malformed reason),
+`kept_attempts`, `malformed_count`, `config`, `excerpt`. The raw replies go to
+`<run-dir>/replies.jsonl`.
+
+For the full agent a replay file holds `replies`, the model's reply texts in
+order. `replays/rcran-full-revise.json` is **scripted, not a model result**: a
+tool request, a deliberately wrong first edit, then the verified fix. It
+exercises the revise path with real builds at no model cost.
+
+```bash
+python3 -m harness.run_case --bundle ~/buildbench-local-rcran-v1 --agent full-agent \
+    --replay harness/replays/rcran-full-revise.json --run-id full-revise-1 \
+    --log ~/buildbench-local-rcran-v1/harness-runs/fix-auto-1/baseline/build.log
+BB_MODEL_API_KEY=... python3 -m harness.run_case --bundle ~/buildbench-local-rcran-v1 \
+    --agent full-agent --live --run-id full-1 \
+    --log ~/buildbench-local-rcran-v1/harness-runs/fix-auto-1/baseline/build.log
+```
+
 ## Live runs
 
 `--live` needs a Bedrock API key in the environment (enable `gpt-oss-120b`

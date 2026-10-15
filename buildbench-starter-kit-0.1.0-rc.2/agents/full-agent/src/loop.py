@@ -31,6 +31,9 @@ class LoopRequest:
     history: list[Attempt] = field(default_factory=list)
     current_build: BuildResult | None = None
     kept_attempts: list[int] = field(default_factory=list)
+    # The most recent attempt, given even with history off: what the last edit
+    # did is current feedback, not history.
+    latest_attempt: Attempt | None = None
 
 @dataclass
 class LoopResult:
@@ -196,6 +199,7 @@ def run_loop(
             history=deepcopy(attempts) if config.use_history else [],
             current_build=deepcopy(best_build),
             kept_attempts=list(kept_attempts) if config.use_history else [],
+            latest_attempt=deepcopy(attempts[-1]) if attempts else None,
         )
 
 

@@ -304,7 +304,14 @@ turns a reply into a `ModelTurn` changes; Parts B and C work with `ModelTurn` an
 
 ## Part C — Loop and repair history
 
-**Owner:** _______
+**Owner:** Juliette Jacques
+
+**Status (14 October): wired.** `src/loop.py` is called by `src/main.py` through
+`src/model_adapter.py`, which builds every request from Part E's prompts and
+parses every reply with Part E's `reply.py`. The harness runs the full agent with
+`run_case --agent full-agent`, building each attempt with Part D. Offline, a
+scripted run revises after a failed build and is repaired
+(`tests/full-agent/test_wiring.py`). Still to do: the first live runs on rcran.
 
 **What it does.** The state machine above. Each turn sends the model the evidence,
 any tool results, and — with `use_history` on — every earlier `Attempt`. Applies

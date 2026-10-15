@@ -8,6 +8,12 @@ extract_tail and Part 4's apply_edits. The model is either Part 3's real client
 (--live) or ReplayModel (--replay), which returns known edits from a JSON file
 so the pipeline itself can be checked with answers known to be right or wrong.
 
+With --agent full-agent the agent's run_agent drives the repair loop instead,
+and every edit it tries is built by Part D's LocalBuildFeedback
+(harness/build_feedback.py) under <run-dir>/builds/. A replay file for the full
+agent holds the model's reply texts, one per turn. The final verdict always
+comes from one more clean build of the final worktree, as on the platform.
+
 Every attempt appends one row to <runs-dir>/runs.jsonl, including runs that
 stop early: failures stay in the evaluation denominator.
 
@@ -16,6 +22,8 @@ Usage (on the ARM64 host, from the repository root):
         --replay harness/replays/rcran-known-fix.json --run-id fix-auto-1
     BB_MODEL_API_KEY=... python3 -m harness.run_case --bundle ~/buildbench-local-rcran-v1 \\
         --live --run-id live-1
+    BB_MODEL_API_KEY=... python3 -m harness.run_case --bundle ~/buildbench-local-rcran-v1 \\
+        --agent full-agent --live --run-id full-1
 """
 
 from __future__ import annotations
@@ -42,7 +50,8 @@ from harness.record import append_jsonl, load_outcome, outcome_row
 
 
 REPO = Path(__file__).resolve().parents[1]
-AGENT_DIR = REPO / "buildbench-starter-kit-0.1.0-rc.2/agents/one-shot"
+AGENTS = REPO / "buildbench-starter-kit-0.1.0-rc.2/agents"
+AGENT_DIR = AGENTS / "one-shot"
 DPKG_TIMEOUT = 600
 BUILD_MARGIN = 600  # beyond the manifest's own timeout_seconds
 
@@ -77,19 +86,40 @@ def sh(cmd: list, cwd: Path, log: Path, timeout: float) -> None:
 
 
 def load_agent(agent_dir: Path) -> SimpleNamespace:
-    """Import the agent's src package (Parts 1-4) from the starter kit."""
+    """Import the agent's src package from the starter kit.
+
+    The one-shot agent exposes run_repair; the full agent exposes run_agent
+    (full=True), plus Part A and the contracts that Part D needs. Both are
+    packages named `src`, so one process can hold only one of them.
+    """
+    loaded = sys.modules.get("src")
+    if loaded is not None and Path(loaded.__file__).resolve().parent != (agent_dir / "src").resolve():
+        raise RuntimeError(f"another agent's src package is already imported: {loaded.__file__}")
     if str(agent_dir) not in sys.path:
         sys.path.insert(0, str(agent_dir))
     from src import edit_applier
+    from src import main as agent_main
     from src.log_tail import extract_tail
-    from src.main import run_repair
     from src.model_client import ModelClient
     from src.types import CaseContext, Edit, EditPlan
 
-    return SimpleNamespace(
-        run_repair=run_repair, extract_tail=extract_tail, edit_applier=edit_applier,
-        CaseContext=CaseContext, Edit=Edit, EditPlan=EditPlan, ModelClient=ModelClient,
+    agent = SimpleNamespace(
+        run_repair=getattr(agent_main, "run_repair", None), extract_tail=extract_tail,
+        edit_applier=edit_applier, CaseContext=CaseContext, Edit=Edit, EditPlan=EditPlan,
+        ModelClient=ModelClient, full=hasattr(agent_main, "run_agent"),
     )
+    if agent.full:
+        from src.config import config_from_env
+        from src.contracts import BuildResult, Diagnostic
+        from src.evidence import diagnose
+        from src.model_adapter import client_completion
+
+        agent.__dict__.update(
+            run_agent=agent_main.run_agent, result_record=agent_main.result_record,
+            config_from_env=config_from_env, client_completion=client_completion,
+            diagnose=diagnose, BuildResult=BuildResult, Diagnostic=Diagnostic,
+        )
+    return agent
 
 
 def agent_version(agent_dir: Path) -> str:
@@ -152,15 +182,25 @@ def write_diff(before: Path, after: Path, out: Path) -> bool:
 
 
 class ReplayModel:
-    """Stand-in for Part 3: proposes the edits stored in a JSON file."""
+    """Stand-in for Part 3: proposes the edits stored in a JSON file.
+
+    For the full agent the file holds "replies" instead: the reply texts the
+    model would send, one per turn, returned in order by complete().
+    """
 
     def __init__(self, path: Path, agent: SimpleNamespace):
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         self.name = f"replay:{Path(path).name}"
         self.case_id = data["case_id"]
         self.rationale = data.get("rationale", "")
-        self.edits = data["edits"]
+        self.edits = data.get("edits", [])
+        self.replies = list(data.get("replies", []))
         self.agent = agent
+
+    def complete(self, messages):
+        if not self.replies:
+            raise RuntimeError("replay file has no replies left")
+        return self.replies.pop(0), "stop", {"input_tokens": None, "output_tokens": None}
 
     def propose(self, context):
         no_usage = {"input_tokens": None, "output_tokens": None}
@@ -216,9 +256,50 @@ def assemble_case(case_dir: Path, work_dir: Path, dest: Path) -> None:
         shutil.copy2(p, dest / "input" / p.name)
 
 
+def run_full_agent(agent, context, log: Path, model, manifest: dict, bundle: Path,
+                   run_dir: Path, row: dict, *, excerpt: bool, runner: Runner):
+    """The full agent's loop with local build feedback; returns (plan, applied)."""
+    from harness.build_feedback import LocalBuildFeedback  # imports this module
+
+    if isinstance(model, ReplayModel):
+        if context.case_id != model.case_id:
+            raise ValueError(f"replay file is for {model.case_id}")
+        complete = model.complete
+    else:
+        complete = agent.client_completion(model)
+    config = agent.config_from_env()
+    feedback = LocalBuildFeedback(bundle, run_dir / "builds", agent, excerpt=excerpt,
+                                  runner=runner)
+    adapter = None
+    try:
+        result, adapter = agent.run_agent(
+            context, log, complete, config=config, build_feedback=feedback,
+            patch_policy=manifest["patch_policy"],
+            package=Path(manifest["build"]["recipe"]).name.split("_")[0])
+    finally:
+        row["builds"] = feedback.records
+    with (run_dir / "replies.jsonl").open("w", encoding="utf-8") as out:
+        for number, text in enumerate(adapter.replies, start=1):
+            out.write(json.dumps({"turn": number, "reply": text}) + "\n")
+    record = agent.result_record(result, adapter, config)
+    row.update(agent_termination=record["termination_reason"],
+               agent_message=record["termination_message"], config=record["config"],
+               attempts=record["attempts"], turns=record["turns"],
+               kept_attempts=record["kept_attempts"], malformed_count=record["malformed_count"],
+               excerpt=excerpt)
+    edits = [edit for attempt in result.attempts for edit in attempt.edits]
+    hypothesis = next((a.hypothesis for a in reversed(result.attempts) if a.hypothesis), "")
+    plan = SimpleNamespace(edits=edits, rationale=hypothesis or result.message,
+                           usage=result.usage)
+    # Edits still in the worktree: those of the attempts the loop kept.
+    applied = sum(a.applied for a in result.attempts if a.number in result.kept_attempts)
+    return plan, applied
+
+
 def run_case(
     bundle: Path, run_id: str, runs_dir: Path, replay: Path | None = None, *, model = None,
     log: Path | None = None, agent_dir: Path = AGENT_DIR, runner: Runner = sh,
+    excerpt: bool = False,
 ) -> dict:
     if (replay is None) == (model is None):
         raise ValueError("Provide either a replay file or a model client.")
@@ -235,7 +316,8 @@ def run_case(
         model = ReplayModel(replay, agent)
     started, clock = datetime.now(timezone.utc), time.monotonic()
     row = {
-        "run_id": run_id, "case_id": manifest["case_id"], "mode": "one-shot",
+        "run_id": run_id, "case_id": manifest["case_id"],
+        "mode": "full" if agent.full else "one-shot",
         "agent_version": agent_version(agent_dir), "diff_path": None, "served_model": None,
         **scan_diff(""),
         "model": model.name, "started_at": started.isoformat(timespec="seconds"),
@@ -287,10 +369,15 @@ def run_case(
         )
         with capture_warnings(agent.edit_applier.LOGGER) as warnings:
             try:
-                plan, applied = agent.run_repair(
-                    context, Path(log), agent.extract_tail, model,
-                    patch_policy=manifest["patch_policy"],
-                )
+                if agent.full:
+                    plan, applied = run_full_agent(
+                        agent, context, Path(log), model, manifest, bundle, run_dir, row,
+                        excerpt=excerpt, runner=runner)
+                else:
+                    plan, applied = agent.run_repair(
+                        context, Path(log), agent.extract_tail, model,
+                        patch_policy=manifest["patch_policy"],
+                    )
             except Exception as error:  # the agent's failure is a result, not a crash
                 raise _Stop("agent_error", f"{type(error).__name__}: {error}") from None
             finally:
@@ -341,23 +428,33 @@ def main(argv: list) -> int:
     model_source.add_argument("--live", action="store_true",
                               help="ask the real model; needs BB_MODEL_API_KEY "
                                    "(see harness/README.md)")
+    parser.add_argument("--agent", choices=("one-shot", "full-agent"), default="one-shot",
+                        help="which agent under the starter kit's agents/ to run")
+    parser.add_argument("--excerpt", action="store_true",
+                        help="full agent only: its builds return diagnostic excerpts")
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--runs-dir", type=Path, help="default: <bundle>/harness-runs")
     parser.add_argument("--log", type=Path,
                         help="failure log for the agent; default: run a baseline build first")
     args = parser.parse_args(argv)
 
+    agent_dir = AGENTS / args.agent
     model = None
     if args.live:
-        model = load_agent(AGENT_DIR).ModelClient.from_env()
+        model = load_agent(agent_dir).ModelClient.from_env()
         if not model.api_key:
             parser.error("--live needs BB_MODEL_API_KEY set to a Bedrock API key")
 
     row = run_case(args.bundle, args.run_id, args.runs_dir or args.bundle / "harness-runs",
-                   replay=args.replay, model=model, log=args.log)
+                   replay=args.replay, model=model, log=args.log, agent_dir=agent_dir,
+                   excerpt=args.excerpt)
     verdict = "REPAIRED" if row["repaired"] else "not repaired"
     print(f"{row['run_id']}: {verdict} ({row['termination_reason']}), "
           f"{row['edits_applied']}/{row['edits_proposed']} edits applied, {row['wall_seconds']}s")
+    if row.get("agent_termination"):
+        builds = row.get("builds") or []
+        print(f"  agent stopped: {row['agent_termination']}; {len(row.get('attempts', []))} "
+              f"attempts, {len(builds)} loop builds, {len(row.get('turns', []))} model turns")
     if row["error"]:
         print(f"  {row['error']}")
     return 1 if row["termination_reason"] in INFRA_FAILURES else 0

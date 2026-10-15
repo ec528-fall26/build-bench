@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "buildbench-starter-kit-0.1.0-rc.2/agents/full-age
 sys.path.insert(0, str(ROOT))
 
 from harness.build_feedback import LocalBuildFeedback, load_full_agent  # noqa: E402
-from harness.tests.test_build_feedback import DSC, FIXTURES, FakeValidator  # noqa: E402
+from harness.tests.test_build_feedback import DSC, FIXTURES, ORIG, FakeValidator  # noqa: E402
 from src.contracts import BuildFeedback, ModelTurn  # noqa: E402
 from src.loop import run_loop  # noqa: E402
 from src.types import CaseContext, Edit  # noqa: E402
@@ -48,6 +48,7 @@ class LocalBuildWithRealParts(unittest.TestCase):
         source.mkdir(parents=True)
         shutil.copy(FIXTURES / "crc32c_config.h", source)
         (source / "crc32c_prefetch.h").write_text("#include <xmmintrin.h>\n")
+        (self.worktree / ORIG).write_text("upstream")
         self.feedback = LocalBuildFeedback(self.bundle, root / "builds", load_full_agent(),
                                            runner=FakeValidator(log=LOG))
 

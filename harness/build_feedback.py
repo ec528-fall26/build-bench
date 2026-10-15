@@ -43,7 +43,7 @@ from types import SimpleNamespace
 
 from harness.record import load_outcome, outcome_row
 from harness.run_case import (
-    BUILD_MARGIN, DPKG_TIMEOUT, REPO, CommandFailed, Runner, assemble_case, sh,
+    BUILD_MARGIN, DPKG_TIMEOUT, REPO, CommandFailed, Runner, _link_or_copy, assemble_case, sh,
 )
 
 
@@ -128,6 +128,10 @@ class LocalBuildFeedback:
         work = build_dir / "work"
         work.mkdir()
         shutil.copytree(worktree / "input", work / "input", symlinks=True)
+        # Format 3.0 (quilt) repacks need the upstream tarball beside input/.
+        for orig in worktree.glob("*.orig*.tar.*"):
+            if orig.is_file() and not orig.is_symlink():
+                _link_or_copy(orig, work / orig.name)
         try:
             self.runner(["dpkg-source", "--auto-commit", "-b", "."],
                         work / "input", harness_log, DPKG_TIMEOUT)

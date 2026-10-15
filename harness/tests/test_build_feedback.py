@@ -26,6 +26,7 @@ from harness.run_case import CommandFailed
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 DSC = "r-cran-digest_0.6.32-1.dsc"
+ORIG = "r-cran-digest_0.6.32.orig.tar.gz"
 ERROR = "crc32c/crc32c_prefetch.h:18:10: fatal error: xmmintrin.h: No such file or directory"
 
 
@@ -78,7 +79,12 @@ class FakeValidator:
         self.calls.append((cmd, Path(cwd)))
         if cmd[:2] == ["dpkg-source", "-x"]:
             (Path(cwd) / cmd[3] / "src").mkdir(parents=True)
+            (Path(cwd) / ORIG).write_text("upstream")
         elif cmd[:2] == ["dpkg-source", "--auto-commit"]:
+            if not (Path(cwd).parent / ORIG).is_file():
+                # Real dpkg-source: format 3.0 (quilt) needs the upstream tarball.
+                Path(log).write_text("dpkg-source: error: no upstream tarball found\n")
+                raise CommandFailed("dpkg-source exited 25")
             if self.repack_fails:
                 Path(log).write_text("dpkg-source: error: patch debian/patches/x is malformed\n")
                 raise CommandFailed("dpkg-source exited 25")
@@ -124,6 +130,7 @@ class LocalBuildFeedbackTests(unittest.TestCase):
         source = self.worktree / "input/src/crc32c"
         source.mkdir(parents=True)
         shutil.copy(FIXTURES / "crc32c_config.h", source)
+        (self.worktree / ORIG).write_text("upstream")  # left there by dpkg-source -x
         self.builds = root / "builds"
 
     def feedback(self, validator, **kwargs):

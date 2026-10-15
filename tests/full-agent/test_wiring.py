@@ -214,6 +214,18 @@ class Adapter(unittest.TestCase):
         self.assertNotIn(f'"path": "{CONFIG}"', after)   # edited file: dropped
         self.assertNotIn("Request 2:", after)              # text search: dropped
 
+    def test_long_investigation_is_nudged_toward_an_edit(self):
+        look = lambda n: reply(action="tool", requests=[{"tool": "list_dir",
+                                                         "args": {"path": f"input/{n}"}}])
+        script = Script(look(1), look(2), look(3), look(4),
+                        edit("#define HAVE_MM_PREFETCH 1\n", "#define HAVE_MM_PREFETCH 0\n"),
+                        reply(action="stop", reason="done"))
+        self.run_with(script)
+        nudged = ["turns investigating since your last edit" in script.user(n) for n in range(6)]
+        # After the 4th tool turn, and not again once an edit was made.
+        self.assertEqual(nudged, [False, False, False, False, True, False])
+        self.assertIn("You have spent 4 turns investigating", script.user(4))
+
     def test_rejected_edit_reason_is_passed_on(self):
         script = Script(edit("text that is not in the file\n", "x\n"),
                         reply(action="stop", reason="done"))

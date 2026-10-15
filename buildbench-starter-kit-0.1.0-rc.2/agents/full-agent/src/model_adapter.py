@@ -47,6 +47,11 @@ Completion = tuple[str, "str | None", dict]
 Complete = Callable[[list[dict]], Completion]
 
 MAX_TOOL_RESULTS = 8  # most recent results shown; older ones are counted
+NUDGE_AFTER = 4  # tool turns in a row without an edit before the model is asked to act
+NUDGE = ("You have spent {n} turns investigating since your last edit. If you have a "
+         "plausible fix, propose it now rather than investigating further: each edit's "
+         "result is reported back to you. Investigate further only for something specific "
+         "that you still need.")
 FOLLOW_UP = ("Your reply ended without the JSON object. "
              "Reply now with only the JSON object for the action you decided on.")
 
@@ -161,6 +166,7 @@ class ModelAdapter:
         self._previous_error = None
         self._attempt_note = ""
         self._tokens: int | None = 0
+        self._investigating = 0  # tool turns since the last edit
         self._rejections = _Rejections()
         EDIT_LOGGER.addHandler(self._rejections)
 
@@ -182,6 +188,10 @@ class ModelAdapter:
             usage = _add(usage, more)
             turn = parse_turn(text, finish_reason=finish, allow_tools=self.config.use_tools)
         self._last_turn = turn
+        if turn.action == "tool":
+            self._investigating += 1
+        elif turn.action == "edit":
+            self._investigating = 0
         counts = [usage.get("input_tokens"), usage.get("output_tokens")]
         if self._tokens is not None and all(type(c) is int for c in counts):
             self._tokens += sum(counts)
@@ -225,6 +235,10 @@ class ModelAdapter:
             note = " ".join(notes)
             parts.append("=== Results of your tool requests ===\n"
                          + _body(prompts.tool_results_message(shown, note=note)))
+        if self._investigating >= NUDGE_AFTER:
+            # On ectrans the model read for 11 and 17 turns before (or instead of)
+            # an edit, while one build taught it more than the reading.
+            parts.append(NUDGE.format(n=self._investigating))
         parts.append(prompts.budget_note(
             self.budget, attempts_used=latest.number if latest else 0,
             builds_used=self._builds, tokens_used=self._tokens,

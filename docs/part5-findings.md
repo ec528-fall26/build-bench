@@ -485,6 +485,47 @@ Not yet tested: excerpt mode changing what the model sees (rcran is fixed on the
 first edit, so no excerpt reached the model), and a live revise after a real
 failed attempt. Both need cases that take more than one attempt.
 
+## 9d. The 10-case development bundle: first runs (15 October)
+
+The organizers published local environments for 10 public cases
+(`development-v1`, 5 per direction, checksum verified). `harness/case_views.py`
+gives each case an rcran-style folder, so the harness, Part D and Demo 3 work
+unchanged. The five `x86_64 -> aarch64` cases (aarch64 targets, native on the
+Graviton host) were run once with the frozen baseline and once or more with the
+full agent. The five aarch64 -> x86_64 cases need QEMU and take 20-80 min per
+build; not run yet.
+
+| Case | Cause (first error) | Baseline | Full agent (best run) | Full agent ended by |
+| --- | --- | --- | --- | --- |
+| ectrans | dependency fiat's CMake target points at a missing include directory on arm64 | no: disabled OpenMP for `aarch64` (Debian says `arm64`: the edit never applied) | no: 1 tested attempt, which moved the error from `fiat` to `parkind_dp` | token limit (91k) |
+| libmceliece | `/bin/ld: BFD ... assertion fail elfnn-aarch64.c:9754` (binutils) | no | no: 2 tested attempts (both "-fPIC") | same error twice (80k) |
+| libunwind | — | no: its one edit was rejected; **104k input tokens in one call** | no: 1 tested attempt | token limit (92k, 11 turns) |
+| rust-subversion | — | no: 0 of 10 edits applied | no: 3 attempts, 2 built | same error twice (57k) |
+| html-xml-utils | **builds unchanged locally** (`case_not_failing`) | — | — | excluded |
+
+**Result: 0 of 4 for both agents** on the failing aarch64 cases (rcran: full
+agent 4 of 4). The full agent now behaves as designed — investigates, tests,
+reads the new error, stops on a repeated one — but every tested fix was wrong.
+
+**Fixed along the way** (each from a run above, each with a test):
+
+| Problem seen | Fix |
+| --- | --- |
+| Reply with reasoning and a sentence but no JSON | Same-turn follow-up for any reply without a JSON action |
+| CMake errors reported as the header only ("CMake Error in src/trans/CMakeLists.txt:") | Part A appends the indented reason lines |
+| Linker failure without the word "error" (binutils assertion) | Part A reads `ld:` lines other than warnings |
+| Same search 4 times; unchanged files re-read after an edit | Identical requests shown once with a note; the loop keeps results an edit cannot change |
+| Stopped on turn 1: "a broken dependency cannot be fixed" | Prompt: a wrongly installed dependency is not a reason to stop; work around it in input/ |
+| Stopped on turn 1: read "5 of 5 edit attempts" as used up | Budget note says "0 of 5 used (5 left)" |
+| 15-17 turns of reading, no edit, despite a nudge | Tools switch off after 6 tool turns without an edit; a refused request gets a same-turn follow-up |
+
+**What limits it now.** (1) The fixes themselves: gpt-oss-120b proposes wrong
+repairs on these cases, which no plumbing change addresses. (2) Tokens spent
+resending evidence: about 6-8k per turn, so 100k buys about 11-15 turns, and
+when Part A finds no error the opening falls back to the whole 500-line log tail
+(26k tokens on html-xml-utils). Next: record each request's size by part, then
+trim; decide the research token budget (the organizers' is unpublished).
+
 ## 10. Next
 
 - [x] ~~First end-to-end verified repair~~ — §8

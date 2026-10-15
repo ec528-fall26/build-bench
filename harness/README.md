@@ -127,6 +127,24 @@ requires the tarball the same way, so the tests catch it.
 It replaces `part_c_build.py`, Part C's checkpoint adapter for Docker Desktop on
 macOS (retired 14 October with the Part C owner's agreement).
 
+## The 10-case bundle (development-v1)
+
+The organizers' 10-case local bundle has one `run.sh` for all cases, selected
+with `--case ID`, and the cases under `cases/<id>/`. The harness expects one
+bundle per case (`run.sh` + `case/`, like rcran's), so `case_views.py` gives each
+case a view: a two-line `run.sh` that calls the real one with `--case`, and a
+`case` link to its folder. Nothing is copied or modified.
+
+```bash
+python3 -m harness.case_views ~/buildbench-local-development-v1 ~/bb-cases
+python3 -m harness.run_case --bundle ~/bb-cases/<case-id> --replay ... --run-id ...
+python3 experiments/demo3_comparison.py --bundle ~/bb-cases/<id-1> --bundle ~/bb-cases/<id-2> ...
+```
+
+Five cases target x86_64 and run on the ARM64 host under QEMU (`qemu-x86_64`
+binfmt with the `F` flag), the organizers' supported setup; their server builds
+took 20–82 minutes. The five aarch64 cases run natively in about 3–8 minutes.
+
 ## Repaired means
 
 `status == "succeeded"` **and** `artifact_validation_passed == true`.

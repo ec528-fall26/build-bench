@@ -17,7 +17,7 @@ Background and measured results: [`docs/part5-findings.md`](../docs/part5-findin
 | `record.py` | Read a validator result folder into one outcome; append JSONL rows | Done |
 | `tests/` | Unit tests, using real `build-result.json` files from the rcran runs | Done |
 | `run_case.py` | One case end to end: baseline build → `dpkg-source -x` → agent edits → `dpkg-source --auto-commit -b` → `run.sh` → record | Done — verified on the ARM64 host 1 October (see below) |
-| `build_feedback.py` | Part D: the full agent's local build callback — repacks a copy of the worktree, runs `run.sh`, returns a `BuildResult` with Part A applied | Done offline (fake validator); real validator run pending on the ARM64 host |
+| `build_feedback.py` | Part D: the full agent's local build callback — repacks a copy of the worktree, runs `run.sh`, returns a `BuildResult` with Part A applied | Done — verified on the ARM64 host 14 October (see below) |
 | `replays/` | Edit files for the stand-in model: `rcran-known-fix.json` (the verified repair) and `rcran-comment-only.json` (negative control) | Done |
 
 ## What each run records
@@ -97,6 +97,32 @@ python3 -m harness.build_feedback --bundle ~/buildbench-local-rcran-v1 --prepare
 # edit ~/wt/input/... (or leave it unchanged to reproduce the failure), then:
 python3 -m harness.build_feedback --bundle ~/buildbench-local-rcran-v1 --worktree ~/wt [--excerpt]
 ```
+
+The worktree must look like the one `dpkg-source -x` leaves: `input/` plus the
+upstream tarball (`*.orig.tar.*`) beside it, which format 3.0 (quilt) needs to
+repack. `--prepare` and `run_case` both produce that.
+
+### Verified on the ARM64 host (14 October)
+
+The plan's "Done when" for Part D, on rcran with the real validator. No model
+involved: the worktree was edited by hand.
+
+| Build | Worktree | Result | Time |
+| --- | --- | --- | --- |
+| 1 | unchanged | failed (`build_failed`), stage `install`; first diagnostic `input/src/crc32c/crc32c_prefetch.h:18 fatal error: xmmintrin.h`, 7 in all | 95.1 s |
+| 2 | known fix (`HAVE_MM_PREFETCH 0`) | **SUCCEEDED**, stage `packaging` | 98.3 s |
+| 3 | unchanged, `--excerpt` | failed, stage `install`; same first diagnostic, from **25 of 1,873** log lines | 91.4 s |
+
+In excerpt mode the first three diagnostics are labelled `unknown` instead of
+`install`: the `dh_auto_install` marker is far above the error and outside the
+excerpt, and Part A does not guess a stage without one. The build's
+`stage_reached` is still `install`, from later diagnostics. Whether to keep the
+last stage marker in the excerpt depends on the organizers' excerpt format,
+which is not published.
+
+The first attempt failed with `repack_failed`: only `input/` was copied, and
+dpkg-source needs the upstream tarball beside it. The fake validator now
+requires the tarball the same way, so the tests catch it.
 
 It replaces `part_c_build.py`, Part C's checkpoint adapter for Docker Desktop on
 macOS (retired 14 October with the Part C owner's agreement).

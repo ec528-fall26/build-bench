@@ -429,6 +429,29 @@ swung between 3/3 and 1/3.
    automatically. A clearer prompt fixes this, but the baseline is frozen, so
    it is a full-agent change to measure, not a baseline edit.
 
+## 9b. Part D build feedback on the real validator (14 October)
+
+`harness/build_feedback.py` gives the full agent's loop a build after each edit.
+Three hand-made builds of rcran on the ARM64 host, no model:
+
+| Build | Result | Time |
+| --- | --- | --- |
+| unchanged | failed at `install`; `input/src/crc32c/crc32c_prefetch.h:18` first | 95.1 s |
+| known fix | **succeeded** | 98.3 s |
+| unchanged, excerpt mode | failed at `install`; same first error from 25 of 1,873 lines | 91.4 s |
+
+Two things only the real validator showed:
+
+1. **The validator's log prefixes every line with elapsed time** (`[   93s] `).
+   Part A matched paths from the start of the line, so the error never resolved
+   to a file. Part A now strips the prefix (`evidence.py`, with a test).
+2. **Repacking needs the upstream tarball.** The first build failed with
+   `repack_failed`: only `input/` was copied, and format 3.0 (quilt) needs
+   `*.orig.tar.*` beside it. Fixed, and the fake validator now enforces it.
+
+Details and the excerpt-mode stage labels: `harness/README.md`, "Build feedback
+for the full agent".
+
 ## 10. Next
 
 - [x] ~~First end-to-end verified repair~~ — §8

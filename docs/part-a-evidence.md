@@ -49,8 +49,9 @@ change does not replace `main.py` or implement Parts B–E.
 
 - GCC/Clang errors retain the printed path, source line number, error message,
   and a source quote when the compiler supplies one. Numbered GCC quotes and
-  Clang source/caret pairs are supported. ANSI colors are removed from parsed
-  text, while byte offsets still refer to the original bytes.
+  Clang source/caret pairs are supported. ANSI colors and the local
+  validator's elapsed-time prefix (`[   93s] `) are removed from parsed text,
+  while byte offsets still refer to the original bytes.
 - Linker undefined references, make failures, CMake/configure errors, Debian
   errors, Google Test `file:line: Failure`, and explicit build-killed messages
   are recognized. Ordinary output is not turned into a diagnostic.

@@ -344,11 +344,13 @@ attempts rather than resending everything.
 
 **Owner:** Joonseo Moon (suggested: the harness owner)
 
-**Status (14 October).** Local callback done and tested offline:
-`harness/build_feedback.py` (`LocalBuildFeedback`), with the loop revising after a
-failed build in `tests/full-agent/test_local_build_feedback.py`. Still to do: the
-"Done when" runs below on the real validator, and wiring into a harness run of
-the full agent once `main.py` calls the loop.
+**Status (14 October): local callback done; "Done when" met on the real
+validator.** `harness/build_feedback.py` (`LocalBuildFeedback`). On rcran the
+unchanged worktree fails with `crc32c_prefetch.h:18` parsed and resolved, the
+known fix succeeds, and excerpt mode finds the same error in 25 of 1,873 log
+lines (results: `harness/README.md`). Offline, the loop revises after a failed
+build (`tests/full-agent/test_local_build_feedback.py`). Still to do: a harness
+mode that runs the full agent with this callback, once `main.py` calls the loop.
 
 **What it does.** Implements `BuildFeedback.request_build`.
 

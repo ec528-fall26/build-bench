@@ -58,6 +58,8 @@ NUDGE = ("You have spent {n} turns investigating since your last edit. If you ha
          "that you still need.")
 FOLLOW_UP = ("Your reply ended without the JSON object. "
              "Reply now with only the JSON object for the action you decided on.")
+TOOLS_OFF_FOLLOW_UP = ("Tools are switched off until your next edit. Reply now with only "
+                       "the JSON object for an edit or a stop.")
 
 
 def client_completion(client) -> Complete:
@@ -119,6 +121,13 @@ def _distinct(results: list) -> tuple[list, int]:
         latest.pop(key, None)
         latest[key] = result
     return list(latest.values()), len(results) - len(latest)
+
+
+def _asks_for_tools(text: str) -> bool:
+    try:
+        return extract_action_json(text).get("action") == "tool"
+    except ValueError:
+        return False
 
 
 def _no_action(text: str) -> bool:
@@ -183,13 +192,19 @@ class ModelAdapter:
         text, finish, usage = self.complete(messages)
         allow_tools = self.config.use_tools and self._investigating < TOOL_TURN_LIMIT
         turn = parse_turn(text, finish_reason=finish, allow_tools=allow_tools)
-        follow_up = turn.action == "malformed" and finish != "length" and _no_action(text)
+        # One same-turn follow-up for a reply with no JSON action, or for a tool
+        # request while tools are off (libmceliece repeated a refused request 4
+        # times: at temperature 0 a near-identical request gets the same reply).
+        refused = (turn.action == "malformed" and self.config.use_tools and not allow_tools
+                   and _asks_for_tools(text))
+        follow_up = turn.action == "malformed" and finish != "length" and (
+            refused or _no_action(text))
         number = len(self.turns) + 1
         if follow_up:
             self.replies.append({"turn": number, "follow_up": False, "reply": text})
             text, finish, more = self.complete(messages + [
                 {"role": "assistant", "content": text},
-                {"role": "user", "content": FOLLOW_UP}])
+                {"role": "user", "content": TOOLS_OFF_FOLLOW_UP if refused else FOLLOW_UP}])
             usage = _add(usage, more)
             turn = parse_turn(text, finish_reason=finish, allow_tools=allow_tools)
         self._last_turn = turn

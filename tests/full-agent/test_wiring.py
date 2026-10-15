@@ -27,7 +27,7 @@ from harness.tests.test_run_case import DSC, FIXTURES, FakeHost  # noqa: E402
 from src import main as agent_main  # noqa: E402
 from src.contracts import AgentConfig, Budget, BuildResult, Diagnostic  # noqa: E402
 from src.main import run_agent  # noqa: E402
-from src.model_adapter import client_completion  # noqa: E402
+from src.model_adapter import TOOLS_OFF_FOLLOW_UP, client_completion  # noqa: E402
 from src.model_client import ModelClient  # noqa: E402
 from src.types import CaseContext  # noqa: E402
 
@@ -234,11 +234,14 @@ class Adapter(unittest.TestCase):
                         look(7), reply(action="stop", reason="done"))
         result, adapter = self.run_with(script)
         self.assertIn("Tools are switched off until your next edit", script.user(6))
-        # The 7th tool request is refused, not run; after the edit tools work again.
-        self.assertEqual([t["action"] for t in adapter.turns],
-                         ["tool"] * 6 + ["malformed", "edit", "tool", "stop"])
+        # The 7th tool request is refused, not run, and answered in the same turn;
+        # after the edit tools work again.
+        self.assertEqual(script.sent[7][-1]["content"], TOOLS_OFF_FOLLOW_UP)
+        self.assertEqual([(t["action"], t["follow_up"]) for t in adapter.turns],
+                         [("tool", False)] * 6 + [("edit", True), ("tool", False),
+                                                  ("stop", False)])
         self.assertNotIn("switched off", script.user(8))
-        self.assertEqual(result.termination_reason, "model_stop")
+        self.assertEqual((result.termination_reason, result.malformed_count), ("model_stop", 0))
 
     def test_rejected_edit_reason_is_passed_on(self):
         script = Script(edit("text that is not in the file\n", "x\n"),

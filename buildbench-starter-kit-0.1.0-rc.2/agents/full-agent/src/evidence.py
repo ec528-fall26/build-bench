@@ -18,10 +18,13 @@ _COMPILER = re.compile(
 )
 # Most of a large log is ordinary output. Filter bytes before decoding or running
 # the richer parsers, while always retaining the lines following a diagnostic.
-_RELEVANT = re.compile(rb"error|Error|ERROR|Failure|FAIL|Stop\.|undefined reference|dh_auto_|dpkg-|dh_builddeb|E: Build killed")
+_RELEVANT = re.compile(rb"error|Error|ERROR|Failure|FAIL|Stop\.|undefined reference|dh_auto_|dpkg-|dh_builddeb|E: Build killed|ld: ")
 _STAGE = re.compile(r"\b(?:dh_auto_|override_dh_auto_)(configure|build|test|install)\b")
 _MAKE = re.compile(r"^(?:g?make)(?:\[\d+\])?:\s*\*\*\*.*(?:Error|Stop\.)")
 _QUOTE = re.compile(r"^\s*(\d+)\s*\| ?(.*)$")
+# The linker's own messages ("/usr/bin/ld: ..."), other than warnings. libmceliece
+# failed on "/bin/ld: BFD ... assertion fail ...", with no "error" in the line.
+_LINKER = re.compile(r"^(?:\S*/)?ld(?:\.\w+)?: (?!warning:)")
 # CMake prints "CMake Error ...:" and the reason on the indented lines below it.
 _CMAKE_HEADER = re.compile(r"^CMake Error\b.*:$")
 CMAKE_DETAIL_LINES = 3
@@ -105,7 +108,8 @@ def diagnose(log_path: Path, worktree: Path) -> list[Diagnostic]:
                 match = _COMPILER.match(text.strip())
                 message = match.group("message") if match else None
                 if message is None and ("undefined reference" in text or _MAKE.match(text.strip())
-                                        or _GENERAL.match(text.strip())):
+                                        or _GENERAL.match(text.strip())
+                                        or _LINKER.match(text.strip())):
                     message = text.strip()
                 if message is not None:
                     pending = None

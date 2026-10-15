@@ -226,6 +226,20 @@ class Adapter(unittest.TestCase):
         self.assertEqual(nudged, [False, False, False, False, True, False])
         self.assertIn("You have spent 4 turns investigating", script.user(4))
 
+    def test_tools_switch_off_after_six_tool_turns_until_an_edit(self):
+        look = lambda n: reply(action="tool", requests=[{"tool": "list_dir",
+                                                         "args": {"path": f"input/{n}"}}])
+        script = Script(*[look(n) for n in range(6)], look(6),
+                        edit("#define HAVE_MM_PREFETCH 1\n", "#define HAVE_MM_PREFETCH 0\n"),
+                        look(7), reply(action="stop", reason="done"))
+        result, adapter = self.run_with(script)
+        self.assertIn("Tools are switched off until your next edit", script.user(6))
+        # The 7th tool request is refused, not run; after the edit tools work again.
+        self.assertEqual([t["action"] for t in adapter.turns],
+                         ["tool"] * 6 + ["malformed", "edit", "tool", "stop"])
+        self.assertNotIn("switched off", script.user(8))
+        self.assertEqual(result.termination_reason, "model_stop")
+
     def test_rejected_edit_reason_is_passed_on(self):
         script = Script(edit("text that is not in the file\n", "x\n"),
                         reply(action="stop", reason="done"))

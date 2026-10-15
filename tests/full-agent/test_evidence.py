@@ -72,6 +72,17 @@ class Evidence(unittest.TestCase):
             "CMake Error at CMakeLists.txt:12 (find_package): Could not find fiat"])
         self.assertEqual(result[0].stage, "configure")
 
+    def test_linker_messages_without_the_word_error(self):
+        # libmceliece (development-v1): the cause has no "error" in it.
+        assertion = ("/bin/ld: BFD (GNU Binutils for Ubuntu) 2.41.50.20231214 assertion fail "
+                     "../../bfd/elfnn-aarch64.c:9754")
+        result = self.parse("dh_auto_build\n" + f"[   83s] {assertion}\n" * 16
+                            + "/usr/bin/ld: warning: x.o: missing .note.GNU-stack section\n"
+                            + "[   83s] collect2: error: ld returned 1 exit status\n")
+        self.assertEqual([d.message for d in result],
+                         [assertion, "collect2: error: ld returned 1 exit status"])
+        self.assertEqual(result[0].stage, "build")
+
     def test_duplicate_across_files_keeps_first(self):
         result = self.parse("a.c:1: error: bad type\n 1 | first\nb.c:2: error: bad type\n 2 | second\n"
                             "make[2]: *** [all] Error 1\nmake[2]: *** [all] Error 1\n")

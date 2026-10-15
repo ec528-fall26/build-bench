@@ -48,6 +48,10 @@ Complete = Callable[[list[dict]], Completion]
 
 MAX_TOOL_RESULTS = 8  # most recent results shown; older ones are counted
 NUDGE_AFTER = 4  # tool turns in a row without an edit before the model is asked to act
+TOOL_TURN_LIMIT = 6  # ... and before tools are switched off until its next edit
+TOOLS_OFF = ("Tools are switched off until your next edit: you have spent {n} turns "
+             "investigating since your last edit. Propose your best fix now, or stop if "
+             "you believe no edit under input/ can repair the build.")
 NUDGE = ("You have spent {n} turns investigating since your last edit. If you have a "
          "plausible fix, propose it now rather than investigating further: each edit's "
          "result is reported back to you. Investigate further only for something specific "
@@ -177,7 +181,8 @@ class ModelAdapter:
         messages = self.messages(request)
         started = self.clock()
         text, finish, usage = self.complete(messages)
-        turn = parse_turn(text, finish_reason=finish, allow_tools=self.config.use_tools)
+        allow_tools = self.config.use_tools and self._investigating < TOOL_TURN_LIMIT
+        turn = parse_turn(text, finish_reason=finish, allow_tools=allow_tools)
         follow_up = turn.action == "malformed" and finish != "length" and _no_action(text)
         number = len(self.turns) + 1
         if follow_up:
@@ -186,7 +191,7 @@ class ModelAdapter:
                 {"role": "assistant", "content": text},
                 {"role": "user", "content": FOLLOW_UP}])
             usage = _add(usage, more)
-            turn = parse_turn(text, finish_reason=finish, allow_tools=self.config.use_tools)
+            turn = parse_turn(text, finish_reason=finish, allow_tools=allow_tools)
         self._last_turn = turn
         if turn.action == "tool":
             self._investigating += 1
@@ -235,7 +240,10 @@ class ModelAdapter:
             note = " ".join(notes)
             parts.append("=== Results of your tool requests ===\n"
                          + _body(prompts.tool_results_message(shown, note=note)))
-        if self._investigating >= NUDGE_AFTER:
+        if self._investigating >= TOOL_TURN_LIMIT:
+            # The nudge alone was ignored: libmceliece read for 11 more turns.
+            parts.append(TOOLS_OFF.format(n=self._investigating))
+        elif self._investigating >= NUDGE_AFTER:
             # On ectrans the model read for 11 and 17 turns before (or instead of)
             # an edit, while one build taught it more than the reading.
             parts.append(NUDGE.format(n=self._investigating))

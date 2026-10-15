@@ -163,7 +163,9 @@ object, which must be one of:
 - Choose "stop" only when you have reason to believe that no edit under input/
   can repair the build, for example because it needs a dependency that does not
   exist for the target architecture. Not having been shown a file is never a
-  reason to stop.
+  reason to stop, and neither is a dependency that is installed but wrong for
+  the target: work around it in the package's own files under input/, for
+  example its build configuration, and check the next build's errors.
 """
 
 _NEXT = "Decide what to do next and end your reply with one JSON object."

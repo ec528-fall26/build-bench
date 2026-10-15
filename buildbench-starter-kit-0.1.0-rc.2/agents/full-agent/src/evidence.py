@@ -22,6 +22,9 @@ _RELEVANT = re.compile(rb"error|Error|ERROR|Failure|FAIL|Stop\.|undefined refere
 _STAGE = re.compile(r"\b(?:dh_auto_|override_dh_auto_)(configure|build|test|install)\b")
 _MAKE = re.compile(r"^(?:g?make)(?:\[\d+\])?:\s*\*\*\*.*(?:Error|Stop\.)")
 _QUOTE = re.compile(r"^\s*(\d+)\s*\| ?(.*)$")
+# CMake prints "CMake Error ...:" and the reason on the indented lines below it.
+_CMAKE_HEADER = re.compile(r"^CMake Error\b.*:$")
+CMAKE_DETAIL_LINES = 3
 _GENERAL = re.compile(
     r"^(?:.*?:\s*(?:fatal )?error:|CMake Error|configure: error:|"
     r"(?:dh_\w+|dpkg-\w+): error:|ERROR:|Error:|FAILED:|FAIL:|E: Build killed)", re.IGNORECASE
@@ -72,16 +75,28 @@ def diagnose(log_path: Path, worktree: Path) -> list[Diagnostic]:
     pending: Diagnostic | None = None
     candidate: str | None = None
     quote_remaining = 0
+    cmake: Diagnostic | None = None
+    cmake_lines = 0
     offset = 0
     try:
         with Path(log_path).open("rb") as stream:
             for raw in stream:
                 start = offset
                 offset += len(raw)
-                if pending is None and not _RELEVANT.search(raw):
+                if pending is None and cmake is None and not _RELEVANT.search(raw):
                     continue
                 text = _ANSI.sub("", raw.decode("utf-8", errors="replace").rstrip("\r\n"))
                 text = _ELAPSED.sub("", text)
+                if cmake is not None:
+                    # Indented lines and blank lines belong to the CMake error.
+                    if not text.strip() or text[:1].isspace():
+                        if text.strip():
+                            cmake.message += " " + " ".join(text.split())
+                            cmake_lines += 1
+                        if cmake_lines >= CMAKE_DETAIL_LINES:
+                            cmake = None
+                        continue
+                    cmake = None
                 marker = _STAGE.search(text)
                 if marker:
                     stage = marker.group(1)
@@ -108,6 +123,8 @@ def diagnose(log_path: Path, worktree: Path) -> list[Diagnostic]:
                     result.append(item)
                     if match and message != "Failure":
                         pending, quote_remaining = item, 3
+                    elif _CMAKE_HEADER.match(message):
+                        cmake, cmake_lines = item, 0
                 elif pending is not None:
                     quote = _QUOTE.match(text)
                     if quote and int(quote.group(1)) == pending.line:

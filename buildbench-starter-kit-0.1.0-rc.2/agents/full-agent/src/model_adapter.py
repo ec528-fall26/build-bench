@@ -13,12 +13,14 @@ model sees each turn, all worded by Part E (prompts.py):
              the results of tool requests made since the latest edit
              what is left of the budget
 
-Replies are parsed by Part E (reply.py). A reply that is only reasoning, with
-no answer after it, gets one follow-up in the same turn: the model's reasoning
-is sent back and only the JSON object is asked for. gpt-oss-120b did this on 6
-of 11 turns in the first two live rcran runs (docs/part5-findings.md), always
-right after deciding what to do; with temperature 0 and a near-identical
-request, asking again from scratch repeated it.
+Replies are parsed by Part E (reply.py). A reply with no JSON action at all
+(only reasoning, or reasoning and a sentence such as "Let's search.") gets one
+follow-up in the same turn: the reply is sent back and only the JSON object is
+asked for. gpt-oss-120b did this on 6 of 11 turns in the first two live rcran
+runs and 2 of 19 on ectrans (docs/part5-findings.md), always right after
+deciding what to do; with temperature 0 and a near-identical request, asking
+again from scratch repeated it. A reply whose JSON is wrong is not followed up:
+it gets Part E's explanation on the next turn.
 
 Standard library only.
 """
@@ -35,7 +37,7 @@ from .contracts import AgentConfig, Budget, BuildResult, Diagnostic, ModelTurn
 from .edit_applier import LOGGER as EDIT_LOGGER
 from .loop import LoopRequest
 from .model_client import ModelCallFailed, request_completion
-from .reply import _THINKING, parse_turn
+from .reply import extract_action_json, parse_turn
 from .types import CaseContext
 
 
@@ -44,7 +46,7 @@ Completion = tuple[str, "str | None", dict]
 Complete = Callable[[list[dict]], Completion]
 
 MAX_TOOL_RESULTS = 8  # most recent results shown; older ones are counted
-FOLLOW_UP = ("You ended your reply after your reasoning, without the JSON object. "
+FOLLOW_UP = ("Your reply ended without the JSON object. "
              "Reply now with only the JSON object for the action you decided on.")
 
 
@@ -99,8 +101,15 @@ def _first_error(build: BuildResult | None) -> tuple | None:
     return first.message, first.log_path, first.line
 
 
-def _reasoning_only(text: str) -> bool:
-    return bool(text.strip()) and not _THINKING.sub("", text).strip()
+def _no_action(text: str) -> bool:
+    """A non-empty reply in which no JSON action object can be found."""
+    if not text.strip():
+        return False
+    try:
+        extract_action_json(text)
+    except ValueError:
+        return True
+    return False
 
 
 def _add(first: dict, second: dict) -> dict:
@@ -152,7 +161,7 @@ class ModelAdapter:
         started = self.clock()
         text, finish, usage = self.complete(messages)
         turn = parse_turn(text, finish_reason=finish, allow_tools=self.config.use_tools)
-        follow_up = turn.action == "malformed" and finish != "length" and _reasoning_only(text)
+        follow_up = turn.action == "malformed" and finish != "length" and _no_action(text)
         number = len(self.turns) + 1
         if follow_up:
             self.replies.append({"turn": number, "follow_up": False, "reply": text})

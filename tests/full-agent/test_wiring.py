@@ -115,10 +115,11 @@ class Adapter(unittest.TestCase):
         self.assertIn("#define HAVE_MM_PREFETCH 1", script.user(1))
 
     def test_malformed_reply_is_explained(self):
-        script = Script("no json here", reply(action="stop", reason="done"))
+        # No JSON even after the follow-up: the next turn explains.
+        script = Script("no json here", "still none", reply(action="stop", reason="done"))
         result, _ = self.run_with(script)
         self.assertEqual(result.malformed_count, 1)
-        self.assertIn("Your last reply could not be used", script.user(1))
+        self.assertIn("Your last reply could not be used", script.user(2))
 
     def test_revises_after_a_failed_build(self):
         wrong = "#define HAVE_MM_PREFETCH 1  // tried\n"
@@ -170,11 +171,21 @@ class Adapter(unittest.TestCase):
         self.assertEqual(result.malformed_count, 1)
         self.assertEqual([t["follow_up"] for t in adapter.turns], [True, False])
 
-    def test_prose_without_json_is_not_followed_up(self):
-        script = Script("I am not sure what to do.", reply(action="stop", reason="done"))
+    def test_reasoning_then_a_sentence_without_json_is_followed_up(self):
+        # ectrans turn 3: "...</reasoning>Let's search."
+        script = Script("<reasoning>Search for fiat.</reasoning>Let's search.",
+                        reply(action="stop", reason="done"))
+        result, adapter = self.run_with(script)
+        self.assertEqual(result.malformed_count, 0)
+        self.assertTrue(adapter.turns[0]["follow_up"])
+
+    def test_wrong_json_is_explained_not_followed_up(self):
+        script = Script(reply(action="tool", requests=[{"tool": "delete_all", "args": {}}]),
+                        reply(action="stop", reason="done"))
         result, adapter = self.run_with(script)
         self.assertEqual(result.malformed_count, 1)
         self.assertFalse(adapter.turns[0]["follow_up"])
+        self.assertIn("unknown tool", script.user(1))
 
     def test_rejected_edit_reason_is_passed_on(self):
         script = Script(edit("text that is not in the file\n", "x\n"),

@@ -53,6 +53,25 @@ class Evidence(unittest.TestCase):
                           ["input/src/crc32c/crc32c_prefetch.h"],
                           "#include <xmmintrin.h>", len(prefix)))
 
+    def test_cmake_error_keeps_its_reason(self):
+        # ectrans (development-v1): the reason is on the indented lines below.
+        block = ("[   86s] CMake Error in src/trans/CMakeLists.txt:\n"
+                 "[   86s]   Imported target \"fiat\" includes non-existent path\n"
+                 "[   86s] \n"
+                 "[   86s]     \"/usr/lib/aarch64-linux-gnu/fortran/fiat\"\n"
+                 "[   86s] \n"
+                 "[   86s]   in its INTERFACE_INCLUDE_DIRECTORIES.  Possible reasons include:\n"
+                 "[   86s]   * The path was deleted, renamed, or moved to another location.\n")
+        result = self.parse("dh_auto_configure\n" + block
+                            + "CMake Error at CMakeLists.txt:12 (find_package):\n  Could not find fiat\n"
+                            + "-- Configuring incomplete, errors occurred!\n")
+        self.assertEqual([d.message for d in result], [
+            'CMake Error in src/trans/CMakeLists.txt: Imported target "fiat" includes '
+            'non-existent path "/usr/lib/aarch64-linux-gnu/fortran/fiat" in its '
+            'INTERFACE_INCLUDE_DIRECTORIES. Possible reasons include:',
+            "CMake Error at CMakeLists.txt:12 (find_package): Could not find fiat"])
+        self.assertEqual(result[0].stage, "configure")
+
     def test_duplicate_across_files_keeps_first(self):
         result = self.parse("a.c:1: error: bad type\n 1 | first\nb.c:2: error: bad type\n 2 | second\n"
                             "make[2]: *** [all] Error 1\nmake[2]: *** [all] Error 1\n")

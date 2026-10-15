@@ -5,13 +5,13 @@ The project's full agent: it reads the failure, investigates the package with
 read-only tools, proposes a repair with a stated hypothesis, tests it when build
 feedback is available, and revises. Plan: `docs/full-agent.md`.
 
-## Status: wired, not yet run live
+## Status: wired; repaired rcran in 4 of 4 live runs (14 October)
 All parts are connected (14 October): `main.py` diagnoses the failure log (Part A),
 runs Part C's loop with Part E's prompts and parser, and writes
 `agent-result.json` with every attempt, model turn and token count. Submitted,
 it has no build feedback, so edits are investigated and revised but submitted
 untested. Locally, `harness/run_case.py --agent full-agent` runs the same loop
-with real builds (Part D). Tested offline; no live-model run yet.
+with real builds (Part D). Results: `docs/part5-findings.md` §9c.
 
 | File | Part | Status |
 | --- | --- | --- |

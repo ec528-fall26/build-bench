@@ -311,7 +311,9 @@ turns a reply into a `ModelTurn` changes; Parts B and C work with `ModelTurn` an
 parses every reply with Part E's `reply.py`. The harness runs the full agent with
 `run_case --agent full-agent`, building each attempt with Part D. Offline, a
 scripted run revises after a failed build and is repaired
-(`tests/full-agent/test_wiring.py`). Still to do: the first live runs on rcran.
+(`tests/full-agent/test_wiring.py`). Live on rcran, 14 October: 4 of 4 runs
+repaired with a direct source fix, about 10k input tokens each
+(`docs/part5-findings.md` §9c). Next: the 10 development cases.
 
 **What it does.** The state machine above. Each turn sends the model the evidence,
 any tool results, and — with `use_history` on — every earlier `Attempt`. Applies

@@ -452,6 +452,39 @@ Two things only the real validator showed:
 Details and the excerpt-mode stage labels: `harness/README.md`, "Build feedback
 for the full agent".
 
+## 9c. Full agent on rcran (14 October): first live runs
+
+The wired full agent (`run_case --agent full-agent`), with Part D building every
+attempt. Same failure log as §9; `openai.gpt-oss-120b-1:0` throughout.
+
+| Run | Settings | Result | Model turns | Tokens in / out | Malformed |
+| --- | --- | --- | --- | --- | --- |
+| `full-revise-2` | **scripted** replay: tool, deliberately wrong edit, fix | REPAIRED after a real failed loop build (`build_failed` at `install`, error resolved to `input/src/crc32c/crc32c_prefetch.h`) | 3 | — | 0 |
+| `full-1` | history on | REPAIRED | 3 | 10,053 / 1,165 | 1 |
+| `full-histoff-1` | history off | REPAIRED | 8 | 27,048 / 2,209 | 5 |
+| `full-histoff-2` | history off, with the follow-up below | REPAIRED | 2 | 9,995 / 621 | 0 |
+| `full-excerpt-1` | history on, excerpt mode, follow-up | REPAIRED | 2 | 10,117 / 558 | 0 |
+
+Every live run made the **direct source fix** (`fix_type: source`, no review
+needed): read `crc32c_config.h`, hypothesis "the config header incorrectly
+enables HAVE_MM_PREFETCH on ARM", one edit, confirmed by the loop's build. The
+baseline's repairs were build-time `sed -i` commands in `debian/rules` (§9a).
+One easy case: encouraging, not a repair rate.
+
+**Reasoning-only replies.** 6 of the first 11 live turns were malformed, every
+one the same way: about 120 output tokens of `<reasoning>` that ends with a
+decision ("Let's view it") and nothing after it, `finish_reason: stop`. With
+temperature 0 and a near-identical rebuilt request, retrying from scratch
+repeated it (four times in a row in `full-histoff-1`). The model adapter now
+answers such a reply once, in the same turn, with the model's own reasoning and
+a request for only the JSON object. Since then: 2 follow-ups, both answered with
+a valid action, 0 malformed turns, and about 60% fewer tokens per run. Each turn
+in the run record says whether it needed a follow-up (`follow_up`).
+
+Not yet tested: excerpt mode changing what the model sees (rcran is fixed on the
+first edit, so no excerpt reached the model), and a live revise after a real
+failed attempt. Both need cases that take more than one attempt.
+
 ## 10. Next
 
 - [x] ~~First end-to-end verified repair~~ — §8

@@ -27,6 +27,7 @@ Standard library only.
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from time import monotonic
@@ -99,6 +100,16 @@ def _first_error(build: BuildResult | None) -> tuple | None:
         return None
     first = build.diagnostics[0]
     return first.message, first.log_path, first.line
+
+
+def _distinct(results: list) -> tuple[list, int]:
+    """Each identical request once (its latest result), and how many repeats."""
+    latest = {}
+    for result in results:
+        key = (result.request.tool, json.dumps(result.request.args, sort_keys=True, default=str))
+        latest.pop(key, None)
+        latest[key] = result
+    return list(latest.values()), len(results) - len(latest)
 
 
 def _no_action(text: str) -> bool:
@@ -201,10 +212,17 @@ class ModelAdapter:
         if self._last_turn is not None and self._last_turn.action == "malformed":
             parts.append(_body(prompts.malformed_message(self._last_turn, config)))
         if request.tool_results:
-            shown = request.tool_results[-MAX_TOOL_RESULTS:]
-            hidden = len(request.tool_results) - len(shown)
-            note = (f"({hidden} earlier tool result{'s' * (hidden != 1)} since the last edit "
-                    "not shown again.)") if hidden else ""
+            distinct, repeats = _distinct(request.tool_results)
+            shown = distinct[-MAX_TOOL_RESULTS:]
+            hidden = len(distinct) - len(shown)
+            notes = []
+            if repeats:
+                notes.append(f"{repeats} of your requests repeated an earlier one and "
+                             f"{'are' if repeats != 1 else 'is'} shown once. A repeated request "
+                             "returns the same result: try something different instead.")
+            if hidden:
+                notes.append(f"{hidden} earlier tool result{'s' * (hidden != 1)} not shown again.")
+            note = " ".join(notes)
             parts.append("=== Results of your tool requests ===\n"
                          + _body(prompts.tool_results_message(shown, note=note)))
         parts.append(prompts.budget_note(

@@ -116,7 +116,9 @@ How an edit works
 _TOOLS = """\
 Tools
 You can inspect the package before you edit. Every tool is read-only and
-limited to input/.
+limited to input/. Files installed by the build's dependencies (their headers,
+CMake configuration and imported targets) are outside input/: no tool can read
+them, so the build output is the only evidence about them.
 - list_dir {{"path": "input/debian"}}: the entries of one directory.
 - find_files {{"name_glob": "*.h"}}: files anywhere under input/ whose name
   matches.

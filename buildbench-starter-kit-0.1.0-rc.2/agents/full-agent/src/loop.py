@@ -88,6 +88,29 @@ def _build_rank(build: BuildResult) -> tuple[int, int, int]:
         -len(build.diagnostics),
     )
 
+# Tools whose output an edit cannot change: edits never create, delete or
+# rename files, so listings and name searches stay true.
+_EDIT_PROOF = {"list_dir", "find_files", "patch_series"}
+
+
+def _still_valid(results: list[ToolResult], edited: set[str]) -> list[ToolResult]:
+    """Tool results still true after an edit to ``edited``.
+
+    A file read stays valid unless that file was edited. Text searches and
+    the current diff may change with any edit, so they are dropped. Keeping
+    the rest spares the model re-reading files it already saw (the first
+    ectrans run re-read unchanged files after its edit).
+    """
+    kept = []
+    for result in results:
+        tool = result.request.tool
+        if tool in _EDIT_PROOF:
+            kept.append(result)
+        elif tool == "read_file" and result.request.args.get("path") not in edited:
+            kept.append(result)
+    return kept
+
+
 def run_loop(
     context: CaseContext,
     *,
@@ -350,8 +373,8 @@ def run_loop(
             )
             attempts.append(attempt)
 
-            # Earlier tool results may contain outdated source text.
-            tool_results.clear()
+            # Drop only the tool results the edit may have made outdated.
+            tool_results[:] = _still_valid(tool_results, {e.path for e in turn.edits})
 
             expired_before_build = clock() >= work_deadline
 

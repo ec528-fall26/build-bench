@@ -187,6 +187,33 @@ class Adapter(unittest.TestCase):
         self.assertFalse(adapter.turns[0]["follow_up"])
         self.assertIn("unknown tool", script.user(1))
 
+    def test_repeated_request_is_shown_once_with_a_note(self):
+        search = {"tool": "search", "args": {"regex": "fiat", "path_glob": "input/**/*.cmake"}}
+        script = Script(reply(action="tool", requests=[search]),
+                        reply(action="tool", requests=[search]),
+                        reply(action="stop", reason="done"))
+        self.run_with(script)
+        third = script.user(2)
+        self.assertEqual(third.count('Request 1: search'), 1)
+        self.assertNotIn("Request 2:", third)
+        self.assertIn("1 of your requests repeated an earlier one and is shown once", third)
+
+    def test_an_edit_keeps_reads_of_files_it_did_not_change(self):
+        read = lambda path: {"tool": "read_file", "args": {"path": path, "start_line": 1,
+                                                           "end_line": 3}}
+        script = Script(
+            reply(action="tool", requests=[read(CONFIG), read("input/src/crc32c/crc32c_prefetch.h"),
+                                           {"tool": "search", "args": {"regex": "x",
+                                                                       "path_glob": "input/**"}}]),
+            edit("#define HAVE_MM_PREFETCH 1\n", "#define HAVE_MM_PREFETCH 0\n"),
+            reply(action="stop", reason="done"))
+        self.run_with(script)
+        after = script.user(2).split("=== Results of your tool requests ===")[1]
+        # Only the read of the unedited file survives the edit.
+        self.assertIn('Request 1: read_file {"path": "input/src/crc32c/crc32c_prefetch.h"', after)
+        self.assertNotIn(f'"path": "{CONFIG}"', after)   # edited file: dropped
+        self.assertNotIn("Request 2:", after)              # text search: dropped
+
     def test_rejected_edit_reason_is_passed_on(self):
         script = Script(edit("text that is not in the file\n", "x\n"),
                         reply(action="stop", reason="done"))

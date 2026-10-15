@@ -387,18 +387,22 @@ def history_block(attempts: Sequence[Attempt], *, kept: Collection[int] | None =
 
 def budget_note(budget: Budget, *, attempts_used: int = 0, builds_used: int = 0,
                 tokens_used: int | None = None, seconds_used: float | None = None) -> str:
-    """One line on what is left. Unknown token use is said to be unknown, never 0."""
-    parts = [f"{max(budget.max_attempts - attempts_used, 0)} of {budget.max_attempts} edit attempts",
-             f"{max(budget.max_builds - builds_used, 0)} of {budget.max_builds} builds"]
+    """One line on the budget, as used and left: "5 of 5" alone was read as all
+    used (full-ectrans-3 stopped on its first turn). Unknown token use is said
+    to be unknown, never 0."""
+    def item(used, limit, name, about=""):
+        used = min(max(used, 0), limit)
+        return f"{about}{used:,} of {limit:,} {name} used ({limit - used:,} left)"
+
+    parts = [item(attempts_used, budget.max_attempts, "edit attempts"),
+             item(builds_used, budget.max_builds, "builds")]
     if tokens_used is None:
         parts.append(f"token use unknown (limit {budget.max_tokens:,})")
     else:
-        parts.append(f"about {max(budget.max_tokens - tokens_used, 0):,} of "
-                     f"{budget.max_tokens:,} tokens")
+        parts.append(item(tokens_used, budget.max_tokens, "tokens", "about "))
     if seconds_used is not None:
-        left = max(budget.max_seconds - seconds_used, 0)
-        parts.append(f"about {int(left // 60)} of {budget.max_seconds // 60} minutes")
-    return "Left for this case: " + ", ".join(parts) + "."
+        parts.append(item(int(seconds_used // 60), budget.max_seconds // 60, "minutes", "about "))
+    return "Budget for this case: " + ", ".join(parts) + "."
 
 
 def opening_message(

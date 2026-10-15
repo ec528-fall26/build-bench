@@ -101,7 +101,7 @@ class Adapter(unittest.TestCase):
         system, user = script.sent[0]
         self.assertEqual((system["role"], user["role"]), ("system", "user"))
         self.assertIn("real file: input/src/crc32c/crc32c_prefetch.h", user["content"])
-        self.assertIn("Left for this case: 5 of 5 edit attempts", user["content"])
+        self.assertIn("0 of 5 edit attempts used (5 left)", user["content"])
         self.assertEqual(user["content"].count("Decide what to do next"), 1)
         self.assertEqual(adapter.turns[0]["action"], "stop")
 
@@ -131,7 +131,7 @@ class Adapter(unittest.TestCase):
         self.assertIn("=== Attempt 1 ===", second)
         self.assertIn("real file: input/src/crc32c/crc32c_prefetch.h", second)
         self.assertIn("Earlier attempts on this case", second)  # history on
-        self.assertIn("4 of 5 edit attempts, 2 of 3 builds", second)
+        self.assertIn("1 of 5 edit attempts used (4 left), 1 of 3 builds used (2 left)", second)
 
     def test_unchanged_first_error_stops_the_loop(self):
         script = Script(edit("#define HAVE_MM_PREFETCH 1\n", "#define HAVE_MM_PREFETCH 1 // a\n"),

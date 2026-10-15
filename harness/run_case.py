@@ -461,4 +461,8 @@ def main(argv: list) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+    # Run the imported module, not this __main__ copy: harness.build_feedback
+    # imports harness.run_case, and two copies would mean two CommandFailed
+    # classes, so a failed build from one would not be caught by the other.
+    from harness.run_case import main as _main
+    raise SystemExit(_main(sys.argv[1:]))

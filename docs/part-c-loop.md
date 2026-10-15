@@ -19,6 +19,21 @@ local build and live-model runs described below.
 
 ## Files
 
+> **Update, 14 October:** with the Part C owner's agreement, the temporary
+> `model_turns.py`, `harness/part_c_model.py` and `harness/part_c_build.py` were
+> retired. Replies are parsed by Part E's `reply.py` (all nine `model_turns`
+> tests passed against it before removal), prompts come from Part E's
+> `prompts.py`, and local builds use Part D's `harness/build_feedback.py`.
+> References to those files below describe the 14 October checkpoint.
+>
+> **Integration, 14 October:** items 1–6 of "Integration remaining" are
+> done. `src/main.py` calls `run_loop` through `src/model_adapter.py` (Part E's
+> prompts and parser), passes the case's patch policy, and serializes attempts,
+> turns, usage and the retained candidate. `harness/run_case.py --agent
+> full-agent` runs the loop with Part D's build feedback. `LoopRequest` gained
+> `latest_attempt`, so the latest edit's result reaches the model with history
+> off. Item 8 (a live revise on rcran) is next.
+
 Under `buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/`:
 
 - `loop.py`: orchestrates model turns, investigation tools, edits, build

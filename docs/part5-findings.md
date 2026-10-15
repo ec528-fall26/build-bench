@@ -429,6 +429,103 @@ swung between 3/3 and 1/3.
    automatically. A clearer prompt fixes this, but the baseline is frozen, so
    it is a full-agent change to measure, not a baseline edit.
 
+## 9b. Part D build feedback on the real validator (14 October)
+
+`harness/build_feedback.py` gives the full agent's loop a build after each edit.
+Three hand-made builds of rcran on the ARM64 host, no model:
+
+| Build | Result | Time |
+| --- | --- | --- |
+| unchanged | failed at `install`; `input/src/crc32c/crc32c_prefetch.h:18` first | 95.1 s |
+| known fix | **succeeded** | 98.3 s |
+| unchanged, excerpt mode | failed at `install`; same first error from 25 of 1,873 lines | 91.4 s |
+
+Two things only the real validator showed:
+
+1. **The validator's log prefixes every line with elapsed time** (`[   93s] `).
+   Part A matched paths from the start of the line, so the error never resolved
+   to a file. Part A now strips the prefix (`evidence.py`, with a test).
+2. **Repacking needs the upstream tarball.** The first build failed with
+   `repack_failed`: only `input/` was copied, and format 3.0 (quilt) needs
+   `*.orig.tar.*` beside it. Fixed, and the fake validator now enforces it.
+
+Details and the excerpt-mode stage labels: `harness/README.md`, "Build feedback
+for the full agent".
+
+## 9c. Full agent on rcran (14 October): first live runs
+
+The wired full agent (`run_case --agent full-agent`), with Part D building every
+attempt. Same failure log as §9; `openai.gpt-oss-120b-1:0` throughout.
+
+| Run | Settings | Result | Model turns | Tokens in / out | Malformed |
+| --- | --- | --- | --- | --- | --- |
+| `full-revise-2` | **scripted** replay: tool, deliberately wrong edit, fix | REPAIRED after a real failed loop build (`build_failed` at `install`, error resolved to `input/src/crc32c/crc32c_prefetch.h`) | 3 | — | 0 |
+| `full-1` | history on | REPAIRED | 3 | 10,053 / 1,165 | 1 |
+| `full-histoff-1` | history off | REPAIRED | 8 | 27,048 / 2,209 | 5 |
+| `full-histoff-2` | history off, with the follow-up below | REPAIRED | 2 | 9,995 / 621 | 0 |
+| `full-excerpt-1` | history on, excerpt mode, follow-up | REPAIRED | 2 | 10,117 / 558 | 0 |
+
+Every live run made the **direct source fix** (`fix_type: source`, no review
+needed): read `crc32c_config.h`, hypothesis "the config header incorrectly
+enables HAVE_MM_PREFETCH on ARM", one edit, confirmed by the loop's build. The
+baseline's repairs were build-time `sed -i` commands in `debian/rules` (§9a).
+One easy case: encouraging, not a repair rate.
+
+**Reasoning-only replies.** 6 of the first 11 live turns were malformed, every
+one the same way: about 120 output tokens of `<reasoning>` that ends with a
+decision ("Let's view it") and nothing after it, `finish_reason: stop`. With
+temperature 0 and a near-identical rebuilt request, retrying from scratch
+repeated it (four times in a row in `full-histoff-1`). The model adapter now
+answers such a reply once, in the same turn, with the model's own reasoning and
+a request for only the JSON object. Since then: 2 follow-ups, both answered with
+a valid action, 0 malformed turns, and about 60% fewer tokens per run. Each turn
+in the run record says whether it needed a follow-up (`follow_up`).
+
+Not yet tested: excerpt mode changing what the model sees (rcran is fixed on the
+first edit, so no excerpt reached the model), and a live revise after a real
+failed attempt. Both need cases that take more than one attempt.
+
+## 9d. The 10-case development bundle: first runs (15 October)
+
+The organizers published local environments for 10 public cases
+(`development-v1`, 5 per direction, checksum verified). `harness/case_views.py`
+gives each case an rcran-style folder, so the harness, Part D and Demo 3 work
+unchanged. The five `x86_64 -> aarch64` cases (aarch64 targets, native on the
+Graviton host) were run once with the frozen baseline and once or more with the
+full agent. The five aarch64 -> x86_64 cases need QEMU and take 20-80 min per
+build; not run yet.
+
+| Case | Cause (first error) | Baseline | Full agent (best run) | Full agent ended by |
+| --- | --- | --- | --- | --- |
+| ectrans | dependency fiat's CMake target points at a missing include directory on arm64 | no: disabled OpenMP for `aarch64` (Debian says `arm64`: the edit never applied) | no: 1 tested attempt, which moved the error from `fiat` to `parkind_dp` | token limit (91k) |
+| libmceliece | `/bin/ld: BFD ... assertion fail elfnn-aarch64.c:9754` (binutils) | no | no: 2 tested attempts (both "-fPIC") | same error twice (80k) |
+| libunwind | — | no: its one edit was rejected; **104k input tokens in one call** | no: 1 tested attempt | token limit (92k, 11 turns) |
+| rust-subversion | — | no: 0 of 10 edits applied | no: 3 attempts, 2 built | same error twice (57k) |
+| html-xml-utils | **builds unchanged locally** (`case_not_failing`) | — | — | excluded |
+
+**Result: 0 of 4 for both agents** on the failing aarch64 cases (rcran: full
+agent 4 of 4). The full agent now behaves as designed — investigates, tests,
+reads the new error, stops on a repeated one — but every tested fix was wrong.
+
+**Fixed along the way** (each from a run above, each with a test):
+
+| Problem seen | Fix |
+| --- | --- |
+| Reply with reasoning and a sentence but no JSON | Same-turn follow-up for any reply without a JSON action |
+| CMake errors reported as the header only ("CMake Error in src/trans/CMakeLists.txt:") | Part A appends the indented reason lines |
+| Linker failure without the word "error" (binutils assertion) | Part A reads `ld:` lines other than warnings |
+| Same search 4 times; unchanged files re-read after an edit | Identical requests shown once with a note; the loop keeps results an edit cannot change |
+| Stopped on turn 1: "a broken dependency cannot be fixed" | Prompt: a wrongly installed dependency is not a reason to stop; work around it in input/ |
+| Stopped on turn 1: read "5 of 5 edit attempts" as used up | Budget note says "0 of 5 used (5 left)" |
+| 15-17 turns of reading, no edit, despite a nudge | Tools switch off after 6 tool turns without an edit; a refused request gets a same-turn follow-up |
+
+**What limits it now.** (1) The fixes themselves: gpt-oss-120b proposes wrong
+repairs on these cases, which no plumbing change addresses. (2) Tokens spent
+resending evidence: about 6-8k per turn, so 100k buys about 11-15 turns, and
+when Part A finds no error the opening falls back to the whole 500-line log tail
+(26k tokens on html-xml-utils). Next: record each request's size by part, then
+trim; decide the research token budget (the organizers' is unpublished).
+
 ## 10. Next
 
 - [x] ~~First end-to-end verified repair~~ — §8

@@ -78,6 +78,18 @@ class FakeHost:
             raise CommandFailed("bash exited 1")  # run.sh exits nonzero on a failed build
 
 
+class ScriptEntry(unittest.TestCase):
+    def test_running_as_a_script_uses_the_imported_module(self):
+        # python -m harness.run_case must not leave a second copy of the module
+        # whose CommandFailed differs from the one harness.build_feedback catches.
+        import runpy
+        with patch.object(run_case_module, "main", return_value=0) as imported_main:
+            with self.assertRaises(SystemExit) as stop:
+                runpy.run_module("harness.run_case", run_name="__main__")
+        self.assertEqual(stop.exception.code, 0)
+        imported_main.assert_called_once()
+
+
 class RunCaseTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

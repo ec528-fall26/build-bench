@@ -445,8 +445,13 @@ class BudgetNote(unittest.TestCase):
     def test_what_is_left(self):
         text = prompts.budget_note(Budget(), attempts_used=2, builds_used=1, tokens_used=41_500,
                                    seconds_used=610)
-        self.assertEqual(text, "Left for this case: 3 of 5 edit attempts, 2 of 3 builds, about "
-                               "58,500 of 100,000 tokens, about 19 of 30 minutes.")
+        self.assertEqual(text, "Budget for this case: 2 of 5 edit attempts used (3 left), "
+                               "1 of 3 builds used (2 left), about 41,500 of 100,000 tokens used "
+                               "(58,500 left), about 10 of 30 minutes used (20 left).")
+
+    def test_nothing_used_reads_as_all_left(self):
+        self.assertIn("0 of 5 edit attempts used (5 left), 0 of 3 builds used (3 left)",
+                      prompts.budget_note(Budget()))
 
     def test_unknown_token_use_is_not_reported_as_zero_used(self):
         text = prompts.budget_note(Budget())
@@ -456,7 +461,8 @@ class BudgetNote(unittest.TestCase):
     def test_never_negative(self):
         text = prompts.budget_note(Budget(), attempts_used=9, builds_used=9, tokens_used=10 ** 6,
                                    seconds_used=10 ** 5)
-        self.assertIn("0 of 5 edit attempts, 0 of 3 builds, about 0 of 100,000 tokens, about 0 of 30",
+        self.assertIn("5 of 5 edit attempts used (0 left), 3 of 3 builds used (0 left), about "
+                      "100,000 of 100,000 tokens used (0 left), about 30 of 30 minutes used (0 left)",
                       text)
 
 

@@ -17,6 +17,7 @@ Background and measured results: [`docs/part5-findings.md`](../docs/part5-findin
 | `record.py` | Read a validator result folder into one outcome; append JSONL rows | Done |
 | `tests/` | Unit tests, using real `build-result.json` files from the rcran runs | Done |
 | `run_case.py` | One case end to end: baseline build → `dpkg-source -x` → agent edits → `dpkg-source --auto-commit -b` → `run.sh` → record | Done — verified on the ARM64 host 1 October (see below) |
+| `build_feedback.py` | Part D: the full agent's local build callback — repacks a copy of the worktree, runs `run.sh`, returns a `BuildResult` with Part A applied | Done — verified on the ARM64 host 14 October (see below) |
 | `replays/` | Edit files for the stand-in model: `rcran-known-fix.json` (the verified repair) and `rcran-comment-only.json` (negative control) | Done |
 
 ## What each run records
@@ -72,6 +73,78 @@ or a replay) is reported in the `unknown` column and never added as zero, so
 totals and medians cover known runs only. Filter by `--agent-version` (or
 `--model`) so different agent versions are never pooled.
 
+## Build feedback for the full agent (Part D)
+
+`LocalBuildFeedback` implements the agent's `BuildFeedback` contract on the local
+bundle. The full agent's loop calls `request_build(worktree)` after each edit:
+
+- The agent's worktree is never changed: `input/` is copied, repacked with
+  `dpkg-source --auto-commit -b`, assembled into a case and built with `run.sh`.
+- A bad candidate is a **failed build, not an error**, so the loop can rank it and
+  revise. Each build's `kind` says why: `succeeded`, `build_failed`, `timed_out`,
+  `no_real_build` (never reached compilation, e.g. a broken `debian/control`) or
+  `repack_failed` (dpkg-source rejected it). The last two rank lowest.
+- Only a validator that writes no `build-result.json` raises (`validator_error`).
+- `excerpt=True` gives Part A only the lines around the first 5 errors and the
+  last 20 lines, our stand-in for the competition's "diagnostic excerpts".
+- Every build gets `build-NN/` with the copy, the case, the validator output and
+  `feedback.json`; `feedback.records` holds the same rows for the run record.
+
+By hand, on the ARM64 host:
+
+```bash
+python3 -m harness.build_feedback --bundle ~/buildbench-local-rcran-v1 --prepare ~/wt
+# edit ~/wt/input/... (or leave it unchanged to reproduce the failure), then:
+python3 -m harness.build_feedback --bundle ~/buildbench-local-rcran-v1 --worktree ~/wt [--excerpt]
+```
+
+The worktree must look like the one `dpkg-source -x` leaves: `input/` plus the
+upstream tarball (`*.orig.tar.*`) beside it, which format 3.0 (quilt) needs to
+repack. `--prepare` and `run_case` both produce that.
+
+### Verified on the ARM64 host (14 October)
+
+The plan's "Done when" for Part D, on rcran with the real validator. No model
+involved: the worktree was edited by hand.
+
+| Build | Worktree | Result | Time |
+| --- | --- | --- | --- |
+| 1 | unchanged | failed (`build_failed`), stage `install`; first diagnostic `input/src/crc32c/crc32c_prefetch.h:18 fatal error: xmmintrin.h`, 7 in all | 95.1 s |
+| 2 | known fix (`HAVE_MM_PREFETCH 0`) | **SUCCEEDED**, stage `packaging` | 98.3 s |
+| 3 | unchanged, `--excerpt` | failed, stage `install`; same first diagnostic, from **25 of 1,873** log lines | 91.4 s |
+
+In excerpt mode the first three diagnostics are labelled `unknown` instead of
+`install`: the `dh_auto_install` marker is far above the error and outside the
+excerpt, and Part A does not guess a stage without one. The build's
+`stage_reached` is still `install`, from later diagnostics. Whether to keep the
+last stage marker in the excerpt depends on the organizers' excerpt format,
+which is not published.
+
+The first attempt failed with `repack_failed`: only `input/` was copied, and
+dpkg-source needs the upstream tarball beside it. The fake validator now
+requires the tarball the same way, so the tests catch it.
+
+It replaces `part_c_build.py`, Part C's checkpoint adapter for Docker Desktop on
+macOS (retired 14 October with the Part C owner's agreement).
+
+## The 10-case bundle (development-v1)
+
+The organizers' 10-case local bundle has one `run.sh` for all cases, selected
+with `--case ID`, and the cases under `cases/<id>/`. The harness expects one
+bundle per case (`run.sh` + `case/`, like rcran's), so `case_views.py` gives each
+case a view: a two-line `run.sh` that calls the real one with `--case`, and a
+`case` link to its folder. Nothing is copied or modified.
+
+```bash
+python3 -m harness.case_views ~/buildbench-local-development-v1 ~/bb-cases
+python3 -m harness.run_case --bundle ~/bb-cases/<case-id> --replay ... --run-id ...
+python3 experiments/demo3_comparison.py --bundle ~/bb-cases/<id-1> --bundle ~/bb-cases/<id-2> ...
+```
+
+Five cases target x86_64 and run on the ARM64 host under QEMU (`qemu-x86_64`
+binfmt with the `F` flag), the organizers' supported setup; their server builds
+took 20–82 minutes. The five aarch64 cases run natively in about 3–8 minutes.
+
 ## Repaired means
 
 `status == "succeeded"` **and** `artifact_validation_passed == true`.
@@ -99,6 +172,35 @@ which calls Part 2's `extract_tail` and Part 4's `apply_edits`. The model is one
 | --- | --- | --- |
 | `--replay FILE` | `ReplayModel`: returns the edits stored in `replays/*.json` | Checking the pipeline with answers known to be right (`rcran-known-fix.json`) or wrong (`rcran-comment-only.json`) |
 | `--live` | Part 3's `ModelClient`: one call to `openai.gpt-oss-120b-1:0` through Bedrock's OpenAI-compatible endpoint | Measuring the agent |
+
+### The full agent (`--agent full-agent`)
+
+`run_case` detects the full agent (its `main.py` has `run_agent`) and runs its
+repair loop instead of one attempt. Every edit the loop tries is built by
+`LocalBuildFeedback` in `<run-dir>/builds/build-NN/`; the verdict still comes
+from one more clean build of the final worktree, as on the platform. The ablation
+switches are read from `BB_AGENT_USE_*` (`agents/full-agent/src/config.py`), and
+`--excerpt` makes the loop's builds return diagnostic excerpts.
+
+Extra fields in its rows: `agent_termination` (why the loop stopped), `attempts`
+(hypothesis, files, applied, build summary, tokens), `builds` (Part D's records),
+`turns` (one per model call: action, tools, usage, malformed reason),
+`kept_attempts`, `malformed_count`, `config`, `excerpt`. The raw replies go to
+`<run-dir>/replies.jsonl`.
+
+For the full agent a replay file holds `replies`, the model's reply texts in
+order. `replays/rcran-full-revise.json` is **scripted, not a model result**: a
+tool request, a deliberately wrong first edit, then the verified fix. It
+exercises the revise path with real builds at no model cost.
+
+```bash
+python3 -m harness.run_case --bundle ~/buildbench-local-rcran-v1 --agent full-agent \
+    --replay harness/replays/rcran-full-revise.json --run-id full-revise-1 \
+    --log ~/buildbench-local-rcran-v1/harness-runs/fix-auto-1/baseline/build.log
+BB_MODEL_API_KEY=... python3 -m harness.run_case --bundle ~/buildbench-local-rcran-v1 \
+    --agent full-agent --live --run-id full-1 \
+    --log ~/buildbench-local-rcran-v1/harness-runs/fix-auto-1/baseline/build.log
+```
 
 ## Live runs
 

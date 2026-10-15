@@ -40,6 +40,49 @@ class Evidence(unittest.TestCase):
             "resolved": ["input/src/crc32c/crc32c_prefetch.h"],
             "source_line": "#include <xmmintrin.h>", "log_offset": len(prefix.encode())})
 
+    def test_validator_elapsed_time_prefix(self):
+        # The local validator's build.log starts every line with "[   Ns] ".
+        self.source("src/crc32c/crc32c_prefetch.h")
+        prefix = "[   80s]    dh_auto_install\n"
+        result = self.parse(prefix + "[   93s] crc32c/crc32c_prefetch.h:18:10: fatal error: "
+                            "xmmintrin.h: No such file or directory\n"
+                            "[   93s]    18 | #include <xmmintrin.h>\n")
+        self.assertEqual((result[0].log_path, result[0].stage, result[0].resolved,
+                          result[0].source_line, result[0].log_offset),
+                         ("crc32c/crc32c_prefetch.h", "install",
+                          ["input/src/crc32c/crc32c_prefetch.h"],
+                          "#include <xmmintrin.h>", len(prefix)))
+
+    def test_cmake_error_keeps_its_reason(self):
+        # ectrans (development-v1): the reason is on the indented lines below.
+        block = ("[   86s] CMake Error in src/trans/CMakeLists.txt:\n"
+                 "[   86s]   Imported target \"fiat\" includes non-existent path\n"
+                 "[   86s] \n"
+                 "[   86s]     \"/usr/lib/aarch64-linux-gnu/fortran/fiat\"\n"
+                 "[   86s] \n"
+                 "[   86s]   in its INTERFACE_INCLUDE_DIRECTORIES.  Possible reasons include:\n"
+                 "[   86s]   * The path was deleted, renamed, or moved to another location.\n")
+        result = self.parse("dh_auto_configure\n" + block
+                            + "CMake Error at CMakeLists.txt:12 (find_package):\n  Could not find fiat\n"
+                            + "-- Configuring incomplete, errors occurred!\n")
+        self.assertEqual([d.message for d in result], [
+            'CMake Error in src/trans/CMakeLists.txt: Imported target "fiat" includes '
+            'non-existent path "/usr/lib/aarch64-linux-gnu/fortran/fiat" in its '
+            'INTERFACE_INCLUDE_DIRECTORIES. Possible reasons include:',
+            "CMake Error at CMakeLists.txt:12 (find_package): Could not find fiat"])
+        self.assertEqual(result[0].stage, "configure")
+
+    def test_linker_messages_without_the_word_error(self):
+        # libmceliece (development-v1): the cause has no "error" in it.
+        assertion = ("/bin/ld: BFD (GNU Binutils for Ubuntu) 2.41.50.20231214 assertion fail "
+                     "../../bfd/elfnn-aarch64.c:9754")
+        result = self.parse("dh_auto_build\n" + f"[   83s] {assertion}\n" * 16
+                            + "/usr/bin/ld: warning: x.o: missing .note.GNU-stack section\n"
+                            + "[   83s] collect2: error: ld returned 1 exit status\n")
+        self.assertEqual([d.message for d in result],
+                         [assertion, "collect2: error: ld returned 1 exit status"])
+        self.assertEqual(result[0].stage, "build")
+
     def test_duplicate_across_files_keeps_first(self):
         result = self.parse("a.c:1: error: bad type\n 1 | first\nb.c:2: error: bad type\n 2 | second\n"
                             "make[2]: *** [all] Error 1\nmake[2]: *** [all] Error 1\n")

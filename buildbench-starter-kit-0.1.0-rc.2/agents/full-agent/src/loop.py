@@ -31,6 +31,9 @@ class LoopRequest:
     history: list[Attempt] = field(default_factory=list)
     current_build: BuildResult | None = None
     kept_attempts: list[int] = field(default_factory=list)
+    # The most recent attempt, given even with history off: what the last edit
+    # did is current feedback, not history.
+    latest_attempt: Attempt | None = None
 
 @dataclass
 class LoopResult:
@@ -84,6 +87,29 @@ def _build_rank(build: BuildResult) -> tuple[int, int, int]:
         _STAGE_RANK.get(build.stage_reached, -1),
         -len(build.diagnostics),
     )
+
+# Tools whose output an edit cannot change: edits never create, delete or
+# rename files, so listings and name searches stay true.
+_EDIT_PROOF = {"list_dir", "find_files", "patch_series"}
+
+
+def _still_valid(results: list[ToolResult], edited: set[str]) -> list[ToolResult]:
+    """Tool results still true after an edit to ``edited``.
+
+    A file read stays valid unless that file was edited. Text searches and
+    the current diff may change with any edit, so they are dropped. Keeping
+    the rest spares the model re-reading files it already saw (the first
+    ectrans run re-read unchanged files after its edit).
+    """
+    kept = []
+    for result in results:
+        tool = result.request.tool
+        if tool in _EDIT_PROOF:
+            kept.append(result)
+        elif tool == "read_file" and result.request.args.get("path") not in edited:
+            kept.append(result)
+    return kept
+
 
 def run_loop(
     context: CaseContext,
@@ -196,6 +222,7 @@ def run_loop(
             history=deepcopy(attempts) if config.use_history else [],
             current_build=deepcopy(best_build),
             kept_attempts=list(kept_attempts) if config.use_history else [],
+            latest_attempt=deepcopy(attempts[-1]) if attempts else None,
         )
 
 
@@ -346,8 +373,8 @@ def run_loop(
             )
             attempts.append(attempt)
 
-            # Earlier tool results may contain outdated source text.
-            tool_results.clear()
+            # Drop only the tool results the edit may have made outdated.
+            tool_results[:] = _still_valid(tool_results, {e.path for e in turn.edits})
 
             expired_before_build = clock() >= work_deadline
 

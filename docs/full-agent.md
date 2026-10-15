@@ -304,7 +304,16 @@ turns a reply into a `ModelTurn` changes; Parts B and C work with `ModelTurn` an
 
 ## Part C — Loop and repair history
 
-**Owner:** _______
+**Owner:** Juliette Jacques
+
+**Status (14 October): wired.** `src/loop.py` is called by `src/main.py` through
+`src/model_adapter.py`, which builds every request from Part E's prompts and
+parses every reply with Part E's `reply.py`. The harness runs the full agent with
+`run_case --agent full-agent`, building each attempt with Part D. Offline, a
+scripted run revises after a failed build and is repaired
+(`tests/full-agent/test_wiring.py`). Live on rcran, 14 October: 4 of 4 runs
+repaired with a direct source fix, about 10k input tokens each
+(`docs/part5-findings.md` §9c). Next: the 10 development cases.
 
 **What it does.** The state machine above. Each turn sends the model the evidence,
 any tool results, and — with `use_history` on — every earlier `Attempt`. Applies
@@ -343,6 +352,14 @@ attempts rather than resending everything.
 ## Part D — Build feedback
 
 **Owner:** Joonseo Moon (suggested: the harness owner)
+
+**Status (14 October): local callback done; "Done when" met on the real
+validator.** `harness/build_feedback.py` (`LocalBuildFeedback`). On rcran the
+unchanged worktree fails with `crc32c_prefetch.h:18` parsed and resolved, the
+known fix succeeds, and excerpt mode finds the same error in 25 of 1,873 log
+lines (results: `harness/README.md`). Offline, the loop revises after a failed
+build (`tests/full-agent/test_local_build_feedback.py`). Still to do: a harness
+mode that runs the full agent with this callback, once `main.py` calls the loop.
 
 **What it does.** Implements `BuildFeedback.request_build`.
 

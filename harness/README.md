@@ -98,8 +98,8 @@ python3 -m harness.build_feedback --bundle ~/buildbench-local-rcran-v1 --prepare
 python3 -m harness.build_feedback --bundle ~/buildbench-local-rcran-v1 --worktree ~/wt [--excerpt]
 ```
 
-`harness/part_c_build.py` (Part C's checkpoint adapter for Docker Desktop on
-macOS) is superseded by this module.
+It replaces `part_c_build.py`, Part C's checkpoint adapter for Docker Desktop on
+macOS (retired 14 October with the Part C owner's agreement).
 
 ## Repaired means
 

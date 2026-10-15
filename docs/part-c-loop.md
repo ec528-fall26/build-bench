@@ -19,6 +19,13 @@ local build and live-model runs described below.
 
 ## Files
 
+> **Update, 14 October:** with the Part C owner's agreement, the temporary
+> `model_turns.py`, `harness/part_c_model.py` and `harness/part_c_build.py` were
+> retired. Replies are parsed by Part E's `reply.py` (all nine `model_turns`
+> tests passed against it before removal), prompts come from Part E's
+> `prompts.py`, and local builds use Part D's `harness/build_feedback.py`.
+> References to those files below describe the 14 October checkpoint.
+
 Under `buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/`:
 
 - `loop.py`: orchestrates model turns, investigation tools, edits, build

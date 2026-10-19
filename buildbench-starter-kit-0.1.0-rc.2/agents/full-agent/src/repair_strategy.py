@@ -17,10 +17,40 @@ Experimental small-group repair workflow
 """
 
 
+
+SHARED_CAUSE_INSTRUCTIONS = """
+Experimental shared-cause repair workflow
+- Consider the available diagnostics across files before choosing a repair.
+- Form a hypothesis for a common cause supported by source and compiler evidence.
+- Similar error messages alone do not prove a shared cause.
+- Inspect shared definitions, interfaces, producers, and consumers when relevant.
+- Prefer a consistent repair of the underlying contract over repeated local workarounds.
+- Preserve platform portability, public behavior, and tests.
+- Address related affected locations across files when evidence supports doing so.
+- There is no three-edit limit in this strategy. Keep the batch coherent and justified.
+- Do not change unrelated code or perform blind global substitutions.
+- Use exact resolved input/ paths, including the input/ prefix.
+- Copy old_text exactly with unique surrounding context; avoid duplicate edits.
+- Complete source may already be supplied. Request tools only for missing evidence.
+- Read additional affected files when they are not included in the supplied source.
+- Source and diagnostic displays can be bounded; do not assume omitted content was read.
+- Explain the shared cause and the scope of the proposed repair in the hypothesis.
+- A valid edit is not proof of repair; success requires the build validator.
+"""
+
+
+def instructions_for(strategy):
+    if strategy == "shared-cause":
+        return SHARED_CAUSE_INSTRUCTIONS
+    if strategy == "small-group":
+        return INSTRUCTIONS
+    return ""
+
+
 def configured_strategy():
     value = os.environ.get("BB_REPAIR_STRATEGY", "default")
-    if value not in {"default", "small-group"}:
-        raise ValueError("BB_REPAIR_STRATEGY must be default or small-group")
+    if value not in {"default", "small-group", "shared-cause"}:
+        raise ValueError("BB_REPAIR_STRATEGY must be default, small-group, or shared-cause")
     return value
 
 
@@ -39,23 +69,24 @@ def select_group(diagnostics):
     return list(diagnostics[:3])
 
 
-def opening_inputs(request, initial_diagnostics, initial_log):
+def opening_inputs(request, initial_diagnostics, initial_log, *, strategy="small-group"):
     """Use retained-build errors, without mixing them with the initial log."""
+    choose = list if strategy == "shared-cause" else select_group
     if request.current_build is not None:
         context = copy(request.context)
         context.log_tail = ""
         diagnostics = request.current_build.diagnostics
-        return context, select_group(diagnostics), None, len(diagnostics)
+        return context, choose(diagnostics), None, len(diagnostics)
 
     # If edits have occurred without a retained build, initial errors are
     # historical evidence rather than verified errors in the current files.
     if request.latest_attempt is not None:
         context = copy(request.context)
         context.log_tail = ""
-        return context, select_group(initial_diagnostics), None, len(initial_diagnostics)
+        return context, choose(initial_diagnostics), None, len(initial_diagnostics)
 
     return (
-        request.context, select_group(initial_diagnostics),
+        request.context, choose(initial_diagnostics),
         initial_log, len(initial_diagnostics),
     )
 

@@ -246,10 +246,10 @@ class ModelAdapter:
         self.context = context
         self.config = config
         self.repair_strategy = repair_strategy.configured_strategy()
-        if self.repair_strategy == "small-group" and not (
+        if self.repair_strategy in {"small-group", "shared-cause"} and not (
             config.use_evidence_manager and config.use_build_feedback
         ):
-            raise ValueError("small-group requires evidence and build-feedback flags")
+            raise ValueError("experimental strategies require evidence and build-feedback flags")
         self.budget = budget
         self.diagnostics = diagnostics
         self.log_path = log_path
@@ -358,17 +358,19 @@ class ModelAdapter:
                     "content": request.edit_validation_feedback,
                 },
             ]
-        small_group = self.repair_strategy == "small-group"
+        small_group = self.repair_strategy in {"small-group", "shared-cause"}
+        strategy_instructions = repair_strategy.instructions_for(self.repair_strategy)
         context, diagnostics, log_path = request.context, self.diagnostics, self.log_path
         strategy_note = ""
         if small_group:
             context, diagnostics, log_path, total = repair_strategy.opening_inputs(
-                request, self.diagnostics, self.log_path
+                request, self.diagnostics, self.log_path,
+                strategy=self.repair_strategy,
             )
             strategy_note = (
                 f"Selected {len(diagnostics)} of {total} diagnostics for this task. "
                 "Other errors may remain. Errors in one file need not share a cause.\n"
-                + repair_strategy.INSTRUCTIONS
+                + strategy_instructions
             )
             if request.latest_attempt is not None and request.current_build is None:
                 strategy_note += (
@@ -422,7 +424,7 @@ class ModelAdapter:
         parts.append(prompts._NEXT)
         return [
             {"role": "system", "content": prompts.system_prompt(config, self.budget)
-             + (repair_strategy.INSTRUCTIONS if small_group else "")},
+             + (strategy_instructions if small_group else "")},
             {"role": "user", "content": "\n\n".join(p for p in parts if p.strip()) + "\n"},
         ]
 

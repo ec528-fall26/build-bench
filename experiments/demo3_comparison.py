@@ -294,6 +294,13 @@ def _median(values: list) -> float | None:
     values = [v for v in values if isinstance(v, (int, float)) and not isinstance(v, bool)]
     return statistics.median(values) if values else None
 
+def _recorded_flags(row: dict) -> dict | None:
+    """Read configuration switches from current or older run records."""
+    for key in ("config", "agent_config"):
+        value = row.get(key)
+        if isinstance(value, dict):
+            return value
+    return None
 
 def describe(config: Configuration, rows: list[dict]) -> dict:
     """One configuration's rows, reduced with harness.summarize plus the Demo 3 extras."""
@@ -304,7 +311,10 @@ def describe(config: Configuration, rows: list[dict]) -> dict:
     for row in rows:
         if _repeat(row) is not None:
             per_repeat[_repeat(row)] = per_repeat.get(_repeat(row), 0) + bool(row.get("repaired"))
-    recorded_flags = [row["agent_config"] for row in rows if isinstance(row.get("agent_config"), dict)]
+    recorded_flags = [
+        flags for row in rows
+        if (flags := _recorded_flags(row)) is not None
+    ]
     reasons: dict[str, int] = {}
     by_direction: dict[str, dict] = {}
     for row in rows:
@@ -336,8 +346,9 @@ def describe(config: Configuration, rows: list[dict]) -> dict:
         "agent_versions": sorted({str(row.get("agent_version")) for row in rows}),
         "flags_recorded": len(recorded_flags),
         "flags_contradicted": sorted(
-            row["run_id"] for row in rows if isinstance(row.get("agent_config"), dict)
-            and any(row["agent_config"].get(k) != v for k, v in config.flags.items())),
+            row["run_id"] for row in rows
+            if (flags := _recorded_flags(row)) is not None
+            and any(flags.get(k) != v for k, v in config.flags.items())),
     }
 
 

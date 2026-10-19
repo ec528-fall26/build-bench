@@ -28,6 +28,8 @@ _LINKER = re.compile(r"^(?:\S*/)?ld(?:\.\w+)?: (?!warning:)")
 # CMake prints "CMake Error ...:" and the reason on the indented lines below it.
 _CMAKE_HEADER = re.compile(r"^CMake Error\b.*:$")
 CMAKE_DETAIL_LINES = 3
+_RUST_ERROR = re.compile(r"^error(?:\[E\d+\])?:\s*.*$")
+_RUST_LOCATION = re.compile(r"^\s*-->\s+(?P<path>.+?):(?P<line>\d+):\d+\s*$")
 _GENERAL = re.compile(
     r"^(?:.*?:\s*(?:fatal )?error:|CMake Error|configure: error:|"
     r"(?:dh_\w+|dpkg-\w+): error:|ERROR:|Error:|FAILED:|FAIL:|E: Build killed)", re.IGNORECASE
@@ -100,13 +102,37 @@ def diagnose(log_path: Path, worktree: Path) -> list[Diagnostic]:
                             cmake = None
                         continue
                     cmake = None
+                # Source excerpts are evidence, never new diagnostics or stage markers.
+                quote = _QUOTE.match(text)
+                if quote:
+                    if pending is not None:
+                        if int(quote.group(1)) == pending.line:
+                            pending.source_line = quote.group(2)
+                            pending = None
+                        else:
+                            quote_remaining -= 1
+                            if quote_remaining <= 0:
+                                pending = None
+                    continue
+                # Rust prints the file location after its error header.
+                location = _RUST_LOCATION.match(text) if pending is not None and pending.line is None else None
+                if location:
+                    printed = location.group("path")
+                    if index is None:
+                        index = _file_index(worktree)
+                    pending.log_path = printed
+                    pending.line = int(location.group("line"))
+                    pending.resolved = _resolve(printed, index)
+                    quote_remaining = 4
+                    continue
                 marker = _STAGE.search(text)
                 if marker:
                     stage = marker.group(1)
                 elif re.match(r"^\s*(?:dpkg-(?:source|gencontrol|genchanges|gensymbols|deb)\b|dh_builddeb\b)", text):
                     stage = "packaging"
                 match = _COMPILER.match(text.strip())
-                message = match.group("message") if match else None
+                rust = _RUST_ERROR.match(text.strip())
+                message = match.group("message") if match else (rust.group(0) if rust else None)
                 if message is None and ("undefined reference" in text or _MAKE.match(text.strip())
                                         or _GENERAL.match(text.strip())
                                         or _LINKER.match(text.strip())):
@@ -127,6 +153,8 @@ def diagnose(log_path: Path, worktree: Path) -> list[Diagnostic]:
                     result.append(item)
                     if match and message != "Failure":
                         pending, quote_remaining = item, 3
+                    elif rust:
+                        pending, quote_remaining = item, 6
                     elif _CMAKE_HEADER.match(message):
                         cmake, cmake_lines = item, 0
                 elif pending is not None:

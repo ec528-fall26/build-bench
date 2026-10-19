@@ -48,6 +48,8 @@ def run_agent(
     """Diagnose the failure log, then run the repair loop until it stops."""
     config = config if config is not None else config_from_env()
     budget = budget or Budget()
+    if os.environ.get("BB_REPAIR_STRATEGY") == "small-group" and build_feedback is None:
+        raise ValueError("small-group requires an actual build-feedback adapter")
     context.log_tail = extract_tail(Path(log_path), TAIL_LINES)
     diagnostics = diagnose(Path(log_path), context.worktree)
     adapter = ModelAdapter(complete, context, config=config, budget=budget,
@@ -78,6 +80,7 @@ def result_record(result: LoopResult, adapter: ModelAdapter, config: AgentConfig
         "termination_reason": result.termination_reason,
         "termination_message": result.message,
         "config": config_record(config),
+        "repair_strategy": adapter.repair_strategy,
         "usage": result.usage,
         "known_usage": result.known_usage,
         "malformed_count": result.malformed_count,

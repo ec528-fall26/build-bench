@@ -42,6 +42,7 @@ from .loop import LoopRequest
 from .model_client import ModelCallFailed, request_completion
 from .reply import extract_action_json, parse_turn
 from .request_trace import trace_completion
+from . import repair_strategy
 from .types import CaseContext
 from .tools import run_tool
 
@@ -244,6 +245,11 @@ class ModelAdapter:
         self.complete = trace_completion(complete)
         self.context = context
         self.config = config
+        self.repair_strategy = repair_strategy.configured_strategy()
+        if self.repair_strategy == "small-group" and not (
+            config.use_evidence_manager and config.use_build_feedback
+        ):
+            raise ValueError("small-group requires evidence and build-feedback flags")
         self.budget = budget
         self.diagnostics = diagnostics
         self.log_path = log_path
@@ -317,6 +323,7 @@ class ModelAdapter:
         self.replies.append({"turn": number, "follow_up": follow_up, "reply": text})
         self.turns.append({
             "turn": number, "action": turn.action,
+            "repair_strategy": self.repair_strategy,
             "tools": [r.tool for r in turn.tool_requests], "edits": len(turn.edits),
             "reason": turn.reason, "finish_reason": finish, "usage": dict(usage),
             "follow_up": follow_up,
@@ -348,10 +355,28 @@ class ModelAdapter:
                     "content": request.edit_validation_feedback,
                 },
             ]
+        small_group = self.repair_strategy == "small-group"
+        context, diagnostics, log_path = request.context, self.diagnostics, self.log_path
+        strategy_note = ""
+        if small_group:
+            context, diagnostics, log_path, total = repair_strategy.opening_inputs(
+                request, self.diagnostics, self.log_path
+            )
+            strategy_note = (
+                f"Selected {len(diagnostics)} of {total} diagnostics for this task. "
+                "Other errors may remain. Errors in one file need not share a cause.\n"
+                + repair_strategy.INSTRUCTIONS
+            )
+            if request.latest_attempt is not None and request.current_build is None:
+                strategy_note += (
+                    "\nNo retained build result is available. Initial diagnostics "
+                    "are historical evidence; source files are current."
+                )
         parts = [_body(prompts.opening_message(
-            request.context, config, diagnostics=self.diagnostics, log_path=self.log_path,
+            context, config, diagnostics=diagnostics, log_path=log_path,
             package=self.package, history=request.history,
-            kept=request.kept_attempts if config.use_history else None))]
+            kept=request.kept_attempts if config.use_history else None,
+            note=strategy_note))]
 
         if request.edit_validation_feedback:
             parts.append(request.edit_validation_feedback)
@@ -360,7 +385,10 @@ class ModelAdapter:
         if latest is not None and latest.number != self._seen_attempt:
             self._new_attempt(latest, request.current_build)
         if latest is not None:
-            parts.append(self._attempt_note)
+            parts.append(
+                repair_strategy.attempt_summary(latest, request.current_build)
+                if small_group else self._attempt_note
+            )
         if self._last_turn is not None and self._last_turn.action == "malformed":
             parts.append(_body(prompts.malformed_message(self._last_turn, config)))
         if request.tool_results:
@@ -390,7 +418,8 @@ class ModelAdapter:
             seconds_used=self.clock() - self.started))
         parts.append(prompts._NEXT)
         return [
-            {"role": "system", "content": prompts.system_prompt(config, self.budget)},
+            {"role": "system", "content": prompts.system_prompt(config, self.budget)
+             + (repair_strategy.INSTRUCTIONS if small_group else "")},
             {"role": "user", "content": "\n\n".join(p for p in parts if p.strip()) + "\n"},
         ]
 

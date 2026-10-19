@@ -289,6 +289,80 @@ class Adapter(unittest.TestCase):
         self.assertNotIn("switched off", script.user(8))
         self.assertEqual((result.termination_reason, result.malformed_count), ("model_stop", 0))
 
+    def test_ambiguous_edit_feedback_shows_matching_locations(self):
+        target = self.worktree / CONFIG
+        original = "first repeat\nsecond repeat\n"
+        target.write_text(original)
+        script = Script(
+            edit("repeat", "replacement"),
+            reply(action="stop", reason="done"),
+        )
+
+        result, _ = self.run_with(script)
+
+        self.assertEqual(result.attempts[0].applied, 0)
+        self.assertEqual(target.read_text(), original)
+        feedback = script.user(1)
+        self.assertIn("old_text_ambiguous", feedback)
+        self.assertIn("unique surrounding context", feedback)
+        self.assertIn(f"{CONFIG}:1:first repeat", feedback)
+        self.assertIn(f"{CONFIG}:2:second repeat", feedback)
+
+    def test_rejection_help_does_not_search_with_tools_disabled(self):
+        target = self.worktree / CONFIG
+        target.write_text("first repeat\nsecond repeat\n")
+        script = Script(
+            edit("repeat", "replacement"),
+            reply(action="stop", reason="done"),
+        )
+
+        with patch("src.model_adapter.run_tool") as automatic_search:
+            self.run_with(script, config=AgentConfig(use_tools=False))
+
+        automatic_search.assert_not_called()
+        self.assertIn("unique surrounding context", script.user(1))
+        self.assertNotIn("Automatic search", script.user(1))
+
+    def test_missing_edit_text_gets_guidance_without_search(self):
+        script = Script(
+            edit("text that is absent", "replacement"),
+            reply(action="stop", reason="done"),
+        )
+
+        with patch("src.model_adapter.run_tool") as automatic_search:
+            result, _ = self.run_with(script)
+
+        automatic_search.assert_not_called()
+        self.assertEqual(result.attempts[0].applied, 0)
+        self.assertIn("the exact old_text was not found", script.user(1))
+        self.assertIn("preserving whitespace", script.user(1))
+
+    def test_automatic_rejection_searches_are_bounded(self):
+        target = self.worktree / CONFIG
+        original = "alpha beta gamma\nalpha beta gamma\n"
+        target.write_text(original)
+        script = Script(
+            reply(
+                action="edit",
+                hypothesis="test rejection feedback",
+                evidence=["test fixture"],
+                edits=[
+                    {"path": CONFIG, "old_text": word, "new_text": "changed"}
+                    for word in ("alpha", "beta", "gamma")
+                ],
+            ),
+            reply(action="stop", reason="done"),
+        )
+
+        from src.model_adapter import run_tool as actual_run_tool
+        with patch(
+            "src.model_adapter.run_tool", wraps=actual_run_tool
+        ) as automatic_search:
+            self.run_with(script)
+
+        self.assertEqual(automatic_search.call_count, 2)
+        self.assertEqual(target.read_text(), original)
+
     def test_rejected_edit_reason_is_passed_on(self):
         script = Script(edit("text that is not in the file\n", "x\n"),
                         reply(action="stop", reason="done"))

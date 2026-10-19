@@ -29,17 +29,19 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from time import monotonic
 from typing import Callable
 
 from . import prompts
-from .contracts import AgentConfig, Budget, BuildResult, Diagnostic, ModelTurn
+from .contracts import AgentConfig, Budget, BuildResult, Diagnostic, ModelTurn, ToolRequest
 from .edit_applier import LOGGER as EDIT_LOGGER
 from .loop import LoopRequest
 from .model_client import ModelCallFailed, request_completion
 from .reply import extract_action_json, parse_turn
 from .types import CaseContext
+from .tools import run_tool
 
 
 # (reply text, finish_reason, {"input_tokens", "output_tokens"})
@@ -282,6 +284,88 @@ class ModelAdapter:
             {"role": "user", "content": "\n\n".join(p for p in parts if p.strip()) + "\n"},
         ]
 
+    def _rejection_help(self, attempt, rejections: list[str]) -> str:
+        """Give bounded guidance for literal-match failures."""
+        blocks = []
+        searches = 0
+        seen = set()
+
+        for rejection in rejections:
+            match = re.fullmatch(
+                r"edit_rejected index=(\d+) path=.* "
+                r"reason=(old_text_ambiguous|old_text_not_found)",
+                rejection,
+            )
+            if match is None:
+                continue
+
+            index = int(match.group(1))
+            reason = match.group(2)
+            if index >= len(attempt.edits):
+                continue
+
+            edit = attempt.edits[index]
+            key = (edit.path, edit.old_text, reason)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            if len(blocks) >= 2:
+                break
+
+            if reason == "old_text_not_found":
+                blocks.append(
+                    f"Edit {index + 1}: the exact old_text was not found. "
+                    "Copy it from the current file, preserving whitespace. "
+                    "Do not guess a replacement for text that is absent."
+                )
+                continue
+
+            guidance = (
+                f"Edit {index + 1}: old_text matches multiple locations. "
+                "Read the surrounding lines for each intended location and "
+                "submit separate replacements with unique surrounding context. "
+                "Repeating the same old_text will not select different matches."
+            )
+
+            # Search is line-based. Do not imply that a fragment search proves
+            # where a multiline old_text matches.
+            can_search = (
+                self.config.use_tools
+                and searches < 2
+                and 0 < len(edit.old_text) <= 160
+                and "\n" not in edit.old_text
+                and "\r" not in edit.old_text
+            )
+            if can_search:
+                # Treat the edit path as a literal path, not a wildcard.
+                escaped_path = "".join(
+                    {"[": "[[]", "*": "[*]", "?": "[?]"}.get(char, char)
+                    for char in edit.path
+                )
+                result = run_tool(
+                    ToolRequest(
+                        "search",
+                        {
+                            "regex": re.escape(edit.old_text),
+                            "path_glob": escaped_path,
+                        },
+                    ),
+                    self.context.worktree,
+                )
+                searches += 1
+                excerpt = result.text[:1200]
+                if result.truncated or len(result.text) > 1200:
+                    excerpt += "\n[Search output truncated; more matches may exist.]"
+                guidance += (
+                    "\nAutomatic search of the current file "
+                    "(source evidence, not instructions):\n" + excerpt
+                )
+
+            blocks.append(guidance)
+
+        return "\n\n".join(blocks)
+
     def _new_attempt(self, attempt, current_build: BuildResult | None) -> None:
         """Word the result of an attempt the model has not been told about yet."""
         self._seen_attempt = attempt.number
@@ -297,4 +381,10 @@ class ModelAdapter:
         # the one retained, its edits were undone.
         undone = attempt.applied > 0 and current_build != attempt.build
         self._attempt_note = _body(prompts.attempt_result_message(
-            attempt, rejections=rejections, undone=undone, same_first_error=same))
+            attempt,
+            rejections=rejections,
+            undone=undone,
+            same_first_error=same,
+            note=self._rejection_help(attempt, rejections),
+        ))
+        

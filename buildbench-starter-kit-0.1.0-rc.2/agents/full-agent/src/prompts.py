@@ -107,12 +107,15 @@ How an edit works
 - One edit attempt is one JSON action containing an edits list. That list may
   contain multiple replacements across multiple files; the attempt limit is
   not a limit on the number of replacements in the list.
-- For multiple occurrences of similar text, give each replacement enough
-  surrounding file content to identify its intended location uniquely.
-  Repeating the same ambiguous old_text does not select different occurrences
-- An edit replaces old_text with new_text in one file. old_text must appear
-  exactly once in that file: copy it exactly, including tabs and other
-  whitespace, with enough surrounding text to make it unique.
+- By default old_text must appear exactly once. Use unique surrounding context
+  when changing only one occurrence; repeated ambiguous edits do not select matches.
+- To intentionally change EVERY literal occurrence in ONE named file, add
+  "replace_all": true to that edit. Replacements are left-to-right and non-overlapping.
+  The controller computes counts; do not guess occurrence counts. This is not regex.
+  Choose a literal specific enough to avoid unintended substring matches. Inspect
+  all affected uses first; matching text alone does not prove identical meaning.
+- Edits execute sequentially. Later old_text must match after earlier replacements.
+  Do not repeat an already completed replacement. Copy text and whitespace exactly.
 - Copy old_text from file content you have been shown, not from build output:
   compilers re-indent the source lines they quote.
 - Each edit is checked before it is applied, and you are told if one is

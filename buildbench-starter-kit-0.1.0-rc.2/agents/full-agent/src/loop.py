@@ -23,6 +23,7 @@ from .edit_preflight import focused_feedback
 from .path_feedback import missing_prefix_feedback
 from .tools import run_tool
 from .types import CaseContext
+from .proposal_review import render_review, signature
 
 
 @dataclass
@@ -37,6 +38,7 @@ class LoopRequest:
     # did is current feedback, not history.
     latest_attempt: Attempt | None = None
     edit_validation_feedback: str = ""
+    proposal_review: str = ""
 
 @dataclass
 class LoopResult:
@@ -48,6 +50,7 @@ class LoopResult:
     known_usage: dict[str, int] = field(default_factory=dict)
     current_build: BuildResult | None = None
     kept_attempts: list[int] = field(default_factory=list)
+    review_events: list[dict] = field(default_factory=list)
 
 
 def _normalize_usage(usage: dict) -> dict[str, int | None]:
@@ -125,11 +128,15 @@ def run_loop(
     budget: Budget | None = None,
     build_feedback: BuildFeedback | None = None,
     patch_policy: Mapping[str, list[str] | tuple[str, ...]] | None = None,
+    review_edits: bool = False,
+    initial_diagnostics=None,
     max_turns: int = 20,
     max_tool_calls: int = 30,
     clock: Callable[[], float] = monotonic,
 ) -> LoopResult:
     # Provisional local safeguards, not official competition limits.
+    if type(review_edits) is not bool:
+        raise ValueError("review_edits must be a boolean")
     if type(max_turns) is not int or max_turns < 1:
         raise ValueError("max_turns must be a positive integer.")
     if type(max_tool_calls) is not int or max_tool_calls < 0:
@@ -169,6 +176,10 @@ def run_loop(
     edit_validation_feedback = ""
     pending_turn = None
     pending_index = None
+    review_turn = None
+    review_key = None
+    proposal_review = ""
+    review_events = []
     correction_responses = 0
     max_correction_responses = 12
     malformed_count = 0
@@ -188,6 +199,7 @@ def run_loop(
             known_usage=dict(known_usage),
             current_build=deepcopy(best_build),
             kept_attempts=list(kept_attempts),
+            review_events=deepcopy(review_events),
         )
 
     for _ in range(max_turns):
@@ -238,6 +250,7 @@ def run_loop(
             kept_attempts=list(kept_attempts) if config.use_history else [],
             latest_attempt=deepcopy(attempts[-1]) if attempts else None,
             edit_validation_feedback=edit_validation_feedback,
+            proposal_review=proposal_review,
         )
 
 
@@ -319,6 +332,21 @@ def run_loop(
 
             continue
 
+        approved_key = None
+        if turn.action == "approve":
+            if review_turn is None:
+                feedback = "No pending diff is available to approve. Propose an edit or stop."
+                continue
+            approved_key = review_key
+            review_events.append({"event": "approved", "signature": review_key, "reason": turn.reason})
+            turn = deepcopy(review_turn)
+            review_turn = None
+            proposal_review = ""
+        elif turn.action == "edit" and review_turn is not None:
+            review_events.append({"event": "revised", "signature": review_key})
+            review_turn = None
+            proposal_review = ""
+
         if turn.action == "edit":
             if pending_turn is not None:
                 if len(turn.edits) > 1:
@@ -386,6 +414,20 @@ def run_loop(
                     continue
                 pending_turn = None
                 correction_responses = 0
+                if review_edits:
+                    current_key = signature(snapshot, turn)
+                    if approved_key != current_key:
+                        proposal_review, counts = render_review(
+                            snapshot, turn,
+                            best_build.diagnostics if best_build is not None else (initial_diagnostics or []),
+                            patch_policy=patch_policy,
+                            historical=bool(attempts) and best_build is None,
+                        )
+                        review_turn = deepcopy(turn)
+                        review_key = current_key
+                        review_events.append({"event": "proposed", "signature": current_key,
+                                              "counts": counts, "feedback": proposal_review})
+                        continue
                 # Capture every affected file before applying any edits.
                 for edit in turn.edits:
                     tracker.capture_before_edit(edit.path)
@@ -415,6 +457,13 @@ def run_loop(
                     turn.edits,
                     patch_policy=patch_policy,
                 )
+                if review_edits and applied != len(turn.edits):
+                    try:
+                        snapshot.restore()
+                    except (OSError, ValueError, RuntimeError) as exc:
+                        return finish("restoration_error", f"Review batch restore failed: {exc}")
+                    return finish("edit_application_error",
+                                  "Reviewed batch was not fully applied; restored files and skipped build.")
                 feedback = (
                     f"Accepted {applied} of {len(turn.edits)} proposed "
                     "edit operations."

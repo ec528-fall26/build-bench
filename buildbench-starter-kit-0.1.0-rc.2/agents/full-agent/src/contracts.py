@@ -41,7 +41,7 @@ class ToolResult:                 # Part B -> model
 
 @dataclass
 class ModelTurn:                  # one model reply, parsed (see "Model reply format")
-    action: str                   # tool | edit | stop | malformed
+    action: str                   # tool | edit | approve (pending review only) | stop | malformed
     tool_requests: list[ToolRequest]   # action == "tool"; several allowed per turn
     hypothesis: str               # action == "edit"
     evidence: list[str]           # action == "edit": log lines / file:line it rests on

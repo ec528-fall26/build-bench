@@ -169,7 +169,7 @@ def run_loop(
     pending_turn = None
     pending_index = None
     correction_responses = 0
-    max_correction_responses = 6
+    max_correction_responses = 12
     malformed_count = 0
     empty_edit_streak = 0
     attempts: list[Attempt] = []
@@ -193,7 +193,7 @@ def run_loop(
         if pending_turn is not None and correction_responses >= max_correction_responses:
             return finish(
                 "edit_correction_budget",
-                "Six correction responses did not produce a valid batch; "
+                "Twelve correction responses did not produce a valid batch; "
                 "the pending batch was not applied.",
             )
         if clock() >= work_deadline:

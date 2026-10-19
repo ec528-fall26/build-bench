@@ -106,7 +106,7 @@ class FocusedCorrectionTests(unittest.TestCase):
     def test_correction_limit_leaves_files_unchanged(self):
         result = self.run_script(
             [turn([edit("absent", "new")])]
-            + [turn([edit("still absent", "new")]) for _ in range(6)]
+            + [turn([edit("still absent", "new")]) for _ in range(12)]
         )
         self.assertEqual(result.termination_reason, "edit_correction_budget")
         self.assertEqual(result.attempts, [])

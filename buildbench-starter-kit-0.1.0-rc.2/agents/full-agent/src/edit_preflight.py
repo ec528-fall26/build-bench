@@ -1,5 +1,7 @@
 """Read-only validation of a sequential edit batch against a snapshot."""
 
+import re
+
 from .edit_applier import EditRejected, MAX_FILE_BYTES, _policy_reason
 
 MAX_FEEDBACK_CHARS = 8000
@@ -189,4 +191,66 @@ def focused_feedback(snapshot, edits, hypothesis):
         f"Proposed NEW text: {_preview(getattr(edit, 'new_text', None), 1600)}",
         detail,
     ]
+    if reason == "old_text_not_found" and before is not None:
+        blocks.append(
+            "\n=== Source before the focused edit, including earlier simulated edits ===\n"
+            + _missing_source_context(before, edit.old_text)
+        )
+        original = next(
+            saved.content.decode("utf-8")
+            for saved in snapshot.files if saved.path == edit.path
+        )
+        if original != before:
+            blocks.append(
+                "\n=== Actual file on disk; pending edits have NOT been written ===\n"
+                + _missing_source_context(original, edit.old_text)
+            )
     return index, "\n".join(blocks)
+
+
+
+def _missing_source_context(text, old_text):
+    """Suggest source windows for inspection, never approximate replacements."""
+    ignored = {
+        "let", "mut", "const", "std", "ffi", "str", "path",
+        "as", "to_str", "unwrap", "from_ptr", "CStr",
+    }
+    identifiers = set(re.findall(r"[A-Za-z_][A-Za-z_0-9]*", old_text))
+    distinctive = identifiers - ignored
+    lines = text.splitlines()
+    ranked = []
+
+    for number, line in enumerate(lines):
+        words = set(re.findall(r"[A-Za-z_][A-Za-z_0-9]*", line))
+        score = 4 * len(words & distinctive) + len(words & identifiers)
+        if score:
+            ranked.append((-score, number))
+
+    selected = []
+    for _, number in sorted(ranked):
+        if all(abs(number - previous) > 10 for previous in selected):
+            selected.append(number)
+        if len(selected) == 3:
+            break
+
+    if not selected:
+        return (
+            "No related source lines found by identifier overlap. "
+            "Do not invent replacement text."
+        )
+
+    blocks = [
+        "Suggested source windows, ranked by identifier overlap.",
+        "These are hints, NOT confirmed matches. Line labels are not source text.",
+        "Copy exact source text and whitespace; do not include the line labels.",
+        "At most three windows; individual lines are capped at 400 characters.",
+    ]
+    for number in sorted(selected):
+        blocks.append("\n--- source window ---")
+        for index in range(max(0, number - 5), min(len(lines), number + 6)):
+            line = lines[index]
+            suffix = " [LINE TRUNCATED: do not copy as a complete line]" if len(line) > 400 else ""
+            blocks.append(f"{index + 1}: {line[:400]}{suffix}")
+
+    result = "\n".join(blocks)
+    return result[:6000] + ("\n[Source windows truncated.]" if len(result) > 6000 else "")

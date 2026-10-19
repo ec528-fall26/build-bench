@@ -387,4 +387,3 @@ class ModelAdapter:
             same_first_error=same,
             note=self._rejection_help(attempt, rejections),
         ))
-        

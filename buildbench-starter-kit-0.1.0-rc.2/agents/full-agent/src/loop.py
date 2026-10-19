@@ -540,11 +540,15 @@ def run_loop(
                         previous_error.line,
                     )
 
-                    if current_key == previous_key:
+                    if (
+                        current_key == previous_key
+                        and _build_rank(build) <= _build_rank(previous_build)
+                    ):
                         return finish(
                             "repeated_diagnostic",
                             "Two consecutive changed attempts reported "
-                            "the same leading diagnostic.",
+                            "the same leading diagnostic without improvement "
+                            "in the build-ranking heuristic.",
                         )
 
             latest_attempt_feedback = feedback

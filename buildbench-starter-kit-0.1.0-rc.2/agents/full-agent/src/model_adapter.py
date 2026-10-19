@@ -41,6 +41,7 @@ from .edit_preflight import FOCUSED_PREFIX
 from .loop import LoopRequest
 from .model_client import ModelCallFailed, request_completion
 from .reply import extract_action_json, parse_turn
+from .request_trace import trace_completion
 from .types import CaseContext
 from .tools import run_tool
 
@@ -240,7 +241,7 @@ class ModelAdapter:
                  config: AgentConfig, budget: Budget, diagnostics: list[Diagnostic],
                  log_path: Path | None, package: str | None = None,
                  clock: Callable[[], float] = monotonic):
-        self.complete = complete
+        self.complete = trace_completion(complete)
         self.context = context
         self.config = config
         self.budget = budget

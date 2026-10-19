@@ -19,7 +19,7 @@ from .contracts import (
 )
 from .diff_tracker import DiffTracker
 from .edit_applier import apply_edits
-from .edit_preflight import validate_batch
+from .edit_preflight import focused_feedback
 from .tools import run_tool
 from .types import CaseContext
 
@@ -166,6 +166,10 @@ def run_loop(
     feedback = ""
     latest_attempt_feedback = ""
     edit_validation_feedback = ""
+    pending_turn = None
+    pending_index = None
+    correction_responses = 0
+    max_correction_responses = 6
     malformed_count = 0
     empty_edit_streak = 0
     attempts: list[Attempt] = []
@@ -186,6 +190,12 @@ def run_loop(
         )
 
     for _ in range(max_turns):
+        if pending_turn is not None and correction_responses >= max_correction_responses:
+            return finish(
+                "edit_correction_budget",
+                "Six correction responses did not produce a valid batch; "
+                "the pending batch was not applied.",
+            )
         if clock() >= work_deadline:
             return finish(
                 "time_budget",
@@ -243,6 +253,9 @@ def run_loop(
                 f"Model request failed: {type(exc).__name__}: {exc}",
             )
 
+        if pending_turn is not None:
+            correction_responses += 1
+
         reported_usage = _normalize_usage(reported_usage)
 
         for name, count in reported_usage.items():
@@ -271,6 +284,9 @@ def run_loop(
             )
 
         if turn.action == "tool":
+            if pending_turn is not None:
+                edit_validation_feedback += "\nReturn one correction edit, an empty edit list to remove it, or stop."
+                continue
             if not config.use_tools:
                 feedback = (
                     "Investigation tools are disabled for this run. "
@@ -303,6 +319,20 @@ def run_loop(
             continue
 
         if turn.action == "edit":
+            if pending_turn is not None:
+                if len(turn.edits) > 1:
+                    edit_validation_feedback += "\nYour correction contained multiple edits. Return at most ONE."
+                    continue
+                merged = deepcopy(pending_turn)
+                merged.edits[pending_index:pending_index + 1] = deepcopy(turn.edits)
+                turn = merged
+                if not turn.edits:
+                    pending_turn = None
+                    pending_index = None
+                    correction_responses = 0
+                    edit_validation_feedback = ""
+                    feedback = "The pending batch was explicitly emptied; no files changed."
+                    continue
             if not turn.edits:
                 empty_edit_streak += 1
                 attempts.append(
@@ -341,11 +371,14 @@ def run_loop(
                     [edit.path for edit in turn.edits],
                     patch_policy=patch_policy,
                 )
-                edit_validation_feedback = validate_batch(snapshot, turn.edits)
+                pending_index, edit_validation_feedback = focused_feedback(
+                    snapshot, turn.edits, turn.hypothesis
+                )
                 if edit_validation_feedback:
-                    # A correction costs model turns/tokens, not a build or
-                    # repair attempt. Retain tool results: no files changed.
+                    pending_turn = deepcopy(turn)
                     continue
+                pending_turn = None
+                correction_responses = 0
                 # Capture every affected file before applying any edits.
                 for edit in turn.edits:
                     tracker.capture_before_edit(edit.path)
@@ -354,6 +387,9 @@ def run_loop(
                     f"The edit batch was not applied because its files "
                     f"could not be captured: {exc}"
                 )
+                pending_turn = None
+                pending_index = None
+                correction_responses = 0
                 edit_validation_feedback = (
                     "=== Edit batch validation failed ===\n"
                     "NO edits were written and NO build was requested.\n"

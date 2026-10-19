@@ -368,8 +368,11 @@ class Adapter(unittest.TestCase):
         automatic_search.assert_not_called()
         self.assertEqual(result.attempts, [])
         feedback = script.user(1)
-        for index in range(3):
-            self.assertIn(f"INDEX {index}:", feedback)
+        self.assertIn("FOCUSED INDEX: 0", feedback)
+        self.assertIn("INDEX 0:", feedback)
+        self.assertNotIn("INDEX 1:", feedback)
+        self.assertNotIn("INDEX 2:", feedback)
+        self.assertIn("original batch has 3 edits", feedback)
         self.assertIn("Matching source locations", feedback)
         self.assertIn("1: alpha beta gamma", feedback)
         self.assertIn("2: alpha beta gamma", feedback)

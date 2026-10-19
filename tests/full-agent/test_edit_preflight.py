@@ -99,7 +99,8 @@ class PreflightTests(unittest.TestCase):
         requests = []
         proposals = iter([
             action("edit", [edit("alpha", "gamma"), edit("absent", "new")]),
-            action("edit", [edit("alpha", "gamma")]),
+            # Explicitly remove the failing item; retain the valid first edit.
+            action("edit", []),
             action("stop"),
         ])
 

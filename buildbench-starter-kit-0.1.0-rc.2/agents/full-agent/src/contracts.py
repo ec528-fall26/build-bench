@@ -23,6 +23,7 @@ class Diagnostic:                 # Part A produces, everyone reads
     resolved: list[str]           # matching real files: ["input/src/crc32c/crc32c_prefetch.h"]
     source_line: str | None       # the line the compiler quoted, if any
     log_offset: int               # where in the log it came from (provenance)
+    compiler_details: str = ""    # bounded continuation of a compiler error
 
 
 @dataclass

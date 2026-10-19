@@ -41,7 +41,8 @@ class Evidence(unittest.TestCase):
             "[ 164s] 32 | CStr::from_ptr(local_abspath)\n"
             "[ 164s]    | expected `*const u8`, found `*const i8`\n")
         self.assertEqual(len(result), 1)
-        self.assertEqual(dataclasses.asdict(result[0]), {
+        self.assertEqual({k: v for k, v in dataclasses.asdict(result[0]).items()
+                          if k != "compiler_details"}, {
             "message": "error[E0308]: mismatched types", "stage": "build",
             "log_path": "src/client.rs", "line": 32,
             "resolved": ["input/src/client.rs"],
@@ -88,7 +89,8 @@ class Evidence(unittest.TestCase):
         prefix = "é\r\n   dh_auto_build\r\n"
         result = self.parse(prefix + "crc32c/crc32c_prefetch.h:18:10: fatal error: xmmintrin.h: No such file or directory\r\n"
                             "   18 | #include <xmmintrin.h>\r\n      |          ^~~~~~~~~~~~~\r\n")
-        self.assertEqual(dataclasses.asdict(result[0]), {
+        self.assertEqual({k: v for k, v in dataclasses.asdict(result[0]).items()
+                          if k != "compiler_details"}, {
             "message": "fatal error: xmmintrin.h: No such file or directory",
             "stage": "build", "log_path": "crc32c/crc32c_prefetch.h", "line": 18,
             "resolved": ["input/src/crc32c/crc32c_prefetch.h"],

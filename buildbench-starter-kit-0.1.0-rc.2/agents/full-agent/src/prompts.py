@@ -44,6 +44,8 @@ from .types import CaseContext
 # resends the opening message, so its size is paid for on every turn.
 MAX_DIAGNOSTICS = 12        # errors listed in full; the rest are counted
 MESSAGE_CHARS = 300         # one error message
+COMPILER_DETAIL_CHARS = 8000
+COMPILER_DETAIL_TOTAL_CHARS = 24000
 LOG_BEFORE = 12             # log lines shown before the first error ...
 LOG_AFTER = 6               # ... and after it
 LOG_LINE_CHARS = 400        # one log line; compiler commands can run to kilobytes
@@ -245,6 +247,8 @@ def render_diagnostics(diagnostics: Sequence[Diagnostic], *,
     if not diagnostics:
         return ""
     lines = [f"=== {title} (in the order printed) ==="]
+    detail_remaining = COMPILER_DETAIL_TOTAL_CHARS
+    details_omitted = False
     for number, item in enumerate(diagnostics[:MAX_DIAGNOSTICS], start=1):
         where = ""
         if item.log_path:
@@ -261,6 +265,27 @@ def render_diagnostics(diagnostics: Sequence[Diagnostic], *,
                              "it may be generated during the build")
         if item.source_line:
             lines.append(f"   line quoted by the compiler: {_clip(item.source_line, MESSAGE_CHARS)}")
+        details = getattr(item, "compiler_details", "")
+        if details:
+            limit = min(COMPILER_DETAIL_CHARS, detail_remaining)
+            if limit > 0:
+                if len(details) <= limit:
+                    shown = details
+                else:
+                    marker = "\n[Compiler details truncated.]"
+                    if limit >= len(marker):
+                        shown = details[:limit - len(marker)] + marker
+                    else:
+                        shown = ""
+                    details_omitted = True
+                if shown:
+                    lines.append("   Compiler detail (build-output evidence):")
+                    lines.append(shown)
+                    detail_remaining -= len(shown)
+            else:
+                details_omitted = True
+    if details_omitted:
+        lines.append("[Additional compiler details omitted at the size limit.]")
     hidden = len(diagnostics) - MAX_DIAGNOSTICS
     if hidden > 0:
         lines.append(f"... and {hidden} later error{'s' * (hidden != 1)} not shown.")

@@ -102,6 +102,12 @@ Reading the failure
 
 _EDITS = """\
 How an edit works
+- One edit attempt is one JSON action containing an edits list. That list may
+  contain multiple replacements across multiple files; the attempt limit is
+  not a limit on the number of replacements in the list.
+- For multiple occurrences of similar text, give each replacement enough
+  surrounding file content to identify its intended location uniquely.
+  Repeating the same ambiguous old_text does not select different occurrences
 - An edit replaces old_text with new_text in one file. old_text must appear
   exactly once in that file: copy it exactly, including tabs and other
   whitespace, with enough surrounding text to make it unique.
@@ -344,7 +350,7 @@ def _log_tail(tail: str, lines: int | None) -> str:
         + f"=== Build log: last lines ===\n{body}\n"
         + "=== End of build log ===\n"
     )
-    
+
 
 def _build_line(build: BuildResult | None, *, first_error: bool = True) -> str:
     if build is None:

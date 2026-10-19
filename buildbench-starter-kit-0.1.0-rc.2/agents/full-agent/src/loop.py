@@ -20,6 +20,7 @@ from .contracts import (
 from .diff_tracker import DiffTracker
 from .edit_applier import apply_edits
 from .edit_preflight import focused_feedback
+from .path_feedback import missing_prefix_feedback
 from .tools import run_tool
 from .types import CaseContext
 
@@ -366,6 +367,12 @@ def run_loop(
             build_error = None
 
             try:
+                pending_index, edit_validation_feedback = missing_prefix_feedback(
+                    context.worktree, turn.edits, patch_policy=patch_policy
+                )
+                if edit_validation_feedback:
+                    pending_turn = deepcopy(turn)
+                    continue
                 snapshot = CandidateSnapshot.capture(
                     context.worktree,
                     [edit.path for edit in turn.edits],

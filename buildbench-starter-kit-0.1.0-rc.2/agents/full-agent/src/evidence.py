@@ -130,6 +130,12 @@ def diagnose(log_path: Path, worktree: Path) -> list[Diagnostic]:
                     stage = marker.group(1)
                 elif re.match(r"^\s*(?:dpkg-(?:source|gencontrol|genchanges|gensymbols|deb)\b|dh_builddeb\b)", text):
                     stage = "packaging"
+                # Rust warnings may contain names such as winnow::error::ErrorKind.
+                # Those names do not make the warning an error.
+                if text.lstrip().startswith("warning:"):
+                    pending = None
+                    candidate = None
+                    continue
                 match = _COMPILER.match(text.strip())
                 rust = _RUST_ERROR.match(text.strip())
                 message = match.group("message") if match else (rust.group(0) if rust else None)

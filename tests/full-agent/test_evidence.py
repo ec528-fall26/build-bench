@@ -48,6 +48,20 @@ class Evidence(unittest.TestCase):
             "source_line": "CStr::from_ptr(local_abspath)",
             "log_offset": len(prefix.encode("utf-8"))})
 
+    def test_rust_warning_with_error_namespace_is_not_an_error(self):
+        result = self.parse(
+            "[ 120s] warning: use of deprecated unit variant "
+            "`winnow::error::ErrorKind::Verify`\n"
+            "[ 120s] warning: use of deprecated unit variant "
+            "`winnow::error::ErrorKind::Eof`\n"
+            "[ 164s] error[E0308]: mismatched types\n"
+            "[ 164s]   --> src/client.rs:32:72\n"
+        )
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].message, "error[E0308]: mismatched types")
+        self.assertEqual(result[0].log_path, "src/client.rs")
+        self.assertEqual(result[0].line, 32)
+
     def test_source_quotes_are_not_errors_or_stage_markers(self):
         self.assertEqual(self.parse(
             "1236 | impl std::error::Error for ErrorKind {}\n"

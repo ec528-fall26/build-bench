@@ -1441,7 +1441,10 @@ class RepairLoop(unittest.TestCase):
                 task_metadata={},
             )
 
+            requests = []
+
             def next_turn(request):
+                requests.append(request)
                 return (
                     ModelTurn(
                         action="edit",
@@ -1467,13 +1470,21 @@ class RepairLoop(unittest.TestCase):
                     next_turn=next_turn,
                     budget=Budget(max_attempts=1),
                     patch_policy=policy,
+                    max_turns=2,
                 )
                 apply.assert_not_called()
 
-            self.assertEqual(result.termination_reason, "attempt_budget")
-            self.assertEqual(len(result.attempts), 1)
-            self.assertEqual(result.attempts[0].applied, 0)
-            self.assertIsNone(result.attempts[0].build)
+            self.assertEqual(result.termination_reason, "turn_budget")
+            self.assertEqual(result.attempts, [])
+            self.assertEqual(len(requests), 2)
+            self.assertIn(
+                "path_forbidden_by_policy",
+                requests[1].edit_validation_feedback,
+            )
+            self.assertIn(
+                "NO edits were written",
+                requests[1].edit_validation_feedback,
+            )
             self.assertEqual(source.read_bytes(), b"before\n")
     def test_build_adapter_error_preserves_attempt_record(self):
         with tempfile.TemporaryDirectory() as tmp:

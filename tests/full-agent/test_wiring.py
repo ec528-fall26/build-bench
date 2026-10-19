@@ -300,13 +300,16 @@ class Adapter(unittest.TestCase):
 
         result, _ = self.run_with(script)
 
-        self.assertEqual(result.attempts[0].applied, 0)
+        self.assertEqual(result.attempts, [])
         self.assertEqual(target.read_text(), original)
         feedback = script.user(1)
         self.assertIn("old_text_ambiguous", feedback)
+        self.assertIn("NO edits from this batch were written", feedback)
+        self.assertIn("NO build was requested", feedback)
         self.assertIn("unique surrounding context", feedback)
-        self.assertIn(f"{CONFIG}:1:first repeat", feedback)
-        self.assertIn(f"{CONFIG}:2:second repeat", feedback)
+        self.assertIn(CONFIG, feedback)
+        self.assertIn("1: first repeat", feedback)
+        self.assertIn("2: second repeat", feedback)
 
     def test_rejection_help_does_not_search_with_tools_disabled(self):
         target = self.worktree / CONFIG
@@ -324,6 +327,7 @@ class Adapter(unittest.TestCase):
         self.assertNotIn("Automatic search", script.user(1))
 
     def test_missing_edit_text_gets_guidance_without_search(self):
+        original = (self.worktree / CONFIG).read_text()
         script = Script(
             edit("text that is absent", "replacement"),
             reply(action="stop", reason="done"),
@@ -333,11 +337,12 @@ class Adapter(unittest.TestCase):
             result, _ = self.run_with(script)
 
         automatic_search.assert_not_called()
-        self.assertEqual(result.attempts[0].applied, 0)
-        self.assertIn("the exact old_text was not found", script.user(1))
-        self.assertIn("preserving whitespace", script.user(1))
+        self.assertEqual(result.attempts, [])
+        self.assertEqual((self.worktree / CONFIG).read_text(), original)
+        self.assertIn("old_text_not_found", script.user(1))
+        self.assertIn("preserve whitespace exactly", script.user(1))
 
-    def test_automatic_rejection_searches_are_bounded(self):
+    def test_preflight_reports_matches_without_automatic_searches(self):
         target = self.worktree / CONFIG
         original = "alpha beta gamma\nalpha beta gamma\n"
         target.write_text(original)
@@ -358,9 +363,16 @@ class Adapter(unittest.TestCase):
         with patch(
             "src.model_adapter.run_tool", wraps=actual_run_tool
         ) as automatic_search:
-            self.run_with(script)
+            result, _ = self.run_with(script)
 
-        self.assertEqual(automatic_search.call_count, 2)
+        automatic_search.assert_not_called()
+        self.assertEqual(result.attempts, [])
+        feedback = script.user(1)
+        for index in range(3):
+            self.assertIn(f"INDEX {index}:", feedback)
+        self.assertIn("Matching source locations", feedback)
+        self.assertIn("1: alpha beta gamma", feedback)
+        self.assertIn("2: alpha beta gamma", feedback)
         self.assertEqual(target.read_text(), original)
 
     def test_ambiguous_edit_can_be_corrected_after_feedback(self):
@@ -379,12 +391,13 @@ class Adapter(unittest.TestCase):
         feedback = script.user(1)
         self.assertIn("old_text_ambiguous", feedback)
         self.assertIn("unique surrounding context", feedback)
-        self.assertIn(f"{CONFIG}:1:first repeat", feedback)
-        self.assertIn(f"{CONFIG}:2:second repeat", feedback)
+        self.assertIn(CONFIG, feedback)
+        self.assertIn("1: first repeat", feedback)
+        self.assertIn("2: second repeat", feedback)
 
         self.assertEqual(
             [attempt.applied for attempt in result.attempts],
-            [0, 1],
+            [1],
         )
         self.assertEqual(
             target.read_text(),
@@ -396,7 +409,8 @@ class Adapter(unittest.TestCase):
         script = Script(edit("text that is not in the file\n", "x\n"),
                         reply(action="stop", reason="done"))
         self.run_with(script)
-        self.assertIn("Rejected:", script.user(1))
+        self.assertIn("Edit batch validation failed", script.user(1))
+        self.assertIn("NO build was requested", script.user(1))
         self.assertIn("old_text_not_found", script.user(1))
 
     def test_unknown_token_use_is_never_zero(self):

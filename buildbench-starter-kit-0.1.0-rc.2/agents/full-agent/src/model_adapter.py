@@ -310,6 +310,7 @@ class ModelAdapter:
             "tools": [r.tool for r in turn.tool_requests], "edits": len(turn.edits),
             "reason": turn.reason, "finish_reason": finish, "usage": dict(usage),
             "follow_up": follow_up,
+            "edit_validation_feedback": request.edit_validation_feedback,
             "attempt_feedback": (
                 self._attempt_note if request.latest_attempt is not None else ""
             ),
@@ -323,6 +324,9 @@ class ModelAdapter:
             request.context, config, diagnostics=self.diagnostics, log_path=self.log_path,
             package=self.package, history=request.history,
             kept=request.kept_attempts if config.use_history else None))]
+
+        if request.edit_validation_feedback:
+            parts.append(request.edit_validation_feedback)
 
         latest = request.latest_attempt
         if latest is not None and latest.number != self._seen_attempt:

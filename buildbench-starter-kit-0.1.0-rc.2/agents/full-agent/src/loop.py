@@ -19,6 +19,7 @@ from .contracts import (
 )
 from .diff_tracker import DiffTracker
 from .edit_applier import apply_edits
+from .edit_preflight import validate_batch
 from .tools import run_tool
 from .types import CaseContext
 
@@ -34,6 +35,7 @@ class LoopRequest:
     # The most recent attempt, given even with history off: what the last edit
     # did is current feedback, not history.
     latest_attempt: Attempt | None = None
+    edit_validation_feedback: str = ""
 
 @dataclass
 class LoopResult:
@@ -163,6 +165,7 @@ def run_loop(
     known_usage = {"input_tokens": 0, "output_tokens": 0}
     feedback = ""
     latest_attempt_feedback = ""
+    edit_validation_feedback = ""
     malformed_count = 0
     empty_edit_streak = 0
     attempts: list[Attempt] = []
@@ -223,6 +226,7 @@ def run_loop(
             current_build=deepcopy(best_build),
             kept_attempts=list(kept_attempts) if config.use_history else [],
             latest_attempt=deepcopy(attempts[-1]) if attempts else None,
+            edit_validation_feedback=edit_validation_feedback,
         )
 
 
@@ -337,6 +341,11 @@ def run_loop(
                     [edit.path for edit in turn.edits],
                     patch_policy=patch_policy,
                 )
+                edit_validation_feedback = validate_batch(snapshot, turn.edits)
+                if edit_validation_feedback:
+                    # A correction costs model turns/tokens, not a build or
+                    # repair attempt. Retain tool results: no files changed.
+                    continue
                 # Capture every affected file before applying any edits.
                 for edit in turn.edits:
                     tracker.capture_before_edit(edit.path)
@@ -345,6 +354,12 @@ def run_loop(
                     f"The edit batch was not applied because its files "
                     f"could not be captured: {exc}"
                 )
+                edit_validation_feedback = (
+                    "=== Edit batch validation failed ===\n"
+                    "NO edits were written and NO build was requested.\n"
+                    + feedback
+                )
+                continue
             else:
                 if clock() >= work_deadline:
                     return finish(

@@ -95,5 +95,87 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(adapter.repair_strategy, "small-group")
 
 
+
+    def test_small_group_switches_tools_off_after_two_turns(self):
+        from src.contracts import ToolRequest
+        from src.model_adapter import TOOLS_OFF_FOLLOW_UP
+        import json
+
+        sent = []
+        replies = iter([
+            json.dumps({
+                "action": "tool",
+                "requests": [{"tool": "list_dir", "args": {"path": "input"}}],
+            }),
+            json.dumps({"action": "stop", "reason": "test complete"}),
+        ])
+
+        def complete(messages):
+            sent.append(messages)
+            return next(replies), "stop", {
+                "input_tokens": 1, "output_tokens": 1
+            }
+
+        context = NS(log_tail="")
+        with patch.dict(os.environ, {"BB_REPAIR_STRATEGY": "small-group"}):
+            adapter = ModelAdapter(
+                complete, context, config=AgentConfig(), budget=Budget(),
+                diagnostics=[], log_path=None,
+            )
+        self.addCleanup(adapter.close)
+        adapter._investigating = 2
+
+        with (
+            patch("src.model_adapter.prompts.opening_message", return_value=""),
+            patch("src.model_adapter.prompts.system_prompt", return_value=""),
+            patch("src.model_adapter.prompts.budget_note", return_value=""),
+        ):
+            result, usage = adapter(LoopRequest(context=context))
+
+        self.assertEqual(result.action, "stop")
+        self.assertEqual(len(sent), 2)
+        self.assertIn("Tools are switched off", sent[0][-1]["content"])
+        self.assertEqual(sent[1][-1]["content"], TOOLS_OFF_FOLLOW_UP)
+
+    def test_default_strategy_keeps_six_tool_turns(self):
+        context = NS(log_tail="")
+        with patch.dict(os.environ, {"BB_REPAIR_STRATEGY": "default"}):
+            adapter = ModelAdapter(
+                lambda messages: None, context,
+                config=AgentConfig(), budget=Budget(),
+                diagnostics=[], log_path=None,
+            )
+        self.addCleanup(adapter.close)
+        self.assertEqual(adapter._tool_turn_limit(), 6)
+
+    def test_small_group_still_allows_tools_before_limit(self):
+        import json
+
+        def complete(messages):
+            return json.dumps({
+                "action": "tool",
+                "requests": [{"tool": "list_dir", "args": {"path": "input"}}],
+            }), "stop", {"input_tokens": 1, "output_tokens": 1}
+
+        context = NS(log_tail="")
+        with patch.dict(os.environ, {"BB_REPAIR_STRATEGY": "small-group"}):
+            adapter = ModelAdapter(
+                complete, context, config=AgentConfig(), budget=Budget(),
+                diagnostics=[], log_path=None,
+            )
+        self.addCleanup(adapter.close)
+        adapter._investigating = 1
+
+        with (
+            patch("src.model_adapter.prompts.opening_message", return_value=""),
+            patch("src.model_adapter.prompts.system_prompt", return_value=""),
+            patch("src.model_adapter.prompts.budget_note", return_value=""),
+        ):
+            result, usage = adapter(LoopRequest(context=context))
+
+        self.assertEqual(result.action, "tool")
+        self.assertEqual(adapter._investigating, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

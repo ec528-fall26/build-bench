@@ -272,6 +272,9 @@ class ModelAdapter:
     def close(self) -> None:
         EDIT_LOGGER.removeHandler(self._rejections)
 
+    def _tool_turn_limit(self) -> int:
+        return 2 if self.repair_strategy == "small-group" else TOOL_TURN_LIMIT
+
     def _record_known_usage(self, usage: dict) -> None:
         for name in ("input_tokens", "output_tokens"):
             count = usage.get(name)
@@ -286,7 +289,7 @@ class ModelAdapter:
         correcting = request.edit_validation_feedback.startswith(FOCUSED_PREFIX)
         allow_tools = (
             self.config.use_tools
-            and self._investigating < TOOL_TURN_LIMIT
+            and self._investigating < self._tool_turn_limit()
             and not correcting
         )
         turn = parse_turn(text, finish_reason=finish, allow_tools=allow_tools)
@@ -405,7 +408,7 @@ class ModelAdapter:
             note = " ".join(notes)
             parts.append("=== Results of your tool requests ===\n"
                          + _body(prompts.tool_results_message(shown, note=note)))
-        if self._investigating >= TOOL_TURN_LIMIT:
+        if self._investigating >= self._tool_turn_limit():
             # The nudge alone was ignored: libmceliece read for 11 more turns.
             parts.append(TOOLS_OFF.format(n=self._investigating))
         elif self._investigating >= NUDGE_AFTER:

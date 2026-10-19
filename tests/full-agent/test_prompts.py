@@ -215,10 +215,38 @@ class OpeningMessage(Worktree):
                 self.assertIn("=== Build log: last lines ===\nstep 561\n", text)
                 self.assertIn("step 600\n=== End of build log ===", text)
 
-    def test_with_no_recognised_error_the_whole_tail_is_the_evidence(self):
-        text = prompts.opening_message(self.context, diagnostics=[], log_path=self.log)
-        self.assertIn("=== Build log: last lines ===\nstep 101\n", text)
+    def test_without_recognised_errors_the_tail_is_bounded(self):
+        text = prompts.opening_message(
+            self.context, diagnostics=[], log_path=self.log
+        )
+        self.assertIn("Build-log excerpt truncated:", text)
+        self.assertIn("=== Build log: last lines ===\nstep 561\n", text)
+        self.assertIn("step 600\n=== End of build log ===", text)
+        self.assertNotIn("\nstep 101\n", text)
         self.assertNotIn("=== Errors", text)
+
+    def test_without_recognised_errors_a_long_line_is_bounded(self):
+        self.context.log_tail = (
+            "OMITTED_START" + "x" * 20_000 + "FINAL_DETAIL"
+        )
+        text = prompts.opening_message(self.context, diagnostics=[])
+        body = text.split("=== Build log: last lines ===\n", 1)[1]
+        body = body.split("\n=== End of build log ===", 1)[0]
+        self.assertLessEqual(len(body), prompts.TAIL_CHARS)
+        self.assertTrue(body.endswith("FINAL_DETAIL"))
+        self.assertNotIn("OMITTED_START", body)
+        self.assertIn("Build-log excerpt truncated:", text)
+
+    def test_short_fallback_log_is_preserved_without_truncation_notice(self):
+        self.context.log_tail = "unrecognised failure detail\n"
+        text = prompts.opening_message(self.context, diagnostics=[])
+        self.assertIn(
+            "=== Build log: last lines ===\n"
+            "unrecognised failure detail\n"
+            "=== End of build log ===",
+            text,
+        )
+        self.assertNotIn("Build-log excerpt truncated:", text)
 
     def test_only_diagnostics_as_after_an_in_run_build(self):
         self.context.log_tail = ""

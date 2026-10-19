@@ -323,17 +323,28 @@ def render_log_window(log_path: Path, diagnostic: Diagnostic, number: int = 1) -
 
 
 def _log_tail(tail: str, lines: int | None) -> str:
-    """The log tail under the baseline's labels; ``lines`` shortens it, None keeps all."""
+    """Render the supplied tail, marking any content omitted by our limits."""
     if not tail.strip():
         return ""
-    body = tail.rstrip("\n")
+    original = tail.rstrip("\n")
+    body = original
     if lines is not None:
         kept = body.split("\n")[-lines:]
         while len(kept) > 1 and sum(len(line) + 1 for line in kept) > TAIL_CHARS:
             kept = kept[1:]
         body = "\n".join(kept)[-TAIL_CHARS:]
-    return f"=== Build log: last lines ===\n{body}\n=== End of build log ===\n"
-
+    notice = ""
+    if body != original:
+        notice = (
+            "Build-log excerpt truncated: earlier supplied text was omitted "
+            "to limit prompt size. The cause may be outside this excerpt.\n"
+        )
+    return (
+        notice
+        + f"=== Build log: last lines ===\n{body}\n"
+        + "=== End of build log ===\n"
+    )
+    
 
 def _build_line(build: BuildResult | None, *, first_error: bool = True) -> str:
     if build is None:
@@ -434,8 +445,8 @@ def opening_message(
             header,
             render_diagnostics(diagnostics),
             render_source_excerpts(diagnostics, context.worktree),
-            # With no recognised error the whole tail is the only evidence.
-            window or _log_tail(context.log_tail, TAIL_LINES if diagnostics else None),
+            # Bound fallback evidence even when no error was recognized
+            window or _log_tail(context.log_tail, TAIL_LINES),
             render_source_files(context.worktree, files),
         ]
     else:

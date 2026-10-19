@@ -363,6 +363,35 @@ class Adapter(unittest.TestCase):
         self.assertEqual(automatic_search.call_count, 2)
         self.assertEqual(target.read_text(), original)
 
+    def test_ambiguous_edit_can_be_corrected_after_feedback(self):
+        target = self.worktree / CONFIG
+        original = "first repeat\nsecond repeat\n"
+        target.write_text(original)
+
+        script = Script(
+            edit("repeat", "replacement"),
+            edit("first repeat\n", "first replacement\n"),
+            reply(action="stop", reason="done"),
+        )
+
+        result, _ = self.run_with(script)
+
+        feedback = script.user(1)
+        self.assertIn("old_text_ambiguous", feedback)
+        self.assertIn("unique surrounding context", feedback)
+        self.assertIn(f"{CONFIG}:1:first repeat", feedback)
+        self.assertIn(f"{CONFIG}:2:second repeat", feedback)
+
+        self.assertEqual(
+            [attempt.applied for attempt in result.attempts],
+            [0, 1],
+        )
+        self.assertEqual(
+            target.read_text(),
+            "first replacement\nsecond repeat\n",
+        )
+        self.assertEqual(result.termination_reason, "model_stop")
+
     def test_rejected_edit_reason_is_passed_on(self):
         script = Script(edit("text that is not in the file\n", "x\n"),
                         reply(action="stop", reason="done"))

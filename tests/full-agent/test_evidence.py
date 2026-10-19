@@ -158,6 +158,31 @@ class Evidence(unittest.TestCase):
         result = self.parse("x.c:7: error: bad\nunrelated output\nmore output\nend\n")
         self.assertIsNone(result[0].source_line)
 
+
+    def test_quilt_backup_does_not_make_source_path_ambiguous(self):
+        self.source("src/client.rs")
+        self.source(".pc/fix-unsoundness.patch/src/client.rs")
+
+        result = self.parse(
+            "error[E0308]: mismatched types\n"
+            "  --> src/client.rs:55:72\n"
+        )
+
+        self.assertEqual(
+            result[0].resolved,
+            ["input/src/client.rs"],
+        )
+
+    def test_quilt_backup_is_not_used_when_live_source_is_missing(self):
+        self.source(".pc/fix-unsoundness.patch/src/client.rs")
+
+        result = self.parse(
+            "error[E0308]: mismatched types\n"
+            "  --> src/client.rs:55:72\n"
+        )
+
+        self.assertEqual(result[0].resolved, [])
+
     def test_paths_ambiguous_missing_and_escape(self):
         self.source("a/x.h")
         self.source("b/x.h")

@@ -37,13 +37,17 @@ _GENERAL = re.compile(
 
 
 def _file_index(worktree: Path) -> dict[str, list[str]]:
-    """Index real files under input only; never traverse symlinks."""
+    """Index source files under input, excluding root quilt backups and symlinks."""
     root = Path(worktree) / "input"
     if root.is_symlink() or not root.is_dir():
         return {}
     index: dict[str, list[str]] = {}
     for directory, dirs, files in os.walk(root, followlinks=False):
-        dirs[:] = sorted(d for d in dirs if not (Path(directory) / d).is_symlink())
+        dirs[:] = sorted(
+            d for d in dirs
+            if not (Path(directory) / d).is_symlink()
+            and not (Path(directory) == root and d == ".pc")
+        )
         for name in sorted(files):
             path = Path(directory) / name
             if path.is_symlink() or not path.is_file():

@@ -173,10 +173,18 @@ class OpeningMessage(Worktree):
         self.assertIn(f"1. [install] crc32c/crc32c_prefetch.h:18: {ERROR}\n"
                       "   real file: input/src/crc32c/crc32c_prefetch.h\n"
                       "   line quoted by the compiler: #include <xmmintrin.h>\n", text)
-        self.assertIn("=== input/src/crc32c/crc32c_prefetch.h, lines 1-38; error 1 is at line 18 "
-                      "===\n// line 1\n", text)
+        self.assertIn(
+            "=== Complete current source file: input/src/crc32c/crc32c_prefetch.h ===",
+            text,
+        )
+        self.assertIn("// line 1\n", text)
         self.assertIn("// line 17\n#include <xmmintrin.h>\n// line 19\n", text)
-        self.assertNotIn("// line 39", text)
+        self.assertIn("// line 39\n", text)
+        self.assertIn("// line 60\n", text)
+        self.assertIn(
+            "=== End of complete source file: input/src/crc32c/crc32c_prefetch.h ===",
+            text,
+        )
         self.assertTrue(text.endswith(prompts._NEXT + "\n"))
 
     def test_it_is_much_smaller_than_the_baseline_message(self):
@@ -312,9 +320,11 @@ class SourceExcerpts(Worktree):
             diagnostic("error: gone", "c.c", 5, ("input/src/missing.c",)),
             diagnostic("error: b", "b.c", 4, ("input/src/b.c",)),
         ], self.root)
-        self.assertEqual(re.findall(r"(?m)^=== (.*) ===$", text), [
-            "input/src/crc32c/crc32c_prefetch.h, lines 1-38; error 1 is at line 18",
-            "input/src/b.c, lines 1-10; error 7 is at line 4"])
+        self.assertEqual(
+            re.findall(r"(?m)^=== Complete current source file: (.*) ===$", text),
+            ["input/src/crc32c/crc32c_prefetch.h", "input/src/b.c"],
+        )
+        self.assertNotIn("int x;", text)
 
     def test_at_most_three_files(self):
         errors = []

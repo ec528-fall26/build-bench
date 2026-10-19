@@ -179,6 +179,7 @@ class ModelAdapter:
         self._previous_error = None
         self._attempt_note = ""
         self._tokens: int | None = 0
+        self._known_tokens = 0
         self._investigating = 0  # tool turns since the last edit
         self._rejections = _Rejections()
         EDIT_LOGGER.addHandler(self._rejections)
@@ -186,10 +187,17 @@ class ModelAdapter:
     def close(self) -> None:
         EDIT_LOGGER.removeHandler(self._rejections)
 
+    def _record_known_usage(self, usage: dict) -> None:
+        for name in ("input_tokens", "output_tokens"):
+            count = usage.get(name)
+            if type(count) is int and count >= 0:
+                self._known_tokens += count
+
     def __call__(self, request: LoopRequest) -> tuple[ModelTurn, dict]:
         messages = self.messages(request)
         started = self.clock()
         text, finish, usage = self.complete(messages)
+        self._record_known_usage(usage)
         allow_tools = self.config.use_tools and self._investigating < TOOL_TURN_LIMIT
         turn = parse_turn(text, finish_reason=finish, allow_tools=allow_tools)
         # One same-turn follow-up for a reply with no JSON action, or for a tool
@@ -200,11 +208,13 @@ class ModelAdapter:
         follow_up = turn.action == "malformed" and finish != "length" and (
             refused or _no_action(text))
         number = len(self.turns) + 1
+        follow_up = follow_up and self._known_tokens < self.budget.max_tokens
         if follow_up:
             self.replies.append({"turn": number, "follow_up": False, "reply": text})
             text, finish, more = self.complete(messages + [
                 {"role": "assistant", "content": text},
                 {"role": "user", "content": TOOLS_OFF_FOLLOW_UP if refused else FOLLOW_UP}])
+            self._record_known_usage(more)
             usage = _add(usage, more)
             turn = parse_turn(text, finish_reason=finish, allow_tools=allow_tools)
         self._last_turn = turn

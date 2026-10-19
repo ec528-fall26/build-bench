@@ -163,6 +163,52 @@ class Adapter(unittest.TestCase):
         self.assertEqual(adapter.turns[0]["follow_up"], True)
         self.assertEqual(adapter.turns[0]["usage"], {"input_tokens": 200, "output_tokens": 20})
         self.assertEqual(len(adapter.replies), 2)
+    def test_follow_up_skipped_at_token_limit(self):
+        script = Script("Reasoning without JSON.", usage=(100, 10))
+        result, adapter = self.run_with(
+            script, budget=Budget(max_tokens=110)
+        )
+        self.assertEqual(len(script.sent), 1)
+        self.assertFalse(adapter.turns[0]["follow_up"])
+        self.assertEqual(result.termination_reason, "token_budget")
+        self.assertEqual(
+            result.usage,
+            {"input_tokens": 100, "output_tokens": 10},
+        )
+
+    def test_follow_up_budget_includes_previous_turns(self):
+        script = Script(
+            reply(
+                action="tool",
+                requests=[{
+                    "tool": "list_dir",
+                    "args": {"path": "input"},
+                }],
+            ),
+            "Reasoning without JSON.",
+            usage=(100, 10),
+        )
+        result, adapter = self.run_with(
+            script, budget=Budget(max_tokens=220)
+        )
+        self.assertEqual(len(script.sent), 2)
+        self.assertFalse(adapter.turns[-1]["follow_up"])
+        self.assertEqual(result.termination_reason, "token_budget")
+        self.assertEqual(
+            result.usage,
+            {"input_tokens": 200, "output_tokens": 20},
+        )
+
+    def test_follow_up_uses_known_counts_when_usage_is_partial(self):
+        script = Script("Reasoning without JSON.", usage=(None, 110))
+        result, adapter = self.run_with(
+            script, budget=Budget(max_tokens=110)
+        )
+        self.assertEqual(len(script.sent), 1)
+        self.assertFalse(adapter.turns[0]["follow_up"])
+        self.assertEqual(result.termination_reason, "token_budget")
+        self.assertIsNone(result.usage["input_tokens"])
+        self.assertEqual(result.usage["output_tokens"], 110)
 
     def test_follow_up_happens_once_per_turn(self):
         script = Script("<reasoning>a</reasoning>", "<reasoning>b</reasoning>",

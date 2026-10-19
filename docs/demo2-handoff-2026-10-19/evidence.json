@@ -1,0 +1,302 @@
+{
+  "archive": "demo2-budget-experiments-evidence.tar.gz",
+  "archive_sha256": "de679487f38d881d61cc2a08bf1592e17f0df0c1b7061de36c2ccbfff37c3ff3",
+  "scope": "One public Rust development case; four exploratory runs.",
+  "results": [
+    {
+      "experiment": "demo2-rust-check-474ad0c",
+      "source_record": "demo2-rust-check-474ad0c/full-history-on/runs.jsonl",
+      "base_commit": "474ad0c",
+      "token_limit": 100000,
+      "turn_limit": 20,
+      "settings_provenance": "Recorded experiment settings from the execution session; higher limits were temporary, uncommitted EC2 changes.",
+      "run_id": "full-history-on--launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2--r1",
+      "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "config": {
+        "use_build_feedback": true,
+        "use_evidence_manager": true,
+        "use_history": true,
+        "use_tools": true
+      },
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "token_budget",
+      "agent_message": "The reported token usage reached the limit.",
+      "usage": {
+        "input_tokens": 93007,
+        "output_tokens": 7796
+      },
+      "wall_seconds": 398.1,
+      "turns": 11,
+      "edits_proposed": 2,
+      "edits_applied": 2,
+      "edit_warnings": [],
+      "attempts": [
+        {
+          "number": 1,
+          "applied": 2,
+          "build": {
+            "diagnostic_count": 7,
+            "duration_seconds": 175.7,
+            "first_error": {
+              "line": 81,
+              "log_offset": 1048475,
+              "log_path": "src/client.rs",
+              "message": "error[E0308]: mismatched types",
+              "resolved": [
+                "input/src/client.rs"
+              ],
+              "source_line": "        let path: &str = std::ffi::CStr::from_ptr(path).to_str().unwrap();",
+              "stage": "test"
+            },
+            "stage_reached": "test",
+            "succeeded": false
+          }
+        }
+      ]
+    },
+    {
+      "experiment": "demo2-rust-check-474ad0c-200k",
+      "source_record": "demo2-rust-check-474ad0c-200k/full-history-on/runs.jsonl",
+      "base_commit": "474ad0c",
+      "token_limit": 200000,
+      "turn_limit": 20,
+      "settings_provenance": "Recorded experiment settings from the execution session; higher limits were temporary, uncommitted EC2 changes.",
+      "run_id": "full-history-on--launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2--r1",
+      "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "config": {
+        "use_build_feedback": true,
+        "use_evidence_manager": true,
+        "use_history": true,
+        "use_tools": true
+      },
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "token_budget",
+      "agent_message": "The reported token usage reached the limit.",
+      "usage": {
+        "input_tokens": 183382,
+        "output_tokens": 18215
+      },
+      "wall_seconds": 627.6,
+      "turns": 18,
+      "edits_proposed": 7,
+      "edits_applied": 4,
+      "edit_warnings": [
+        "edit_rejected index=3 path='input/src/client.rs' reason=old_text_not_found",
+        "edit_rejected index=1 path='input/src/client.rs' reason=no_change",
+        "edit_rejected index=2 path='input/src/client.rs' reason=old_text_not_found"
+      ],
+      "attempts": [
+        {
+          "number": 1,
+          "applied": 3,
+          "build": {
+            "diagnostic_count": 7,
+            "duration_seconds": 169.8,
+            "first_error": {
+              "line": 175,
+              "log_offset": 1048495,
+              "log_path": "src/client.rs",
+              "message": "error[E0308]: mismatched types",
+              "resolved": [
+                "input/src/client.rs"
+              ],
+              "source_line": "        let abspath_or_url: &std::path::Path = std::ffi::CStr::from_ptr(abspath_or_url)",
+              "stage": "test"
+            },
+            "stage_reached": "test",
+            "succeeded": false
+          }
+        },
+        {
+          "number": 2,
+          "applied": 1,
+          "build": {
+            "diagnostic_count": 7,
+            "duration_seconds": 172.8,
+            "first_error": {
+              "line": 374,
+              "log_offset": 1048495,
+              "log_path": "src/client.rs",
+              "message": "error[E0308]: arguments to this function are incorrect",
+              "resolved": [
+                "input/src/client.rs"
+              ],
+              "source_line": "            let err = svn_client_checkout3(",
+              "stage": "test"
+            },
+            "stage_reached": "test",
+            "succeeded": false
+          }
+        }
+      ]
+    },
+    {
+      "experiment": "demo2-rust-check-474ad0c-300k",
+      "source_record": "demo2-rust-check-474ad0c-300k/full-history-on/runs.jsonl",
+      "base_commit": "474ad0c",
+      "token_limit": 300000,
+      "turn_limit": 20,
+      "settings_provenance": "Recorded experiment settings from the execution session; higher limits were temporary, uncommitted EC2 changes.",
+      "run_id": "full-history-on--launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2--r1",
+      "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "config": {
+        "use_build_feedback": true,
+        "use_evidence_manager": true,
+        "use_history": true,
+        "use_tools": true
+      },
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "turn_budget",
+      "agent_message": "The model-turn limit was reached.",
+      "usage": {
+        "input_tokens": 214040,
+        "output_tokens": 25527
+      },
+      "wall_seconds": 667.1,
+      "turns": 20,
+      "edits_proposed": 29,
+      "edits_applied": 23,
+      "edit_warnings": [
+        "edit_rejected index=0 path='input/src/client.rs' reason=old_text_not_found",
+        "edit_rejected index=1 path='input/src/client.rs' reason=old_text_not_found",
+        "edit_rejected index=2 path='input/src/client.rs' reason=old_text_not_found",
+        "edit_rejected index=3 path='input/src/client.rs' reason=old_text_not_found",
+        "edit_rejected index=4 path='input/src/delta.rs' reason=old_text_ambiguous",
+        "edit_rejected index=3 path='input/src/client.rs' reason=old_text_ambiguous"
+      ],
+      "attempts": [
+        {
+          "number": 1,
+          "applied": 0,
+          "build": null
+        },
+        {
+          "number": 2,
+          "applied": 23,
+          "build": {
+            "diagnostic_count": 6,
+            "duration_seconds": 171.6,
+            "first_error": {
+              "line": 374,
+              "log_offset": 1048495,
+              "log_path": "src/client.rs",
+              "message": "error[E0308]: arguments to this function are incorrect",
+              "resolved": [
+                "input/src/client.rs"
+              ],
+              "source_line": "            let err = svn_client_checkout3(",
+              "stage": "test"
+            },
+            "stage_reached": "test",
+            "succeeded": false
+          }
+        }
+      ]
+    },
+    {
+      "experiment": "demo2-rust-check-474ad0c-300k-30turns",
+      "source_record": "demo2-rust-check-474ad0c-300k-30turns/full-history-on/runs.jsonl",
+      "base_commit": "474ad0c",
+      "token_limit": 300000,
+      "turn_limit": 30,
+      "settings_provenance": "Recorded experiment settings from the execution session; higher limits were temporary, uncommitted EC2 changes.",
+      "run_id": "full-history-on--launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2--r1",
+      "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "config": {
+        "use_build_feedback": true,
+        "use_evidence_manager": true,
+        "use_history": true,
+        "use_tools": true
+      },
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "build_budget",
+      "agent_message": "The build-request limit was reached.",
+      "usage": {
+        "input_tokens": 189120,
+        "output_tokens": 19311
+      },
+      "wall_seconds": 821.1,
+      "turns": 22,
+      "edits_proposed": 5,
+      "edits_applied": 5,
+      "edit_warnings": [],
+      "attempts": [
+        {
+          "number": 1,
+          "applied": 2,
+          "build": {
+            "diagnostic_count": 7,
+            "duration_seconds": 168.4,
+            "first_error": {
+              "line": 81,
+              "log_offset": 1048527,
+              "log_path": "src/client.rs",
+              "message": "error[E0308]: mismatched types",
+              "resolved": [
+                "input/src/client.rs"
+              ],
+              "source_line": "        let path: &str = std::ffi::CStr::from_ptr(path).to_str().unwrap();",
+              "stage": "test"
+            },
+            "stage_reached": "test",
+            "succeeded": false
+          }
+        },
+        {
+          "number": 2,
+          "applied": 1,
+          "build": {
+            "diagnostic_count": 7,
+            "duration_seconds": 171.6,
+            "first_error": {
+              "line": 175,
+              "log_offset": 1048527,
+              "log_path": "src/client.rs",
+              "message": "error[E0308]: mismatched types",
+              "resolved": [
+                "input/src/client.rs"
+              ],
+              "source_line": "        let abspath_or_url: &std::path::Path = std::ffi::CStr::from_ptr(abspath_or_url)",
+              "stage": "test"
+            },
+            "stage_reached": "test",
+            "succeeded": false
+          }
+        },
+        {
+          "number": 3,
+          "applied": 2,
+          "build": {
+            "diagnostic_count": 7,
+            "duration_seconds": 175.6,
+            "first_error": {
+              "line": 374,
+              "log_offset": 1048527,
+              "log_path": "src/client.rs",
+              "message": "error[E0308]: arguments to this function are incorrect",
+              "resolved": [
+                "input/src/client.rs"
+              ],
+              "source_line": "            let err = svn_client_checkout3(",
+              "stage": "test"
+            },
+            "stage_reached": "test",
+            "succeeded": false
+          }
+        }
+      ]
+    }
+  ]
+}

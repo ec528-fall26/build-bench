@@ -1,0 +1,11 @@
+--- a/input/debian/rules
++++ b/input/debian/rules
+@@ -19,7 +19,7 @@
+ 
+ #
+ # OMP Doesn't appear to work on these archs
+-ARCH_NO_OMP:= riscv64 sparc64
++ARCH_NO_OMP:= riscv64 sparc64 aarch64
+ ENABLE_OMP:=  $(if $(filter $(DEB_TARGET_ARCH), $(ARCH_NO_OMP)),Off,On)
+ 
+ BUILD_FLAGS = \

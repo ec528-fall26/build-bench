@@ -1,0 +1,38 @@
+{
+  "experiment_id": "demo2-oneshot-retest-20261019T212712Z",
+  "agent": "one-shot",
+  "mode": "live",
+  "repeats_per_case": 1,
+  "reference_repair_supplied": false,
+  "source_kind": "Archive summary.json checked against all eleven original record.json files",
+  "raw_evidence_imported": true,
+  "source_summary_path": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/summary.json",
+  "baseline_source_check": "launch script checked tracked one-shot files against tag one-shot-v1 before starting",
+  "git_commit": "001f3b9dd15f89665794609c8b04b73acfae167e",
+  "rcran": {
+    "cases_recorded": 1,
+    "verified_repairs": 0,
+    "termination_reasons": {
+      "build_failed": 1
+    }
+  },
+  "development_bundle": {
+    "cases_recorded": 10,
+    "cases_requiring_repair": 9,
+    "verified_repairs": 0,
+    "termination_reasons": {
+      "build_failed": 5,
+      "case_not_failing": 1,
+      "no_edit_applied": 4
+    },
+    "environment_blocked": 5,
+    "source_repair_evaluated": 4
+  },
+  "already_building_case": "launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84",
+  "limitations": [
+    "One repeat per case; no repeated-run reliability claim.",
+    "Five reverse-direction cases were blocked during environment setup; raw verdicts are retained.",
+    "Full-agent results are separate and included in paired-retest/."
+  ],
+  "source_archive_sha256": "34e5a27a0ff3e5cdb7b65d78b941a36e6724f4e140886529d9926fcf43f96e05"
+}

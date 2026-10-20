@@ -1,0 +1,39 @@
+{
+  "agent_version": "1.0.0+16e31a424d0d",
+  "baseline": {
+    "artifact_validation_passed": true,
+    "binary_artifacts": [
+      "html-xml-utils-dbgsym_7.7-1.2_arm64.ddeb",
+      "html-xml-utils_7.7-1.2_arm64.deb"
+    ],
+    "build_exit_code": 0,
+    "case_id": "launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84",
+    "duration_seconds": 112.0,
+    "message": "build completed successfully",
+    "repaired": true,
+    "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/10-launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84/baseline",
+    "status": "succeeded",
+    "timed_out": false
+  },
+  "build_commands": [],
+  "case_id": "launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84",
+  "changed_files": [],
+  "diff_path": null,
+  "edit_warnings": [],
+  "edits_applied": 0,
+  "edits_proposed": 0,
+  "error": "unrepaired case already builds",
+  "fix_type": "none",
+  "mode": "one-shot",
+  "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+  "needs_review": false,
+  "rationale": "",
+  "repaired": false,
+  "result": null,
+  "run_id": "10-launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84",
+  "served_model": null,
+  "started_at": "2026-10-19T21:56:33+00:00",
+  "termination_reason": "case_not_failing",
+  "usage": {},
+  "wall_seconds": 115.2
+}

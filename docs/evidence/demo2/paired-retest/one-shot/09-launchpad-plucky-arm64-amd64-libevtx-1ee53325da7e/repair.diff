@@ -1,0 +1,11 @@
+--- a/input/debian/control
++++ b/input/debian/control
+@@ -3,7 +3,7 @@
+ Maintainer: Debian Security Tools <team+pkg-security@tracker.debian.org>
+ Uploaders: Hilko Bengen <bengen@debian.org>
+ Build-Depends: dpkg-dev (>= 1.22.5), debhelper-compat (= 13), pkgconf,
+- dh-python, python3-dev, python3-setuptools,
++ dh-python, python3-dev, python3-setuptools, adduser,
+ Standards-Version: 4.6.1
+ Section: libs
+ Homepage: https://github.com/libyal/libevtx

@@ -1,0 +1,131 @@
+[
+  {
+    "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+    "repaired": false,
+    "termination_reason": "build_failed",
+    "edits_proposed": 1,
+    "edits_applied": 1,
+    "usage": {
+      "input_tokens": 11095,
+      "output_tokens": 1046
+    },
+    "wall_seconds": 191.1
+  },
+  {
+    "case_id": "launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280",
+    "repaired": false,
+    "termination_reason": "no_edit_applied",
+    "edits_proposed": 0,
+    "edits_applied": 0,
+    "usage": {
+      "input_tokens": 11318,
+      "output_tokens": 1021
+    },
+    "wall_seconds": 132.4
+  },
+  {
+    "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+    "repaired": false,
+    "termination_reason": "build_failed",
+    "edits_proposed": 1,
+    "edits_applied": 1,
+    "usage": {
+      "input_tokens": 15985,
+      "output_tokens": 1335
+    },
+    "wall_seconds": 195.4
+  },
+  {
+    "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+    "repaired": false,
+    "termination_reason": "build_failed",
+    "edits_proposed": 1,
+    "edits_applied": 1,
+    "usage": {
+      "input_tokens": 18761,
+      "output_tokens": 681
+    },
+    "wall_seconds": 179.8
+  },
+  {
+    "case_id": "launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f",
+    "repaired": false,
+    "termination_reason": "build_failed",
+    "edits_proposed": 1,
+    "edits_applied": 1,
+    "usage": {
+      "input_tokens": 12370,
+      "output_tokens": 1674
+    },
+    "wall_seconds": 181.9
+  },
+  {
+    "case_id": "launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446",
+    "repaired": false,
+    "termination_reason": "no_edit_applied",
+    "edits_proposed": 0,
+    "edits_applied": 0,
+    "usage": {
+      "input_tokens": 12707,
+      "output_tokens": 1324
+    },
+    "wall_seconds": 183.3
+  },
+  {
+    "case_id": "launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91",
+    "repaired": false,
+    "termination_reason": "no_edit_applied",
+    "edits_proposed": 1,
+    "edits_applied": 0,
+    "usage": {
+      "input_tokens": 104253,
+      "output_tokens": 1086
+    },
+    "wall_seconds": 172.5
+  },
+  {
+    "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+    "repaired": false,
+    "termination_reason": "no_edit_applied",
+    "edits_proposed": 9,
+    "edits_applied": 0,
+    "usage": {
+      "input_tokens": 12393,
+      "output_tokens": 1764
+    },
+    "wall_seconds": 175.3
+  },
+  {
+    "case_id": "launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e",
+    "repaired": false,
+    "termination_reason": "build_failed",
+    "edits_proposed": 1,
+    "edits_applied": 1,
+    "usage": {
+      "input_tokens": 16109,
+      "output_tokens": 1402
+    },
+    "wall_seconds": 348.6
+  },
+  {
+    "case_id": "launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84",
+    "repaired": false,
+    "termination_reason": "case_not_failing",
+    "edits_proposed": 0,
+    "edits_applied": 0,
+    "usage": {},
+    "wall_seconds": 115.2
+  },
+  {
+    "case_id": "launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce",
+    "repaired": false,
+    "termination_reason": "build_failed",
+    "edits_proposed": 1,
+    "edits_applied": 1,
+    "usage": {
+      "input_tokens": 10061,
+      "output_tokens": 1519
+    },
+    "wall_seconds": 201.3
+  }
+]

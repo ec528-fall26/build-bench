@@ -1,0 +1,12 @@
+--- a/input/debian/control
++++ b/input/debian/control
+@@ -9,7 +9,8 @@
+                d-shlibs (>= 0.106~),
+                qt5-qmake,
+                qtdeclarative5-dev,
+-               libbpp-phyl-dev
++               libbpp-phyl-dev,
++               qemu-user-static
+ Standards-Version: 4.6.2
+ Vcs-Browser: https://salsa.debian.org/med-team/libbpp-qt
+ Vcs-Git: https://salsa.debian.org/med-team/libbpp-qt.git

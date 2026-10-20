@@ -1,0 +1,104 @@
+{
+  "commit": "001f3b9dd15f89665794609c8b04b73acfae167e",
+  "python": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]",
+  "agent": "full-agent",
+  "mode": "live",
+  "repeats": 1,
+  "limits": {
+    "max_attempts": 12,
+    "max_builds": 10,
+    "max_tokens": 1000000,
+    "max_seconds": 7200,
+    "reserve_seconds": 120,
+    "max_turns": 80,
+    "max_tool_calls": 200
+  },
+  "strategy": "default",
+  "history": true,
+  "proposal_review": false,
+  "reference_repair_supplied": false,
+  "schedule": [
+    {
+      "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+      "bundle": "/home/ubuntu/buildbench-local-rcran-v1",
+      "manifest_sha256": "4b999ed1cfb8de31eac73ea9b7db2795e2a40cc80430a557577259f3fa95ca0a"
+    },
+    {
+      "case_id": "launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280",
+      "bundle": "/home/ubuntu/bb-cases/launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280",
+      "manifest_sha256": "a235609a3c7b1a1e271a1fdc6db34123354d6c4e9d13be5be74eae8707478a15"
+    },
+    {
+      "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+      "bundle": "/home/ubuntu/bb-cases/launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+      "manifest_sha256": "96aebdf8770024d6f5040a4cebd6f03f3b38910c6573bc9422b7c25167db78ad"
+    },
+    {
+      "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+      "bundle": "/home/ubuntu/bb-cases/launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+      "manifest_sha256": "32a19728437ade8bbf2b834d5544857cc271b6bb344821a0fb7e589d8e22ea22"
+    },
+    {
+      "case_id": "launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f",
+      "bundle": "/home/ubuntu/bb-cases/launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f",
+      "manifest_sha256": "c791f6074ba67b9ee1e482611f399dec9fcff0412f6453cf762a08d74eed57be"
+    },
+    {
+      "case_id": "launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446",
+      "bundle": "/home/ubuntu/bb-cases/launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446",
+      "manifest_sha256": "a146e41b0db54ff155761a5b420d24e63b6b2ba393f4ac7aee5892e7a5d4d77f"
+    },
+    {
+      "case_id": "launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91",
+      "bundle": "/home/ubuntu/bb-cases/launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91",
+      "manifest_sha256": "58dbde97de6f56fdac7fba39b92ff63ae244922767b99615f25905a745677abb"
+    },
+    {
+      "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+      "bundle": "/home/ubuntu/bb-cases/launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+      "manifest_sha256": "556ddb4921e4de8b8e4769d26600cd8821c9ae6bf562e457fe52e4566a6050b5"
+    },
+    {
+      "case_id": "launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e",
+      "bundle": "/home/ubuntu/bb-cases/launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e",
+      "manifest_sha256": "a7b6a021a5d8b2b22497f71a64454c59663b412fac317609c5789ed1af61bb27"
+    },
+    {
+      "case_id": "launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84",
+      "bundle": "/home/ubuntu/bb-cases/launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84",
+      "manifest_sha256": "1223913f05d99ace30dfbf845219819670e600297a6d5c9622e3d6926ac37ef1"
+    },
+    {
+      "case_id": "launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce",
+      "bundle": "/home/ubuntu/bb-cases/launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce",
+      "manifest_sha256": "2bf1ab6527a276660a19ac0f0dd9a9e7dfc6e25c7ddc1cca055ca49735c1e5fe"
+    }
+  ],
+  "source_sha256": {
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/build_feedback.py": "4d3eb04d4c3f467461377b0e1aae772f8abe8f32a5e5dc1ee1b8d6414d0ad745",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/candidates.py": "3c775468315a6005448df4f36cb5337af3de59b8a78eef28399ec537b4c8b4bf",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/case.py": "dd1d4f78101da747b927e6bd2385aa412583630cc75e74c959a5464ff9b561e6",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/config.py": "2e628612026f93110c32d3967735df4ac693f86a822cc2917ababab8c7e31c44",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/contracts.py": "65217dff71557d4631f8631c31340292920493b0858946cc999f8ace804df77a",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/diff_tracker.py": "d5c37a3f0bdaf00fe06cf8c3a91f655e8e28263e228854782fe7c46a03515a41",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/edit_applier.py": "c7f3db2ccdad687b7f088a0a6de160380efcde2ab94647fb1a4801518a3f0aa1",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/edit_preflight.py": "e8adb421d1249c2efcb6d6f64481581667237c8801400fd689ad980f86da4e22",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/evidence.py": "999f491369e052b38455f1c0bb116d5968720cdc75eb2063cc9ca65b51bcbebc",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/log_tail.py": "ccc166d3d1869a6ea6c1d65885eddf5025d75630bd1302413237fcb2df0d74f7",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/loop.py": "417a493a4f0a5c651ea374d15dd5d29abf38ae3ecd8cd047d54641c9371740ba",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/main.py": "79112085f680b0973f99c7a03cd72e0d1a0862d08b820b507e3578e506c0d402",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/model_adapter.py": "687f6852078115ab6c3a64b7a8c89f758a647fe861561a287823886036e96db5",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/model_client.py": "593f69805c72b15044572d58b7c0ec43f09dd13900dd9f9809111f244b6f959a",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/path_checks.py": "504bf95981c4b7043a0aecde5292ac930fc2fca3f498965f15b0e8593ec04c9b",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/path_feedback.py": "baa2521fe0dc1a6605b46810db4231c71f6a7bb9fab799c568bb1b6d01c180f1",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/prompts.py": "434cdb18535fe56c0c438c5006c531070b9e09e2317e7ed54f396b114bfaf5d9",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/proposal_review.py": "67322896f2b49c003492d0996a381c9a358a863fa0fff87d9e2149b27323ff2b",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/repair_strategy.py": "5069ca91fad2e8afe1e6397560a6d1b3c784502814c34191b95986823a40ed73",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/reply.py": "2419a1b951848c4ec6630b2c4bf34e14458283b8d1a2b39bc123697639e2958e",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/request_trace.py": "f5cbe8243486269000ba199acde13f8352fd3d8e99bdf76d353be5020fbfda45",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/tool_timeout.py": "c0e05400239fd1188c734951138c047acf5e6c8f3b4107fb2d5e9215d25c761d",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/tools.py": "679bff065f377f8a83f99a1b9fc8b42fa15b5230159fb7f05bd95f53eccfe30e",
+    "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/types.py": "de2dc8cbe9d38ceaa78827a413973c24f30633a24526305ce3fa0380e05a2036"
+  }
+}

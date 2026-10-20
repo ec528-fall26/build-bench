@@ -1,0 +1,34 @@
+diff --git a/buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/contracts.py b/buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/contracts.py
+index a1d74c3..25781d3 100644
+--- a/buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/contracts.py
++++ b/buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/contracts.py
+@@ -69,10 +69,10 @@ class Attempt:                    # Part C keeps these: the repair history
+ 
+ @dataclass
+ class Budget:                     # research settings, calibrated on rcran; not competition limits
+-    max_attempts: int = 5
+-    max_builds: int = 3
+-    max_tokens: int = 100_000
+-    max_seconds: int = 1_800
++    max_attempts: int = 12
++    max_builds: int = 10
++    max_tokens: int = 1_000_000
++    max_seconds: int = 7_200
+     reserve_seconds: int = 120    # kept back for a graceful stop
+ 
+ 
+diff --git a/buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/loop.py b/buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/loop.py
+index 42ce9c1..ee91778 100644
+--- a/buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/loop.py
++++ b/buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/loop.py
+@@ -130,8 +130,8 @@ def run_loop(
+     patch_policy: Mapping[str, list[str] | tuple[str, ...]] | None = None,
+     review_edits: bool = False,
+     initial_diagnostics=None,
+-    max_turns: int = 20,
+-    max_tool_calls: int = 30,
++    max_turns: int = 80,
++    max_tool_calls: int = 200,
+     clock: Callable[[], float] = monotonic,
+ ) -> LoopResult:
+     # Provisional local safeguards, not official competition limits.

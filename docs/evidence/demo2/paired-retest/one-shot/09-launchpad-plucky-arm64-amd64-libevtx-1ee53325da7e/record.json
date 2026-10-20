@@ -1,0 +1,52 @@
+{
+  "agent_version": "1.0.0+16e31a424d0d",
+  "baseline": {
+    "artifact_validation_passed": false,
+    "binary_artifacts": [],
+    "build_exit_code": 1,
+    "case_id": "launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e",
+    "duration_seconds": 165.0,
+    "message": "infrastructure error: evaluation could not run",
+    "repaired": false,
+    "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/09-launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e/baseline",
+    "status": "infrastructure_error",
+    "timed_out": false
+  },
+  "build_commands": [],
+  "case_id": "launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e",
+  "changed_files": [
+    "input/debian/control"
+  ],
+  "diff_path": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/09-launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e/repair.diff",
+  "edit_warnings": [],
+  "edits_applied": 1,
+  "edits_proposed": 1,
+  "error": null,
+  "fix_type": "packaging",
+  "mode": "one-shot",
+  "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+  "needs_review": false,
+  "rationale": "During the debootstrap phase the `apt` package's post\u2011inst script tries to invoke `adduser`. Because `adduser` is not part of the minimal set of packages installed for the build environment, the script fails, leading to QEMU segmentation faults and a broken build environment. Adding `adduser` to the package's `Build-Depends` ensures it is installed in the chroot before any other packages (like `apt`) are configured, preventing the missing\u2011binary error and allowing the build to proceed.",
+  "repaired": false,
+  "result": {
+    "artifact_validation_passed": false,
+    "binary_artifacts": [],
+    "build_exit_code": 1,
+    "case_id": "launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e",
+    "duration_seconds": 165.0,
+    "message": "infrastructure error: evaluation could not run",
+    "repaired": false,
+    "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/09-launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e/result",
+    "status": "infrastructure_error",
+    "timed_out": false
+  },
+  "run_id": "09-launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e",
+  "served_model": "openai.gpt-oss-120b-1:0",
+  "started_at": "2026-10-19T21:50:44+00:00",
+  "termination_reason": "build_failed",
+  "usage": {
+    "input_tokens": 16109,
+    "output_tokens": 1402
+  },
+  "wall_seconds": 348.6
+}

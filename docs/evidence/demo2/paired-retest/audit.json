@@ -1,0 +1,4864 @@
+{
+  "source_archive": "demo2-comparison-diagnostics.tar.gz",
+  "source_archive_sha256": "34e5a27a0ff3e5cdb7b65d78b941a36e6724f4e140886529d9926fcf43f96e05",
+  "classification_method": "Human log review; preserve original verdicts. All arm64-amd64 baselines show QEMU crashes and build_setup/build_infrastructure failure before package compilation.",
+  "runs": [
+    {
+      "agent": "full-agent",
+      "classification": "source_repair_evaluated",
+      "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+      "repaired": true,
+      "termination_reason": "build_succeeded",
+      "agent_termination": "build_succeeded",
+      "agent_message": "The build-feedback adapter reported success.",
+      "edits_proposed": 1,
+      "edits_applied": 1,
+      "usage": {
+        "input_tokens": 7422,
+        "output_tokens": 930
+      },
+      "wall_seconds": 288.1,
+      "source_record": "demo2-full-agent-retest-20261019T225339Z/runs/01-launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f/record.json",
+      "record_sha256": "1974f1537ee35ea2ed8c1750bf360eeefadbfb7d9d2bc30f487e8162fe33ec22",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+        "duration_seconds": 88.0,
+        "message": "build failed; expected binary artifact pattern 'r-cran-digest_*_arm64.deb' was not matched",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-full-agent-retest-20261019T225339Z/runs/01-launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f/baseline",
+        "status": "failed",
+        "timed_out": false
+      },
+      "result": {
+        "artifact_validation_passed": true,
+        "binary_artifacts": [
+          "r-cran-digest-dbgsym_0.6.32-1_arm64.ddeb",
+          "r-cran-digest_0.6.32-1_arm64.deb"
+        ],
+        "build_exit_code": 0,
+        "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+        "duration_seconds": 94.0,
+        "message": "build completed successfully",
+        "repaired": true,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-full-agent-retest-20261019T225339Z/runs/01-launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f/result",
+        "status": "succeeded",
+        "timed_out": false
+      },
+      "attempt_count": 1,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/01-launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f/baseline/build.log",
+          "sha256": "6604803dc4f530899eb367f70bfcabcccf20a6569fe8c8dfb2c63691b02a7a0b",
+          "selected_lines": [
+            {
+              "line": 1858,
+              "text": "[   88s] crc32c/crc32c_prefetch.h:18:10: fatal error: xmmintrin.h: No such file or directory"
+            },
+            {
+              "line": 1859,
+              "text": "[   88s]    18 | #include <xmmintrin.h>"
+            }
+          ],
+          "tail": [
+            {
+              "line": 1865,
+              "text": "[   88s] make[2]: Leaving directory '/usr/src/packages/BUILD/src'"
+            },
+            {
+              "line": 1866,
+              "text": "[   88s] ERROR: compilation failed for package 'digest'"
+            },
+            {
+              "line": 1867,
+              "text": "[   88s] * removing '/usr/src/packages/BUILD/debian/r-cran-digest/usr/lib/R/site-library/digest'"
+            },
+            {
+              "line": 1868,
+              "text": "[   88s] dh_auto_install: error: R CMD INSTALL -l /usr/src/packages/BUILD/debian/r-cran-digest/usr/lib/R/site-library --clean . \"--built-timestamp='Tue, 27 Jun 2023 16:19:01 -0500'\" returned exit code 1"
+            },
+            {
+              "line": 1869,
+              "text": "[   88s] make[1]: *** [debian/rules:10: override_dh_auto_install] Error 25"
+            },
+            {
+              "line": 1870,
+              "text": "[   88s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 1871,
+              "text": "[   88s] make: *** [debian/rules:7: binary] Error 2"
+            },
+            {
+              "line": 1872,
+              "text": "[   88s] dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2"
+            },
+            {
+              "line": 1873,
+              "text": "[   89s] "
+            },
+            {
+              "line": 1874,
+              "text": "[   89s] c6bb2f65e492 failed \"build r-cran-digest_0.6.32-1.dsc\" at Mon Oct 19 22:55:09 UTC 2026."
+            },
+            {
+              "line": 1875,
+              "text": "[   89s] "
+            },
+            {
+              "line": 1876,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/01-launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f/builds/build-01/result/build.log",
+          "sha256": "139a35e426fd5be48ec45b3a7d1b275c98af99addbdb8f269a7db8e79b7f6b34",
+          "selected_lines": [],
+          "tail": [
+            {
+              "line": 1918,
+              "text": "[   92s]  dpkg-genbuildinfo -O../r-cran-digest_0.6.32-1_arm64.buildinfo"
+            },
+            {
+              "line": 1919,
+              "text": "[   92s]  dpkg-genchanges -O../r-cran-digest_0.6.32-1_arm64.changes"
+            },
+            {
+              "line": 1920,
+              "text": "[   92s] dpkg-genchanges: info: including full source code in upload"
+            },
+            {
+              "line": 1921,
+              "text": "[   92s]  dpkg-source --after-build ."
+            },
+            {
+              "line": 1922,
+              "text": "[   92s] dpkg-buildpackage: info: full upload (original source is included)"
+            },
+            {
+              "line": 1923,
+              "text": "[   92s] ln: failed to create hard link '/tmp/build-case-root-dmja9k7_//usr/src/packages/DEBS/r-cran-digest_0.6.32-1.dsc': File exists"
+            },
+            {
+              "line": 1924,
+              "text": "[   92s] ln: failed to create hard link '/tmp/build-case-root-dmja9k7_//usr/src/packages/DEBS/r-cran-digest_0.6.32.orig.tar.gz': File exists"
+            },
+            {
+              "line": 1925,
+              "text": "[   92s] ln: failed to create hard link '/tmp/build-case-root-dmja9k7_//usr/src/packages/DEBS/r-cran-digest_0.6.32-1.debian.tar.xz': File exists"
+            },
+            {
+              "line": 1926,
+              "text": "[   93s] "
+            },
+            {
+              "line": 1927,
+              "text": "[   93s] 0043941fba55 finished \"build r-cran-digest_0.6.32-1.dsc\" at Mon Oct 19 22:56:50 UTC 2026."
+            },
+            {
+              "line": 1928,
+              "text": "[   93s] "
+            },
+            {
+              "line": 1929,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"completed\",\"state\":\"completed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/01-launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f/result/build.log",
+          "sha256": "d1adcea54895b957a8d86edc85888c7106b87556da9fecb674f3ec749f919a02",
+          "selected_lines": [],
+          "tail": [
+            {
+              "line": 1918,
+              "text": "[   93s]  dpkg-genbuildinfo -O../r-cran-digest_0.6.32-1_arm64.buildinfo"
+            },
+            {
+              "line": 1919,
+              "text": "[   93s]  dpkg-genchanges -O../r-cran-digest_0.6.32-1_arm64.changes"
+            },
+            {
+              "line": 1920,
+              "text": "[   94s] dpkg-genchanges: info: including full source code in upload"
+            },
+            {
+              "line": 1921,
+              "text": "[   94s]  dpkg-source --after-build ."
+            },
+            {
+              "line": 1922,
+              "text": "[   94s] dpkg-buildpackage: info: full upload (original source is included)"
+            },
+            {
+              "line": 1923,
+              "text": "[   94s] ln: failed to create hard link '/tmp/build-case-root-bhrbckk4//usr/src/packages/DEBS/r-cran-digest_0.6.32-1.dsc': File exists"
+            },
+            {
+              "line": 1924,
+              "text": "[   94s] ln: failed to create hard link '/tmp/build-case-root-bhrbckk4//usr/src/packages/DEBS/r-cran-digest_0.6.32.orig.tar.gz': File exists"
+            },
+            {
+              "line": 1925,
+              "text": "[   94s] ln: failed to create hard link '/tmp/build-case-root-bhrbckk4//usr/src/packages/DEBS/r-cran-digest_0.6.32-1.debian.tar.xz': File exists"
+            },
+            {
+              "line": 1926,
+              "text": "[   94s] "
+            },
+            {
+              "line": 1927,
+              "text": "[   94s] db076f1d49fc finished \"build r-cran-digest_0.6.32-1.dsc\" at Mon Oct 19 22:58:26 UTC 2026."
+            },
+            {
+              "line": 1928,
+              "text": "[   94s] "
+            },
+            {
+              "line": 1929,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"completed\",\"state\":\"completed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "full-agent",
+      "classification": "environment_blocked",
+      "case_id": "launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280",
+      "repaired": false,
+      "termination_reason": "no_edit_applied",
+      "agent_termination": "model_stop",
+      "agent_message": "The build fails during the installation of build\u2011dependency packages (e.g., passwd) with QEMU segfaults occurring before any of the package's own source files are compiled or installed. These failures happen in the build\u2011setup stage, outside the control of the package's source tree, and cannot be remedied by editing files under input/.",
+      "edits_proposed": 0,
+      "edits_applied": 0,
+      "usage": {
+        "input_tokens": 2804,
+        "output_tokens": 1836
+      },
+      "wall_seconds": 134.5,
+      "source_record": "demo2-full-agent-retest-20261019T225339Z/runs/02-launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280/record.json",
+      "record_sha256": "4390acec72327bc676813f72dda78e7b17773f60fb0c0caafd55204b2c56ec50",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280",
+        "duration_seconds": 118.0,
+        "message": "build failed; Debian artifact root is missing; expected binary artifact pattern 'libbpp-core-dev_*_amd64.deb' was not matched; expected source artifact pattern 'libbpp-core_*.dsc' was not matched; no physical Debian artifacts were collected",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-full-agent-retest-20261019T225339Z/runs/02-launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280/baseline",
+        "status": "failed",
+        "timed_out": false
+      },
+      "result": null,
+      "attempt_count": 0,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/02-launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280/baseline/build.log",
+          "sha256": "5728bf7e0addf1e2f4d66122a8efbd97df49f07984e5b3d6210eb2b454e36435",
+          "selected_lines": [
+            {
+              "line": 294,
+              "text": "[   65s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 296,
+              "text": "[   65s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 298,
+              "text": "[   65s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 300,
+              "text": "[   65s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 327,
+              "text": "[   85s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 329,
+              "text": "[   86s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 353,
+              "text": "[  102s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 355,
+              "text": "[  102s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 370,
+              "text": "[  110s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 372,
+              "text": "[  110s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 377,
+              "text": "[  117s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 381,
+              "text": "[  118s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 390,
+              "text": "[  118s]  installed passwd package post-installation script subprocess returned error exit status 1"
+            },
+            {
+              "line": 397,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_setup\",\"state\":\"failed\"}"
+            }
+          ],
+          "tail": [
+            {
+              "line": 386,
+              "text": "[  118s] Note that both user and group IDs in the range 0-99 are globally"
+            },
+            {
+              "line": 387,
+              "text": "[  118s] allocated by the Debian project and must be the same on every Debian"
+            },
+            {
+              "line": 388,
+              "text": "[  118s] system."
+            },
+            {
+              "line": 389,
+              "text": "[  118s] dpkg: error processing package passwd (--install):"
+            },
+            {
+              "line": 390,
+              "text": "[  118s]  installed passwd package post-installation script subprocess returned error exit status 1"
+            },
+            {
+              "line": 391,
+              "text": "[  118s] Errors were encountered while processing:"
+            },
+            {
+              "line": 392,
+              "text": "[  118s]  passwd"
+            },
+            {
+              "line": 393,
+              "text": "[  118s] exit ..."
+            },
+            {
+              "line": 394,
+              "text": "[  118s] "
+            },
+            {
+              "line": 395,
+              "text": "[  118s] 327b58faf978 failed \"build libbpp-core_2.4.1-6.dsc\" at Mon Oct 19 23:00:26 UTC 2026."
+            },
+            {
+              "line": 396,
+              "text": "[  118s] "
+            },
+            {
+              "line": 397,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_setup\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "full-agent",
+      "classification": "source_repair_evaluated",
+      "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "repeated_diagnostic",
+      "agent_message": "Two consecutive changed attempts reported the same leading diagnostic without improvement in the build-ranking heuristic.",
+      "edits_proposed": 9,
+      "edits_applied": 7,
+      "usage": {
+        "input_tokens": 283517,
+        "output_tokens": 39644
+      },
+      "wall_seconds": 1192.4,
+      "source_record": "demo2-full-agent-retest-20261019T225339Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/record.json",
+      "record_sha256": "fdf544f37981c891abbcd19376f20dccc4d0fd6b564769bfff0758e1542f0244",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+        "duration_seconds": 90.0,
+        "message": "build failed; expected binary artifact pattern 'libectrans-0_*_arm64.deb' was not matched",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-full-agent-retest-20261019T225339Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/baseline",
+        "status": "failed",
+        "timed_out": false
+      },
+      "result": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+        "duration_seconds": 91.0,
+        "message": "build failed; expected binary artifact pattern 'libectrans-0_*_arm64.deb' was not matched",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-full-agent-retest-20261019T225339Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/result",
+        "status": "failed",
+        "timed_out": false
+      },
+      "attempt_count": 8,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/baseline/build.log",
+          "sha256": "f733ec9e8a79a129860f81ce26b2b7071f702ba329d3dfaa0787a3adad56e676",
+          "selected_lines": [
+            {
+              "line": 1763,
+              "text": "[   90s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1779,
+              "text": "[   90s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1795,
+              "text": "[   90s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1811,
+              "text": "[   90s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1827,
+              "text": "[   90s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1843,
+              "text": "[   90s]   Imported target \"fiat\" includes non-existent path"
+            }
+          ],
+          "tail": [
+            {
+              "line": 3004,
+              "text": "[   90s] //perl script to generate persistent objects"
+            },
+            {
+              "line": 3005,
+              "text": "[   90s] sg_perl:INTERNAL=/usr/share/ecbuild/cmake/sg.pl"
+            },
+            {
+              "line": 3006,
+              "text": "[   90s] "
+            },
+            {
+              "line": 3007,
+              "text": "[   90s] dh_auto_configure: error: cd debian/build && cmake -DCMAKE_MODULE_PATH=/usr/share/ecbuild/cmake -DECBUILD_MACROS_DIR=/usr/share/ecbuild/cmake -DENABLE_BIT_REPRODUCIBLE=On -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DDISABLE_OS_CHECK=On -DBUILD_SITE=debian -DCMAKE_INSTALL_LOCALSTATEDIR=/var -DCMAKE_EXPORT_NO_PACKAGE_REGISTRY=ON -DCMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY=ON \"-GUnix Makefiles\" -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_INSTALL_LIBDIR=lib/aarch64-linux-gnu -DENABLE_DOCS=On -DENABLE_MKL=Off -DENABLE_MPI=On -DENABLE_FFTW=On -DENABLE_OMP=On -DENABLE_FORTRAN=On ../.. returned exit code 1"
+            },
+            {
+              "line": 3008,
+              "text": "[   90s] make[1]: *** [debian/rules:40: override_dh_auto_configure] Error 2"
+            },
+            {
+              "line": 3009,
+              "text": "[   90s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 3010,
+              "text": "[   90s] make: *** [debian/rules:37: build] Error 2"
+            },
+            {
+              "line": 3011,
+              "text": "[   90s] dpkg-buildpackage: error: debian/rules build subprocess returned exit status 2"
+            },
+            {
+              "line": 3012,
+              "text": "[   90s] "
+            },
+            {
+              "line": 3013,
+              "text": "[   90s] 58ce29ce51e2 failed \"build ectrans_1.3.0-1build1.dsc\" at Mon Oct 19 23:02:13 UTC 2026."
+            },
+            {
+              "line": 3014,
+              "text": "[   90s] "
+            },
+            {
+              "line": 3015,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/builds/build-01/result/build.log",
+          "sha256": "e657b9218a210674f4bb6acdb70e9dc859c6751cb19604fc2cfdabf23e074cf8",
+          "selected_lines": [
+            {
+              "line": 1760,
+              "text": "[   90s]   Imported target \"parkind_dp\" includes non-existent path"
+            },
+            {
+              "line": 1776,
+              "text": "[   90s]   Imported target \"parkind_dp\" includes non-existent path"
+            },
+            {
+              "line": 1792,
+              "text": "[   90s]   Imported target \"parkind_sp\" includes non-existent path"
+            },
+            {
+              "line": 1808,
+              "text": "[   90s]   Imported target \"parkind_sp\" includes non-existent path"
+            },
+            {
+              "line": 1824,
+              "text": "[   90s]   Imported target \"parkind_sp\" includes non-existent path"
+            },
+            {
+              "line": 1840,
+              "text": "[   90s]   Imported target \"parkind_dp\" includes non-existent path"
+            }
+          ],
+          "tail": [
+            {
+              "line": 3001,
+              "text": "[   90s] //perl script to generate persistent objects"
+            },
+            {
+              "line": 3002,
+              "text": "[   90s] sg_perl:INTERNAL=/usr/share/ecbuild/cmake/sg.pl"
+            },
+            {
+              "line": 3003,
+              "text": "[   90s] "
+            },
+            {
+              "line": 3004,
+              "text": "[   90s] dh_auto_configure: error: cd debian/build && cmake -DCMAKE_MODULE_PATH=/usr/share/ecbuild/cmake -DECBUILD_MACROS_DIR=/usr/share/ecbuild/cmake -DENABLE_BIT_REPRODUCIBLE=On -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DDISABLE_OS_CHECK=On -DBUILD_SITE=debian -DCMAKE_INSTALL_LOCALSTATEDIR=/var -DCMAKE_EXPORT_NO_PACKAGE_REGISTRY=ON -DCMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY=ON \"-GUnix Makefiles\" -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_INSTALL_LIBDIR=lib/aarch64-linux-gnu -DENABLE_DOCS=On -DENABLE_MKL=Off -DENABLE_MPI=On -DENABLE_FFTW=On -DENABLE_OMP=On -DENABLE_FORTRAN=On ../.. returned exit code 1"
+            },
+            {
+              "line": 3005,
+              "text": "[   90s] make[1]: *** [debian/rules:40: override_dh_auto_configure] Error 2"
+            },
+            {
+              "line": 3006,
+              "text": "[   90s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 3007,
+              "text": "[   90s] make: *** [debian/rules:37: build] Error 2"
+            },
+            {
+              "line": 3008,
+              "text": "[   90s] dpkg-buildpackage: error: debian/rules build subprocess returned exit status 2"
+            },
+            {
+              "line": 3009,
+              "text": "[   90s] "
+            },
+            {
+              "line": 3010,
+              "text": "[   90s] 3283e332145b failed \"build ectrans_1.3.0-1build1.dsc\" at Mon Oct 19 23:04:28 UTC 2026."
+            },
+            {
+              "line": 3011,
+              "text": "[   90s] "
+            },
+            {
+              "line": 3012,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/builds/build-02/result/build.log",
+          "sha256": "f361828b0b3099e2dcabc90a8bb932003a26303468c341ee99d0ecca64a70fd9",
+          "selected_lines": [
+            {
+              "line": 1797,
+              "text": "[   90s]    20 | USE PARKIND1, ONLY : JPIM, JPRB"
+            },
+            {
+              "line": 1799,
+              "text": "[   90s] Fatal Error: Cannot open module file 'parkind1.mod' for reading at (1): No such file or directory"
+            },
+            {
+              "line": 1802,
+              "text": "[   90s]    20 | USE PARKIND1, ONLY : JPIM, JPRB"
+            },
+            {
+              "line": 1804,
+              "text": "[   90s] Fatal Error: Cannot open module file 'parkind1.mod' for reading at (1): No such file or directory"
+            }
+          ],
+          "tail": [
+            {
+              "line": 1812,
+              "text": "[   90s] make[2]: *** Waiting for unfinished jobs...."
+            },
+            {
+              "line": 1813,
+              "text": "[   90s] make[2]: *** [CMakeFiles/Makefile2:978: src/trans/CMakeFiles/trans_sp.dir/all] Error 2"
+            },
+            {
+              "line": 1814,
+              "text": "[   90s] make[2]: Leaving directory '/usr/src/packages/BUILD/debian/build'"
+            },
+            {
+              "line": 1815,
+              "text": "[   90s] make[1]: *** [Makefile:169: all] Error 2"
+            },
+            {
+              "line": 1816,
+              "text": "[   90s] make[1]: Leaving directory '/usr/src/packages/BUILD/debian/build'"
+            },
+            {
+              "line": 1817,
+              "text": "[   90s] dh_auto_build: error: cd debian/build && make -j2 \"INSTALL=install --strip-program=true\" returned exit code 2"
+            },
+            {
+              "line": 1818,
+              "text": "[   90s] make: *** [debian/rules:37: build] Error 25"
+            },
+            {
+              "line": 1819,
+              "text": "[   90s] dpkg-buildpackage: error: debian/rules build subprocess returned exit status 2"
+            },
+            {
+              "line": 1820,
+              "text": "[   90s] "
+            },
+            {
+              "line": 1821,
+              "text": "[   90s] 698130dd8f26 failed \"build ectrans_1.3.0-1build1.dsc\" at Mon Oct 19 23:06:14 UTC 2026."
+            },
+            {
+              "line": 1822,
+              "text": "[   90s] "
+            },
+            {
+              "line": 1823,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/builds/build-03/result/build.log",
+          "sha256": "cde972e624b0cd360f462e98cc430173680e7a4453d0847b84cd3b2ed33b1e9b",
+          "selected_lines": [
+            {
+              "line": 1797,
+              "text": "[   90s]    20 | USE PARKIND1, ONLY : JPIM, JPRB"
+            },
+            {
+              "line": 1799,
+              "text": "[   90s] Fatal Error: Cannot open module file 'parkind1.mod' for reading at (1): No such file or directory"
+            },
+            {
+              "line": 1802,
+              "text": "[   90s]    20 | USE PARKIND1, ONLY : JPIM, JPRB"
+            },
+            {
+              "line": 1804,
+              "text": "[   90s] Fatal Error: Cannot open module file 'parkind1.mod' for reading at (1): No such file or directory"
+            }
+          ],
+          "tail": [
+            {
+              "line": 1812,
+              "text": "[   90s] make[2]: *** Waiting for unfinished jobs...."
+            },
+            {
+              "line": 1813,
+              "text": "[   90s] make[2]: *** [CMakeFiles/Makefile2:952: src/trans/CMakeFiles/trans_dp.dir/all] Error 2"
+            },
+            {
+              "line": 1814,
+              "text": "[   90s] make[2]: Leaving directory '/usr/src/packages/BUILD/debian/build'"
+            },
+            {
+              "line": 1815,
+              "text": "[   90s] make[1]: *** [Makefile:169: all] Error 2"
+            },
+            {
+              "line": 1816,
+              "text": "[   90s] make[1]: Leaving directory '/usr/src/packages/BUILD/debian/build'"
+            },
+            {
+              "line": 1817,
+              "text": "[   90s] dh_auto_build: error: cd debian/build && make -j2 \"INSTALL=install --strip-program=true\" returned exit code 2"
+            },
+            {
+              "line": 1818,
+              "text": "[   90s] make: *** [debian/rules:37: build] Error 25"
+            },
+            {
+              "line": 1819,
+              "text": "[   90s] dpkg-buildpackage: error: debian/rules build subprocess returned exit status 2"
+            },
+            {
+              "line": 1820,
+              "text": "[   90s] "
+            },
+            {
+              "line": 1821,
+              "text": "[   90s] 575025e3485e failed \"build ectrans_1.3.0-1build1.dsc\" at Mon Oct 19 23:08:29 UTC 2026."
+            },
+            {
+              "line": 1822,
+              "text": "[   90s] "
+            },
+            {
+              "line": 1823,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/builds/build-04/result/build.log",
+          "sha256": "d715b7c91b5f5821a6d6a5d412ea80a63c747f99363d147d710554328f56fa5a",
+          "selected_lines": [
+            {
+              "line": 1760,
+              "text": "[   89s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1776,
+              "text": "[   89s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1792,
+              "text": "[   89s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1808,
+              "text": "[   89s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1824,
+              "text": "[   89s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1840,
+              "text": "[   89s]   Imported target \"fiat\" includes non-existent path"
+            }
+          ],
+          "tail": [
+            {
+              "line": 3001,
+              "text": "[   89s] //perl script to generate persistent objects"
+            },
+            {
+              "line": 3002,
+              "text": "[   89s] sg_perl:INTERNAL=/usr/share/ecbuild/cmake/sg.pl"
+            },
+            {
+              "line": 3003,
+              "text": "[   89s] "
+            },
+            {
+              "line": 3004,
+              "text": "[   89s] dh_auto_configure: error: cd debian/build && cmake -DCMAKE_MODULE_PATH=/usr/share/ecbuild/cmake -DECBUILD_MACROS_DIR=/usr/share/ecbuild/cmake -DENABLE_BIT_REPRODUCIBLE=On -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DDISABLE_OS_CHECK=On -DBUILD_SITE=debian -DCMAKE_INSTALL_LOCALSTATEDIR=/var -DCMAKE_EXPORT_NO_PACKAGE_REGISTRY=ON -DCMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY=ON \"-GUnix Makefiles\" -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_INSTALL_LIBDIR=lib/aarch64-linux-gnu -DENABLE_DOCS=On -DENABLE_MKL=Off -DENABLE_MPI=On -DENABLE_FFTW=On -DENABLE_OMP=On -DENABLE_FORTRAN=On ../.. returned exit code 1"
+            },
+            {
+              "line": 3005,
+              "text": "[   89s] make[1]: *** [debian/rules:40: override_dh_auto_configure] Error 2"
+            },
+            {
+              "line": 3006,
+              "text": "[   89s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 3007,
+              "text": "[   89s] make: *** [debian/rules:37: build] Error 2"
+            },
+            {
+              "line": 3008,
+              "text": "[   89s] dpkg-buildpackage: error: debian/rules build subprocess returned exit status 2"
+            },
+            {
+              "line": 3009,
+              "text": "[   89s] "
+            },
+            {
+              "line": 3010,
+              "text": "[   89s] d5e5e01061eb failed \"build ectrans_1.3.0-1build1.dsc\" at Mon Oct 19 23:10:20 UTC 2026."
+            },
+            {
+              "line": 3011,
+              "text": "[   89s] "
+            },
+            {
+              "line": 3012,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/builds/build-05/result/build.log",
+          "sha256": "7981e0a415579aae17ed60c9238901f2c72620b99eb23c4ff97da1f43f714b88",
+          "selected_lines": [
+            {
+              "line": 1797,
+              "text": "[   91s]    20 | USE PARKIND1, ONLY : JPIM, JPRB"
+            },
+            {
+              "line": 1799,
+              "text": "[   91s] Fatal Error: Cannot open module file 'parkind1.mod' for reading at (1): No such file or directory"
+            },
+            {
+              "line": 1802,
+              "text": "[   91s]    20 | USE PARKIND1, ONLY : JPIM, JPRB"
+            },
+            {
+              "line": 1804,
+              "text": "[   91s] Fatal Error: Cannot open module file 'parkind1.mod' for reading at (1): No such file or directory"
+            }
+          ],
+          "tail": [
+            {
+              "line": 1812,
+              "text": "[   91s] make[2]: *** Waiting for unfinished jobs...."
+            },
+            {
+              "line": 1813,
+              "text": "[   91s] make[2]: *** [CMakeFiles/Makefile2:978: src/trans/CMakeFiles/trans_sp.dir/all] Error 2"
+            },
+            {
+              "line": 1814,
+              "text": "[   91s] make[2]: Leaving directory '/usr/src/packages/BUILD/debian/build'"
+            },
+            {
+              "line": 1815,
+              "text": "[   91s] make[1]: *** [Makefile:169: all] Error 2"
+            },
+            {
+              "line": 1816,
+              "text": "[   91s] make[1]: Leaving directory '/usr/src/packages/BUILD/debian/build'"
+            },
+            {
+              "line": 1817,
+              "text": "[   91s] dh_auto_build: error: cd debian/build && make -j2 \"INSTALL=install --strip-program=true\" returned exit code 2"
+            },
+            {
+              "line": 1818,
+              "text": "[   91s] make: *** [debian/rules:37: build] Error 25"
+            },
+            {
+              "line": 1819,
+              "text": "[   91s] dpkg-buildpackage: error: debian/rules build subprocess returned exit status 2"
+            },
+            {
+              "line": 1820,
+              "text": "[   91s] "
+            },
+            {
+              "line": 1821,
+              "text": "[   91s] 6de97eccdb6a failed \"build ectrans_1.3.0-1build1.dsc\" at Mon Oct 19 23:12:20 UTC 2026."
+            },
+            {
+              "line": 1822,
+              "text": "[   91s] "
+            },
+            {
+              "line": 1823,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/builds/build-06/result/build.log",
+          "sha256": "d701f20729e1f8326fbd890529f48c5725576fe22e16548608290f2fec78b72e",
+          "selected_lines": [
+            {
+              "line": 1760,
+              "text": "[   97s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1776,
+              "text": "[   97s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1792,
+              "text": "[   97s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1808,
+              "text": "[   97s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1824,
+              "text": "[   97s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1840,
+              "text": "[   97s]   Imported target \"fiat\" includes non-existent path"
+            }
+          ],
+          "tail": [
+            {
+              "line": 3001,
+              "text": "[   97s] //perl script to generate persistent objects"
+            },
+            {
+              "line": 3002,
+              "text": "[   97s] sg_perl:INTERNAL=/usr/share/ecbuild/cmake/sg.pl"
+            },
+            {
+              "line": 3003,
+              "text": "[   97s] "
+            },
+            {
+              "line": 3004,
+              "text": "[   97s] dh_auto_configure: error: cd debian/build && cmake -DCMAKE_MODULE_PATH=/usr/share/ecbuild/cmake -DECBUILD_MACROS_DIR=/usr/share/ecbuild/cmake -DENABLE_BIT_REPRODUCIBLE=On -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DDISABLE_OS_CHECK=On -DBUILD_SITE=debian -DCMAKE_INSTALL_LOCALSTATEDIR=/var -DCMAKE_EXPORT_NO_PACKAGE_REGISTRY=ON -DCMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY=ON \"-GUnix Makefiles\" -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_INSTALL_LIBDIR=lib/aarch64-linux-gnu -DENABLE_DOCS=On -DENABLE_MKL=Off -DENABLE_MPI=On -DENABLE_FFTW=On -DENABLE_OMP=On -DENABLE_FORTRAN=On ../.. returned exit code 1"
+            },
+            {
+              "line": 3005,
+              "text": "[   97s] make[1]: *** [debian/rules:40: override_dh_auto_configure] Error 2"
+            },
+            {
+              "line": 3006,
+              "text": "[   97s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 3007,
+              "text": "[   97s] make: *** [debian/rules:37: build] Error 2"
+            },
+            {
+              "line": 3008,
+              "text": "[   97s] dpkg-buildpackage: error: debian/rules build subprocess returned exit status 2"
+            },
+            {
+              "line": 3009,
+              "text": "[   97s] "
+            },
+            {
+              "line": 3010,
+              "text": "[   97s] a924472e4171 failed \"build ectrans_1.3.0-1build1.dsc\" at Mon Oct 19 23:14:40 UTC 2026."
+            },
+            {
+              "line": 3011,
+              "text": "[   97s] "
+            },
+            {
+              "line": 3012,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/builds/build-07/result/build.log",
+          "sha256": "3a65a6383328aea734d415bcb570058ef7a5c26f83483e284194bc946b8426aa",
+          "selected_lines": [
+            {
+              "line": 1797,
+              "text": "[   93s]    20 | USE PARKIND1, ONLY : JPIM, JPRB"
+            },
+            {
+              "line": 1799,
+              "text": "[   93s] Fatal Error: Cannot open module file 'parkind1.mod' for reading at (1): No such file or directory"
+            },
+            {
+              "line": 1802,
+              "text": "[   93s]    20 | USE PARKIND1, ONLY : JPIM, JPRB"
+            },
+            {
+              "line": 1804,
+              "text": "[   93s] Fatal Error: Cannot open module file 'parkind1.mod' for reading at (1): No such file or directory"
+            }
+          ],
+          "tail": [
+            {
+              "line": 1812,
+              "text": "[   93s] make[2]: *** Waiting for unfinished jobs...."
+            },
+            {
+              "line": 1813,
+              "text": "[   93s] make[2]: *** [CMakeFiles/Makefile2:978: src/trans/CMakeFiles/trans_sp.dir/all] Error 2"
+            },
+            {
+              "line": 1814,
+              "text": "[   93s] make[2]: Leaving directory '/usr/src/packages/BUILD/debian/build'"
+            },
+            {
+              "line": 1815,
+              "text": "[   93s] make[1]: *** [Makefile:169: all] Error 2"
+            },
+            {
+              "line": 1816,
+              "text": "[   93s] make[1]: Leaving directory '/usr/src/packages/BUILD/debian/build'"
+            },
+            {
+              "line": 1817,
+              "text": "[   93s] dh_auto_build: error: cd debian/build && make -j2 \"INSTALL=install --strip-program=true\" returned exit code 2"
+            },
+            {
+              "line": 1818,
+              "text": "[   93s] make: *** [debian/rules:37: build] Error 25"
+            },
+            {
+              "line": 1819,
+              "text": "[   93s] dpkg-buildpackage: error: debian/rules build subprocess returned exit status 2"
+            },
+            {
+              "line": 1820,
+              "text": "[   93s] "
+            },
+            {
+              "line": 1821,
+              "text": "[   93s] 2b636b27014e failed \"build ectrans_1.3.0-1build1.dsc\" at Mon Oct 19 23:16:25 UTC 2026."
+            },
+            {
+              "line": 1822,
+              "text": "[   93s] "
+            },
+            {
+              "line": 1823,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/builds/build-08/result/build.log",
+          "sha256": "07f29b4335a4dc71315d3a4940a90761eaae347cf935f7dcfcab2adf1e0a3243",
+          "selected_lines": [
+            {
+              "line": 1797,
+              "text": "[   90s]    20 | USE PARKIND1, ONLY : JPIM, JPRB"
+            },
+            {
+              "line": 1799,
+              "text": "[   90s] Fatal Error: Cannot open module file 'parkind1.mod' for reading at (1): No such file or directory"
+            },
+            {
+              "line": 1802,
+              "text": "[   90s]    20 | USE PARKIND1, ONLY : JPIM, JPRB"
+            },
+            {
+              "line": 1804,
+              "text": "[   90s] Fatal Error: Cannot open module file 'parkind1.mod' for reading at (1): No such file or directory"
+            }
+          ],
+          "tail": [
+            {
+              "line": 1812,
+              "text": "[   90s] make[2]: *** Waiting for unfinished jobs...."
+            },
+            {
+              "line": 1813,
+              "text": "[   90s] make[2]: *** [CMakeFiles/Makefile2:978: src/trans/CMakeFiles/trans_sp.dir/all] Error 2"
+            },
+            {
+              "line": 1814,
+              "text": "[   90s] make[2]: Leaving directory '/usr/src/packages/BUILD/debian/build'"
+            },
+            {
+              "line": 1815,
+              "text": "[   90s] make[1]: *** [Makefile:169: all] Error 2"
+            },
+            {
+              "line": 1816,
+              "text": "[   90s] make[1]: Leaving directory '/usr/src/packages/BUILD/debian/build'"
+            },
+            {
+              "line": 1817,
+              "text": "[   90s] dh_auto_build: error: cd debian/build && make -j2 \"INSTALL=install --strip-program=true\" returned exit code 2"
+            },
+            {
+              "line": 1818,
+              "text": "[   90s] make: *** [debian/rules:37: build] Error 25"
+            },
+            {
+              "line": 1819,
+              "text": "[   90s] dpkg-buildpackage: error: debian/rules build subprocess returned exit status 2"
+            },
+            {
+              "line": 1820,
+              "text": "[   90s] "
+            },
+            {
+              "line": 1821,
+              "text": "[   90s] c13075edc217 failed \"build ectrans_1.3.0-1build1.dsc\" at Mon Oct 19 23:18:59 UTC 2026."
+            },
+            {
+              "line": 1822,
+              "text": "[   90s] "
+            },
+            {
+              "line": 1823,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/result/build.log",
+          "sha256": "3bd78200a142958a87436d340fdb1b0b5241fb09c492cd569b64f48633e2ac57",
+          "selected_lines": [
+            {
+              "line": 1797,
+              "text": "[   92s]    20 | USE PARKIND1, ONLY : JPIM, JPRB"
+            },
+            {
+              "line": 1799,
+              "text": "[   92s] Fatal Error: Cannot open module file 'parkind1.mod' for reading at (1): No such file or directory"
+            },
+            {
+              "line": 1802,
+              "text": "[   92s]    20 | USE PARKIND1, ONLY : JPIM, JPRB"
+            },
+            {
+              "line": 1804,
+              "text": "[   92s] Fatal Error: Cannot open module file 'parkind1.mod' for reading at (1): No such file or directory"
+            }
+          ],
+          "tail": [
+            {
+              "line": 1812,
+              "text": "[   92s] make[2]: *** Waiting for unfinished jobs...."
+            },
+            {
+              "line": 1813,
+              "text": "[   92s] make[2]: *** [CMakeFiles/Makefile2:952: src/trans/CMakeFiles/trans_dp.dir/all] Error 2"
+            },
+            {
+              "line": 1814,
+              "text": "[   92s] make[2]: Leaving directory '/usr/src/packages/BUILD/debian/build'"
+            },
+            {
+              "line": 1815,
+              "text": "[   92s] make[1]: *** [Makefile:169: all] Error 2"
+            },
+            {
+              "line": 1816,
+              "text": "[   92s] make[1]: Leaving directory '/usr/src/packages/BUILD/debian/build'"
+            },
+            {
+              "line": 1817,
+              "text": "[   92s] dh_auto_build: error: cd debian/build && make -j2 \"INSTALL=install --strip-program=true\" returned exit code 2"
+            },
+            {
+              "line": 1818,
+              "text": "[   92s] make: *** [debian/rules:37: build] Error 25"
+            },
+            {
+              "line": 1819,
+              "text": "[   92s] dpkg-buildpackage: error: debian/rules build subprocess returned exit status 2"
+            },
+            {
+              "line": 1820,
+              "text": "[   92s] "
+            },
+            {
+              "line": 1821,
+              "text": "[   92s] 83c2e3aef990 failed \"build ectrans_1.3.0-1build1.dsc\" at Mon Oct 19 23:20:33 UTC 2026."
+            },
+            {
+              "line": 1822,
+              "text": "[   92s] "
+            },
+            {
+              "line": 1823,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "full-agent",
+      "classification": "source_repair_evaluated",
+      "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "repeated_diagnostic",
+      "agent_message": "Two consecutive changed attempts reported the same leading diagnostic without improvement in the build-ranking heuristic.",
+      "edits_proposed": 2,
+      "edits_applied": 2,
+      "usage": {
+        "input_tokens": 64190,
+        "output_tokens": 10832
+      },
+      "wall_seconds": 453.3,
+      "source_record": "demo2-full-agent-retest-20261019T225339Z/runs/04-launchpad-noble-amd64-arm64-libmceliece-5020df9683fc/record.json",
+      "record_sha256": "9be461eade1a096b6b96cc30fa4d51e140ebac93e3318128c96ef30ee222a431",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+        "duration_seconds": 83.0,
+        "message": "build failed; expected binary artifact pattern 'libmceliece-dev_*_arm64.deb' was not matched",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-full-agent-retest-20261019T225339Z/runs/04-launchpad-noble-amd64-arm64-libmceliece-5020df9683fc/baseline",
+        "status": "failed",
+        "timed_out": false
+      },
+      "result": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+        "duration_seconds": 85.0,
+        "message": "build failed; expected binary artifact pattern 'libmceliece-dev_*_arm64.deb' was not matched",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-full-agent-retest-20261019T225339Z/runs/04-launchpad-noble-amd64-arm64-libmceliece-5020df9683fc/result",
+        "status": "failed",
+        "timed_out": false
+      },
+      "attempt_count": 2,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/04-launchpad-noble-amd64-arm64-libmceliece-5020df9683fc/baseline/build.log",
+          "sha256": "2d27b1e4e73ebc24b28a4918b49a805834301f1e1109a7474bb19a5beebe88db",
+          "selected_lines": [],
+          "tail": [
+            {
+              "line": 2029,
+              "text": "[   83s] make[3]: Leaving directory '/usr/src/packages/BUILD/build/arm64'"
+            },
+            {
+              "line": 2030,
+              "text": "[   83s] make[2]: *** [Makefile:2: default] Error 2"
+            },
+            {
+              "line": 2031,
+              "text": "[   83s] make[2]: Leaving directory '/usr/src/packages/BUILD/build'"
+            },
+            {
+              "line": 2032,
+              "text": "[   83s] make[1]: *** [Makefile:2: default] Error 2"
+            },
+            {
+              "line": 2033,
+              "text": "[   83s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 2034,
+              "text": "[   83s] dh_auto_build: error: make -j2 returned exit code 2"
+            },
+            {
+              "line": 2035,
+              "text": "[   83s] make: *** [debian/rules:14: binary] Error 25"
+            },
+            {
+              "line": 2036,
+              "text": "[   83s] dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2"
+            },
+            {
+              "line": 2037,
+              "text": "[   83s] "
+            },
+            {
+              "line": 2038,
+              "text": "[   83s] 03f482f16342 failed \"build libmceliece_0~20230612-1.dsc\" at Mon Oct 19 23:21:58 UTC 2026."
+            },
+            {
+              "line": 2039,
+              "text": "[   83s] "
+            },
+            {
+              "line": 2040,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/04-launchpad-noble-amd64-arm64-libmceliece-5020df9683fc/builds/build-01/result/build.log",
+          "sha256": "e148bd059b0a523e5ed046557749f03fbec8c9e498cefb2d3fcd2b71dd49819e",
+          "selected_lines": [],
+          "tail": [
+            {
+              "line": 2029,
+              "text": "[   84s] make[3]: Leaving directory '/usr/src/packages/BUILD/build/arm64'"
+            },
+            {
+              "line": 2030,
+              "text": "[   84s] make[2]: *** [Makefile:2: default] Error 2"
+            },
+            {
+              "line": 2031,
+              "text": "[   84s] make[2]: Leaving directory '/usr/src/packages/BUILD/build'"
+            },
+            {
+              "line": 2032,
+              "text": "[   84s] make[1]: *** [Makefile:2: default] Error 2"
+            },
+            {
+              "line": 2033,
+              "text": "[   84s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 2034,
+              "text": "[   84s] dh_auto_build: error: make -j2 returned exit code 2"
+            },
+            {
+              "line": 2035,
+              "text": "[   84s] make: *** [debian/rules:14: binary] Error 25"
+            },
+            {
+              "line": 2036,
+              "text": "[   84s] dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2"
+            },
+            {
+              "line": 2037,
+              "text": "[   84s] "
+            },
+            {
+              "line": 2038,
+              "text": "[   84s] 46e007f5d8a6 failed \"build libmceliece_0~20230612-1.dsc\" at Mon Oct 19 23:24:07 UTC 2026."
+            },
+            {
+              "line": 2039,
+              "text": "[   84s] "
+            },
+            {
+              "line": 2040,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/04-launchpad-noble-amd64-arm64-libmceliece-5020df9683fc/builds/build-02/result/build.log",
+          "sha256": "9fe0d4208343d586508a4f7442a89f077d64668e53b19532bd5177da06042077",
+          "selected_lines": [],
+          "tail": [
+            {
+              "line": 2029,
+              "text": "[   86s] make[3]: Leaving directory '/usr/src/packages/BUILD/build/arm64'"
+            },
+            {
+              "line": 2030,
+              "text": "[   86s] make[2]: *** [Makefile:2: default] Error 2"
+            },
+            {
+              "line": 2031,
+              "text": "[   86s] make[2]: Leaving directory '/usr/src/packages/BUILD/build'"
+            },
+            {
+              "line": 2032,
+              "text": "[   86s] make[1]: *** [Makefile:2: default] Error 2"
+            },
+            {
+              "line": 2033,
+              "text": "[   86s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 2034,
+              "text": "[   86s] dh_auto_build: error: make -j2 returned exit code 2"
+            },
+            {
+              "line": 2035,
+              "text": "[   86s] make: *** [debian/rules:14: binary] Error 25"
+            },
+            {
+              "line": 2036,
+              "text": "[   86s] dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2"
+            },
+            {
+              "line": 2037,
+              "text": "[   86s] "
+            },
+            {
+              "line": 2038,
+              "text": "[   86s] a706f1ee8311 failed \"build libmceliece_0~20230612-1.dsc\" at Mon Oct 19 23:26:38 UTC 2026."
+            },
+            {
+              "line": 2039,
+              "text": "[   86s] "
+            },
+            {
+              "line": 2040,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/04-launchpad-noble-amd64-arm64-libmceliece-5020df9683fc/result/build.log",
+          "sha256": "b6545e3177116e3c8d86e099700de3253b0cdb0d9f7e09c9aa6d2c0365190308",
+          "selected_lines": [],
+          "tail": [
+            {
+              "line": 2029,
+              "text": "[   85s] make[3]: Leaving directory '/usr/src/packages/BUILD/build/arm64'"
+            },
+            {
+              "line": 2030,
+              "text": "[   85s] make[2]: *** [Makefile:2: default] Error 2"
+            },
+            {
+              "line": 2031,
+              "text": "[   85s] make[2]: Leaving directory '/usr/src/packages/BUILD/build'"
+            },
+            {
+              "line": 2032,
+              "text": "[   85s] make[1]: *** [Makefile:2: default] Error 2"
+            },
+            {
+              "line": 2033,
+              "text": "[   85s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 2034,
+              "text": "[   85s] dh_auto_build: error: make -j2 returned exit code 2"
+            },
+            {
+              "line": 2035,
+              "text": "[   85s] make: *** [debian/rules:14: binary] Error 25"
+            },
+            {
+              "line": 2036,
+              "text": "[   85s] dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2"
+            },
+            {
+              "line": 2037,
+              "text": "[   85s] "
+            },
+            {
+              "line": 2038,
+              "text": "[   85s] 15c2ec6694c9 failed \"build libmceliece_0~20230612-1.dsc\" at Mon Oct 19 23:28:06 UTC 2026."
+            },
+            {
+              "line": 2039,
+              "text": "[   85s] "
+            },
+            {
+              "line": 2040,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "full-agent",
+      "classification": "environment_blocked",
+      "case_id": "launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f",
+      "repaired": false,
+      "termination_reason": "no_edit_applied",
+      "agent_termination": "model_stop",
+      "agent_message": "The build fails during the debootstrap stage with QEMU segmentation faults, before any package source is compiled. This is an infrastructure issue unrelated to the package's own files, and cannot be repaired by editing files under input/.",
+      "edits_proposed": 0,
+      "edits_applied": 0,
+      "usage": {
+        "input_tokens": 28441,
+        "output_tokens": 4782
+      },
+      "wall_seconds": 211.1,
+      "source_record": "demo2-full-agent-retest-20261019T225339Z/runs/05-launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f/record.json",
+      "record_sha256": "3ae19f9bb34c4ee098856c1b38879c6f52e57a5bd79c79fe52dffeff45583f57",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f",
+        "duration_seconds": 162.0,
+        "message": "infrastructure error: evaluation could not run",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-full-agent-retest-20261019T225339Z/runs/05-launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f/baseline",
+        "status": "infrastructure_error",
+        "timed_out": false
+      },
+      "result": null,
+      "attempt_count": 0,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/05-launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f/baseline/build.log",
+          "sha256": "6bffd8f593e67f21ff89284b8b93d9e0f90c61488ff0a9f00208b965d015a33b",
+          "selected_lines": [
+            {
+              "line": 322,
+              "text": "[   91s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 324,
+              "text": "[   91s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 379,
+              "text": "[  115s] /usr/lib/build/build-recipe-debootstrap: line 32: 27789 Segmentation fault      (core dumped) chroot $BUILD_ROOT grep -q '/sid' /etc/debian_version"
+            },
+            {
+              "line": 383,
+              "text": "[  160s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 385,
+              "text": "[  160s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 387,
+              "text": "[  160s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 389,
+              "text": "[  160s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 391,
+              "text": "[  160s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 393,
+              "text": "[  161s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 395,
+              "text": "[  161s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 397,
+              "text": "[  161s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 399,
+              "text": "[  161s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 418,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ],
+          "tail": [
+            {
+              "line": 407,
+              "text": "[  162s] chroot: failed to run command 'apt-cache': No such file or directory"
+            },
+            {
+              "line": 408,
+              "text": "[  162s] mv: cannot move '/tmp/build-case-root-ip5pfhhm//usr/src/packages' to '/tmp/build-case-root-ip5pfhhm/debootstraproot//usr/src': No such file or directory"
+            },
+            {
+              "line": 409,
+              "text": "[  163s] Recipe file 'libbpp-qt_2.4.1-9.1.dsc' is being checked for 'DEBTRANSFORM-FILES'... not found"
+            },
+            {
+              "line": 410,
+              "text": "[  163s] chroot: failed to run command '/bin/sh': No such file or directory"
+            },
+            {
+              "line": 411,
+              "text": "[  163s] umount: /tmp/build-case-root-ip5pfhhm/debootstraproot/proc: no mount point specified."
+            },
+            {
+              "line": 412,
+              "text": "[  163s] umount: /tmp/build-case-root-ip5pfhhm/debootstraproot/sys: no mount point specified."
+            },
+            {
+              "line": 413,
+              "text": "[  163s] umount: /tmp/build-case-root-ip5pfhhm/debootstraproot/dev/pts: no mount point specified."
+            },
+            {
+              "line": 414,
+              "text": "[  163s] mv: cannot stat '/tmp/build-case-root-ip5pfhhm/debootstraproot//usr/src/packages': No such file or directory"
+            },
+            {
+              "line": 415,
+              "text": "[  163s] "
+            },
+            {
+              "line": 416,
+              "text": "[  163s] 28313892aea9 failed \"build libbpp-qt_2.4.1-9.1.dsc\" at Mon Oct 19 23:30:51 UTC 2026."
+            },
+            {
+              "line": 417,
+              "text": "[  163s] "
+            },
+            {
+              "line": 418,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "full-agent",
+      "classification": "environment_blocked",
+      "case_id": "launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "repeated_diagnostic",
+      "agent_message": "Two consecutive changed attempts reported the same leading diagnostic without improvement in the build-ranking heuristic.",
+      "edits_proposed": 3,
+      "edits_applied": 3,
+      "usage": {
+        "input_tokens": 84813,
+        "output_tokens": 17208
+      },
+      "wall_seconds": 809.9,
+      "source_record": "demo2-full-agent-retest-20261019T225339Z/runs/06-launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446/record.json",
+      "record_sha256": "3d3eb65efe66ea20d46c39cf4e2519ac325be92e38cc822ec9b9c226d0e3897c",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446",
+        "duration_seconds": 172.0,
+        "message": "infrastructure error: evaluation could not run",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-full-agent-retest-20261019T225339Z/runs/06-launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446/baseline",
+        "status": "infrastructure_error",
+        "timed_out": false
+      },
+      "result": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446",
+        "duration_seconds": 172.0,
+        "message": "infrastructure error: evaluation could not run",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-full-agent-retest-20261019T225339Z/runs/06-launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446/result",
+        "status": "infrastructure_error",
+        "timed_out": false
+      },
+      "attempt_count": 2,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/06-launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446/baseline/build.log",
+          "sha256": "2d81bb0e122c5a9e5e09ab7f032d291fb5e18698187f0d1f7ee7fb0880e40279",
+          "selected_lines": [
+            {
+              "line": 324,
+              "text": "[   79s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 326,
+              "text": "[   79s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 364,
+              "text": "[  103s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 366,
+              "text": "[  103s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 383,
+              "text": "[  123s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 428,
+              "text": "[  137s] /usr/lib/build/build-recipe-debootstrap: line 32: 29938 Segmentation fault      (core dumped) chroot $BUILD_ROOT grep -q '/sid' /etc/debian_version"
+            },
+            {
+              "line": 432,
+              "text": "[  169s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 434,
+              "text": "[  169s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 436,
+              "text": "[  170s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 438,
+              "text": "[  170s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 440,
+              "text": "[  170s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 442,
+              "text": "[  170s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 444,
+              "text": "[  170s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 446,
+              "text": "[  170s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 448,
+              "text": "[  171s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 467,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ],
+          "tail": [
+            {
+              "line": 456,
+              "text": "[  172s] chroot: failed to run command 'apt-cache': No such file or directory"
+            },
+            {
+              "line": 457,
+              "text": "[  172s] mv: cannot move '/tmp/build-case-root-4kebg01e//usr/src/packages' to '/tmp/build-case-root-4kebg01e/debootstraproot//usr/src': No such file or directory"
+            },
+            {
+              "line": 458,
+              "text": "[  172s] Recipe file 'python-intbitset_2.3.0-3.2build3.dsc' is being checked for 'DEBTRANSFORM-FILES'... not found"
+            },
+            {
+              "line": 459,
+              "text": "[  172s] chroot: failed to run command '/bin/sh': No such file or directory"
+            },
+            {
+              "line": 460,
+              "text": "[  172s] umount: /tmp/build-case-root-4kebg01e/debootstraproot/proc: no mount point specified."
+            },
+            {
+              "line": 461,
+              "text": "[  172s] umount: /tmp/build-case-root-4kebg01e/debootstraproot/sys: no mount point specified."
+            },
+            {
+              "line": 462,
+              "text": "[  172s] umount: /tmp/build-case-root-4kebg01e/debootstraproot/dev/pts: no mount point specified."
+            },
+            {
+              "line": 463,
+              "text": "[  172s] mv: cannot stat '/tmp/build-case-root-4kebg01e/debootstraproot//usr/src/packages': No such file or directory"
+            },
+            {
+              "line": 464,
+              "text": "[  172s] "
+            },
+            {
+              "line": 465,
+              "text": "[  172s] e00afb65184b failed \"build python-intbitset_2.3.0-3.2build3.dsc\" at Mon Oct 19 23:34:32 UTC 2026."
+            },
+            {
+              "line": 466,
+              "text": "[  172s] "
+            },
+            {
+              "line": 467,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/06-launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446/builds/build-01/result/build.log",
+          "sha256": "a07b855eebf6e8a1e44193eb19a2158825cdb095f485feeb6117700eede3329a",
+          "selected_lines": [
+            {
+              "line": 324,
+              "text": "[   82s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 326,
+              "text": "[   82s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 364,
+              "text": "[  106s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 366,
+              "text": "[  106s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 383,
+              "text": "[  126s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 426,
+              "text": "[  140s] /usr/lib/build/build-recipe-debootstrap: line 32: 29939 Segmentation fault      (core dumped) chroot $BUILD_ROOT grep -q '/sid' /etc/debian_version"
+            },
+            {
+              "line": 430,
+              "text": "[  172s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 432,
+              "text": "[  172s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 434,
+              "text": "[  172s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 436,
+              "text": "[  172s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 438,
+              "text": "[  172s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 440,
+              "text": "[  173s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 442,
+              "text": "[  173s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 444,
+              "text": "[  173s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 446,
+              "text": "[  173s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 465,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ],
+          "tail": [
+            {
+              "line": 454,
+              "text": "[  175s] chroot: failed to run command 'apt-cache': No such file or directory"
+            },
+            {
+              "line": 455,
+              "text": "[  175s] mv: cannot move '/tmp/build-case-root-p4dmch7o//usr/src/packages' to '/tmp/build-case-root-p4dmch7o/debootstraproot//usr/src': No such file or directory"
+            },
+            {
+              "line": 456,
+              "text": "[  175s] Recipe file 'python-intbitset_2.3.0-3.2build3.dsc' is being checked for 'DEBTRANSFORM-FILES'... not found"
+            },
+            {
+              "line": 457,
+              "text": "[  175s] chroot: failed to run command '/bin/sh': No such file or directory"
+            },
+            {
+              "line": 458,
+              "text": "[  175s] umount: /tmp/build-case-root-p4dmch7o/debootstraproot/proc: no mount point specified."
+            },
+            {
+              "line": 459,
+              "text": "[  175s] umount: /tmp/build-case-root-p4dmch7o/debootstraproot/sys: no mount point specified."
+            },
+            {
+              "line": 460,
+              "text": "[  175s] umount: /tmp/build-case-root-p4dmch7o/debootstraproot/dev/pts: no mount point specified."
+            },
+            {
+              "line": 461,
+              "text": "[  175s] mv: cannot stat '/tmp/build-case-root-p4dmch7o/debootstraproot//usr/src/packages': No such file or directory"
+            },
+            {
+              "line": 462,
+              "text": "[  175s] "
+            },
+            {
+              "line": 463,
+              "text": "[  175s] 28c63184f341 failed \"build python-intbitset_2.3.0-3.2build3.dsc\" at Mon Oct 19 23:38:50 UTC 2026."
+            },
+            {
+              "line": 464,
+              "text": "[  175s] "
+            },
+            {
+              "line": 465,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/06-launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446/builds/build-02/result/build.log",
+          "sha256": "89aafe35536931828a1d594cbbf38072f8a20c0243a9608cb0c668ac3f2bdc3b",
+          "selected_lines": [
+            {
+              "line": 324,
+              "text": "[   80s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 326,
+              "text": "[   80s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 364,
+              "text": "[  104s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 366,
+              "text": "[  104s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 383,
+              "text": "[  124s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 426,
+              "text": "[  138s] /usr/lib/build/build-recipe-debootstrap: line 32: 29939 Segmentation fault      (core dumped) chroot $BUILD_ROOT grep -q '/sid' /etc/debian_version"
+            },
+            {
+              "line": 430,
+              "text": "[  169s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 432,
+              "text": "[  170s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 434,
+              "text": "[  170s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 436,
+              "text": "[  170s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 438,
+              "text": "[  170s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 440,
+              "text": "[  170s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 442,
+              "text": "[  171s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 444,
+              "text": "[  171s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 446,
+              "text": "[  171s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 465,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ],
+          "tail": [
+            {
+              "line": 454,
+              "text": "[  172s] chroot: failed to run command 'apt-cache': No such file or directory"
+            },
+            {
+              "line": 455,
+              "text": "[  172s] mv: cannot move '/tmp/build-case-root-nod_szjq//usr/src/packages' to '/tmp/build-case-root-nod_szjq/debootstraproot//usr/src': No such file or directory"
+            },
+            {
+              "line": 456,
+              "text": "[  172s] Recipe file 'python-intbitset_2.3.0-3.2build3.dsc' is being checked for 'DEBTRANSFORM-FILES'... not found"
+            },
+            {
+              "line": 457,
+              "text": "[  172s] chroot: failed to run command '/bin/sh': No such file or directory"
+            },
+            {
+              "line": 458,
+              "text": "[  172s] umount: /tmp/build-case-root-nod_szjq/debootstraproot/proc: no mount point specified."
+            },
+            {
+              "line": 459,
+              "text": "[  172s] umount: /tmp/build-case-root-nod_szjq/debootstraproot/sys: no mount point specified."
+            },
+            {
+              "line": 460,
+              "text": "[  172s] umount: /tmp/build-case-root-nod_szjq/debootstraproot/dev/pts: no mount point specified."
+            },
+            {
+              "line": 461,
+              "text": "[  172s] mv: cannot stat '/tmp/build-case-root-nod_szjq/debootstraproot//usr/src/packages': No such file or directory"
+            },
+            {
+              "line": 462,
+              "text": "[  172s] "
+            },
+            {
+              "line": 463,
+              "text": "[  172s] 0557c062e627 failed \"build python-intbitset_2.3.0-3.2build3.dsc\" at Mon Oct 19 23:42:13 UTC 2026."
+            },
+            {
+              "line": 464,
+              "text": "[  172s] "
+            },
+            {
+              "line": 465,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/06-launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446/result/build.log",
+          "sha256": "dc1a5b0d0ef327bee9cd55fdf8fea92223db635d14bd0e066d489e6a01b58636",
+          "selected_lines": [
+            {
+              "line": 324,
+              "text": "[   80s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 326,
+              "text": "[   80s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 364,
+              "text": "[  104s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 366,
+              "text": "[  104s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 383,
+              "text": "[  124s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 426,
+              "text": "[  138s] /usr/lib/build/build-recipe-debootstrap: line 32: 29939 Segmentation fault      (core dumped) chroot $BUILD_ROOT grep -q '/sid' /etc/debian_version"
+            },
+            {
+              "line": 430,
+              "text": "[  170s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 432,
+              "text": "[  170s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 434,
+              "text": "[  170s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 436,
+              "text": "[  170s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 438,
+              "text": "[  171s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 440,
+              "text": "[  171s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 442,
+              "text": "[  171s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 444,
+              "text": "[  171s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 446,
+              "text": "[  171s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 465,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ],
+          "tail": [
+            {
+              "line": 454,
+              "text": "[  173s] chroot: failed to run command 'apt-cache': No such file or directory"
+            },
+            {
+              "line": 455,
+              "text": "[  173s] mv: cannot move '/tmp/build-case-root-f7e14bk6//usr/src/packages' to '/tmp/build-case-root-f7e14bk6/debootstraproot//usr/src': No such file or directory"
+            },
+            {
+              "line": 456,
+              "text": "[  173s] Recipe file 'python-intbitset_2.3.0-3.2build3.dsc' is being checked for 'DEBTRANSFORM-FILES'... not found"
+            },
+            {
+              "line": 457,
+              "text": "[  173s] chroot: failed to run command '/bin/sh': No such file or directory"
+            },
+            {
+              "line": 458,
+              "text": "[  173s] umount: /tmp/build-case-root-f7e14bk6/debootstraproot/proc: no mount point specified."
+            },
+            {
+              "line": 459,
+              "text": "[  173s] umount: /tmp/build-case-root-f7e14bk6/debootstraproot/sys: no mount point specified."
+            },
+            {
+              "line": 460,
+              "text": "[  173s] umount: /tmp/build-case-root-f7e14bk6/debootstraproot/dev/pts: no mount point specified."
+            },
+            {
+              "line": 461,
+              "text": "[  173s] mv: cannot stat '/tmp/build-case-root-f7e14bk6/debootstraproot//usr/src/packages': No such file or directory"
+            },
+            {
+              "line": 462,
+              "text": "[  173s] "
+            },
+            {
+              "line": 463,
+              "text": "[  173s] c6c637a93b59 failed \"build python-intbitset_2.3.0-3.2build3.dsc\" at Mon Oct 19 23:45:08 UTC 2026."
+            },
+            {
+              "line": 464,
+              "text": "[  173s] "
+            },
+            {
+              "line": 465,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "full-agent",
+      "classification": "source_repair_evaluated",
+      "case_id": "launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "repeated_diagnostic",
+      "agent_message": "Two consecutive changed attempts reported the same leading diagnostic without improvement in the build-ranking heuristic.",
+      "edits_proposed": 4,
+      "edits_applied": 4,
+      "usage": {
+        "input_tokens": 157542,
+        "output_tokens": 13674
+      },
+      "wall_seconds": 742.9,
+      "source_record": "demo2-full-agent-retest-20261019T225339Z/runs/07-launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91/record.json",
+      "record_sha256": "09b638736f29a9632942e2393eaedca518b07a328bca6f22d8f167b05671dbf5",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91",
+        "duration_seconds": 151.0,
+        "message": "build failed; expected binary artifact pattern 'libunwind-dev_*_arm64.deb' was not matched",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-full-agent-retest-20261019T225339Z/runs/07-launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91/baseline",
+        "status": "failed",
+        "timed_out": false
+      },
+      "result": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91",
+        "duration_seconds": 154.0,
+        "message": "build failed; expected binary artifact pattern 'libunwind-dev_*_arm64.deb' was not matched",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-full-agent-retest-20261019T225339Z/runs/07-launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91/result",
+        "status": "failed",
+        "timed_out": false
+      },
+      "attempt_count": 2,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/07-launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91/baseline/build.log",
+          "sha256": "3e78dd44944b85097ec331f380cbe3a0dee219841380fd7079785c063aa8f0ba",
+          "selected_lines": [
+            {
+              "line": 2259,
+              "text": "[  151s] /bin/ld: .libs/Lperf-simple: hidden symbol `__aarch64_cas8_acq_rel' in /usr/lib/gcc/aarch64-linux-gnu/14/libgcc.a(cas_8_4.o) is referenced by DSO"
+            },
+            {
+              "line": 2265,
+              "text": "[  152s] /bin/ld: .libs/Gperf-trace: hidden symbol `__aarch64_cas8_acq_rel' in /usr/lib/gcc/aarch64-linux-gnu/14/libgcc.a(cas_8_4.o) is referenced by DSO"
+            }
+          ],
+          "tail": [
+            {
+              "line": 2269,
+              "text": "[  152s] make[3]: Leaving directory '/usr/src/packages/BUILD/tests'"
+            },
+            {
+              "line": 2270,
+              "text": "[  152s] make[2]: *** [Makefile:624: all-recursive] Error 1"
+            },
+            {
+              "line": 2271,
+              "text": "[  152s] make[2]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 2272,
+              "text": "[  152s] dh_auto_build: error: make -j2 returned exit code 2"
+            },
+            {
+              "line": 2273,
+              "text": "[  152s] make[1]: *** [debian/rules:20: override_dh_auto_build] Error 25"
+            },
+            {
+              "line": 2274,
+              "text": "[  152s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 2275,
+              "text": "[  152s] make: *** [debian/rules:14: binary] Error 2"
+            },
+            {
+              "line": 2276,
+              "text": "[  152s] dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2"
+            },
+            {
+              "line": 2277,
+              "text": "[  152s] "
+            },
+            {
+              "line": 2278,
+              "text": "[  152s] ad1b2b7fe4bc failed \"build libunwind_1.8.1-0.1.dsc\" at Mon Oct 19 23:47:42 UTC 2026."
+            },
+            {
+              "line": 2279,
+              "text": "[  152s] "
+            },
+            {
+              "line": 2280,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/07-launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91/builds/build-01/result/build.log",
+          "sha256": "58ea1c44d94c3e473eb9e721124de5cb82c5cbe3c333b33ec07755dc03765986",
+          "selected_lines": [
+            {
+              "line": 2255,
+              "text": "[  156s] /bin/ld: .libs/Lperf-simple: hidden symbol `__aarch64_cas8_acq_rel' in /usr/lib/gcc/aarch64-linux-gnu/14/libgcc.a(cas_8_4.o) is referenced by DSO"
+            },
+            {
+              "line": 2261,
+              "text": "[  156s] /bin/ld: .libs/Gperf-trace: hidden symbol `__aarch64_cas8_acq_rel' in /usr/lib/gcc/aarch64-linux-gnu/14/libgcc.a(cas_8_4.o) is referenced by DSO"
+            }
+          ],
+          "tail": [
+            {
+              "line": 2265,
+              "text": "[  156s] make[3]: Leaving directory '/usr/src/packages/BUILD/tests'"
+            },
+            {
+              "line": 2266,
+              "text": "[  156s] make[2]: *** [Makefile:624: all-recursive] Error 1"
+            },
+            {
+              "line": 2267,
+              "text": "[  156s] make[2]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 2268,
+              "text": "[  156s] dh_auto_build: error: make -j2 returned exit code 2"
+            },
+            {
+              "line": 2269,
+              "text": "[  156s] make[1]: *** [debian/rules:20: override_dh_auto_build] Error 25"
+            },
+            {
+              "line": 2270,
+              "text": "[  156s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 2271,
+              "text": "[  156s] make: *** [debian/rules:14: binary] Error 2"
+            },
+            {
+              "line": 2272,
+              "text": "[  156s] dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2"
+            },
+            {
+              "line": 2273,
+              "text": "[  156s] "
+            },
+            {
+              "line": 2274,
+              "text": "[  156s] f01234288c41 failed \"build libunwind_1.8.1-0.1.dsc\" at Mon Oct 19 23:51:33 UTC 2026."
+            },
+            {
+              "line": 2275,
+              "text": "[  156s] "
+            },
+            {
+              "line": 2276,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/07-launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91/builds/build-02/result/build.log",
+          "sha256": "7c8dccc59805368ff67be8dfcab786ec8563b5dc19dcb3b83bb1e75d517ab265",
+          "selected_lines": [
+            {
+              "line": 2255,
+              "text": "[  153s] /bin/ld: .libs/Lperf-simple: hidden symbol `__aarch64_cas8_acq_rel' in /usr/lib/gcc/aarch64-linux-gnu/14/libgcc.a(cas_8_4.o) is referenced by DSO"
+            },
+            {
+              "line": 2261,
+              "text": "[  153s] /bin/ld: .libs/Gperf-trace: hidden symbol `__aarch64_cas8_acq_rel' in /usr/lib/gcc/aarch64-linux-gnu/14/libgcc.a(cas_8_4.o) is referenced by DSO"
+            }
+          ],
+          "tail": [
+            {
+              "line": 2265,
+              "text": "[  154s] make[3]: Leaving directory '/usr/src/packages/BUILD/tests'"
+            },
+            {
+              "line": 2266,
+              "text": "[  154s] make[2]: *** [Makefile:624: all-recursive] Error 1"
+            },
+            {
+              "line": 2267,
+              "text": "[  154s] make[2]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 2268,
+              "text": "[  154s] dh_auto_build: error: make -j2 returned exit code 2"
+            },
+            {
+              "line": 2269,
+              "text": "[  154s] make[1]: *** [debian/rules:20: override_dh_auto_build] Error 25"
+            },
+            {
+              "line": 2270,
+              "text": "[  154s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 2271,
+              "text": "[  154s] make: *** [debian/rules:14: binary] Error 2"
+            },
+            {
+              "line": 2272,
+              "text": "[  154s] dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2"
+            },
+            {
+              "line": 2273,
+              "text": "[  154s] "
+            },
+            {
+              "line": 2274,
+              "text": "[  154s] 8b643c107f2a failed \"build libunwind_1.8.1-0.1.dsc\" at Mon Oct 19 23:54:53 UTC 2026."
+            },
+            {
+              "line": 2275,
+              "text": "[  154s] "
+            },
+            {
+              "line": 2276,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/07-launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91/result/build.log",
+          "sha256": "64f53ef11510766ea0b5a4e21987810af8e8c8d92e5b41c6a229f4b42c427471",
+          "selected_lines": [
+            {
+              "line": 2255,
+              "text": "[  154s] /bin/ld: .libs/Lperf-simple: hidden symbol `__aarch64_cas8_acq_rel' in /usr/lib/gcc/aarch64-linux-gnu/14/libgcc.a(cas_8_4.o) is referenced by DSO"
+            },
+            {
+              "line": 2261,
+              "text": "[  154s] /bin/ld: .libs/Gperf-trace: hidden symbol `__aarch64_cas8_acq_rel' in /usr/lib/gcc/aarch64-linux-gnu/14/libgcc.a(cas_8_4.o) is referenced by DSO"
+            }
+          ],
+          "tail": [
+            {
+              "line": 2265,
+              "text": "[  154s] make[3]: Leaving directory '/usr/src/packages/BUILD/tests'"
+            },
+            {
+              "line": 2266,
+              "text": "[  154s] make[2]: *** [Makefile:624: all-recursive] Error 1"
+            },
+            {
+              "line": 2267,
+              "text": "[  154s] make[2]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 2268,
+              "text": "[  154s] dh_auto_build: error: make -j2 returned exit code 2"
+            },
+            {
+              "line": 2269,
+              "text": "[  154s] make[1]: *** [debian/rules:20: override_dh_auto_build] Error 25"
+            },
+            {
+              "line": 2270,
+              "text": "[  154s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 2271,
+              "text": "[  154s] make: *** [debian/rules:14: binary] Error 2"
+            },
+            {
+              "line": 2272,
+              "text": "[  154s] dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2"
+            },
+            {
+              "line": 2273,
+              "text": "[  154s] "
+            },
+            {
+              "line": 2274,
+              "text": "[  154s] 8bf6e123a753 failed \"build libunwind_1.8.1-0.1.dsc\" at Mon Oct 19 23:57:30 UTC 2026."
+            },
+            {
+              "line": 2275,
+              "text": "[  154s] "
+            },
+            {
+              "line": 2276,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "full-agent",
+      "classification": "source_repair_evaluated",
+      "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+      "repaired": false,
+      "termination_reason": "no_edit_applied",
+      "agent_termination": "edit_correction_budget",
+      "agent_message": "Twelve correction responses did not produce a valid batch; the pending batch was not applied.",
+      "edits_proposed": 0,
+      "edits_applied": 0,
+      "usage": {
+        "input_tokens": 173645,
+        "output_tokens": 30575
+      },
+      "wall_seconds": 384.2,
+      "source_record": "demo2-full-agent-retest-20261019T225339Z/runs/08-launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2/record.json",
+      "record_sha256": "45301cffed9f98bde48fdccd4aca076193f1370674ebaf512a5969c80a17e2de",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+        "duration_seconds": 159.0,
+        "message": "build failed; expected binary artifact pattern 'librust-subversion-dev_*_arm64.deb' was not matched",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-full-agent-retest-20261019T225339Z/runs/08-launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2/baseline",
+        "status": "failed",
+        "timed_out": false
+      },
+      "result": null,
+      "attempt_count": 0,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/08-launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2/baseline/build.log",
+          "sha256": "3ff5539bd899145990a6754beda0af579d8509ecd411f79cdbb097aa405b6fcc",
+          "selected_lines": [
+            {
+              "line": 14523,
+              "text": "[  158s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14536,
+              "text": "[  158s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14549,
+              "text": "[  158s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14562,
+              "text": "[  158s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14575,
+              "text": "[  158s] error[E0308]: arguments to this function are incorrect"
+            },
+            {
+              "line": 14601,
+              "text": "[  158s] error[E0308]: arguments to this function are incorrect"
+            },
+            {
+              "line": 14627,
+              "text": "[  158s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14643,
+              "text": "[  158s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14663,
+              "text": "[  158s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14679,
+              "text": "[  158s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14699,
+              "text": "[  158s] error[E0308]: arguments to this function are incorrect"
+            },
+            {
+              "line": 14725,
+              "text": "[  158s] error[E0308]: arguments to this function are incorrect"
+            },
+            {
+              "line": 14751,
+              "text": "[  158s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14771,
+              "text": "[  158s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14816,
+              "text": "[  158s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14829,
+              "text": "[  158s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14845,
+              "text": "[  158s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14862,
+              "text": "[  158s] error[E0308]: arguments to this function are incorrect"
+            },
+            {
+              "line": 14888,
+              "text": "[  158s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14901,
+              "text": "[  158s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14918,
+              "text": "[  158s] error[E0308]: arguments to this function are incorrect"
+            },
+            {
+              "line": 14944,
+              "text": "[  158s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14957,
+              "text": "[  158s] error[E0308]: arguments to this function are incorrect"
+            },
+            {
+              "line": 14983,
+              "text": "[  158s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14996,
+              "text": "[  158s] error[E0308]: mismatched types"
+            }
+          ],
+          "tail": [
+            {
+              "line": 16249,
+              "text": "[  160s] For more information about an error, try `rustc --explain E0277`."
+            },
+            {
+              "line": 16250,
+              "text": "[  160s] error: could not compile `subversion` (lib) due to 104 previous errors"
+            },
+            {
+              "line": 16251,
+              "text": "[  160s] "
+            },
+            {
+              "line": 16252,
+              "text": "[  160s] Caused by:"
+            },
+            {
+              "line": 16253,
+              "text": "[  160s]   process didn't exit successfully: `CARGO=/usr/lib/rust-1.84/bin/cargo CARGO_CRATE_NAME=subversion CARGO_MANIFEST_DIR=/usr/src/packages/BUILD CARGO_MANIFEST_PATH=/usr/src/packages/BUILD/Cargo.toml CARGO_PKG_AUTHORS='Jelmer Vernoo\u0133 <jelmer@apache.org>' CARGO_PKG_DESCRIPTION='Rust bindings for Subversion' CARGO_PKG_HOMEPAGE='https://github.com/jelmer/subversion-rs' CARGO_PKG_LICENSE=Apache-2.0 CARGO_PKG_LICENSE_FILE='' CARGO_PKG_NAME=subversion CARGO_PKG_README=README.md CARGO_PKG_REPOSITORY='https://github.com/jelmer/subversion-rs.git' CARGO_PKG_RUST_VERSION='' CARGO_PKG_VERSION=0.0.8 CARGO_PKG_VERSION_MAJOR=0 CARGO_PKG_VERSION_MINOR=0 CARGO_PKG_VERSION_PATCH=8 CARGO_PKG_VERSION_PRE='' CARGO_PRIMARY_PACKAGE=1 LD_LIBRARY_PATH=/usr/src/packages/BUILD/target/debug/deps OUT_DIR=/usr/src/packages/BUILD/target/aarch64-unknown-linux-gnu/debug/build/subversion-e56403b4a2b40aea/out rustc --crate-name subversion --edition=2021 src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata,link -C embed-bitcode=no -C debuginfo=2 --cfg 'feature=\"client\"' --cfg 'feature=\"default\"' --cfg 'feature=\"delta\"' --cfg 'feature=\"ra\"' --cfg 'feature=\"wc\"' --check-cfg 'cfg(docsrs)' --check-cfg 'cfg(feature, values(\"client\", \"default\", \"delta\", \"pyo3\", \"ra\", \"url\", \"wc\"))' -C metadata=dc9aa94f138cbc06 -C extra-filename=-dc9aa94f138cbc06 --out-dir /usr/src/packages/BUILD/target/aarch64-unknown-linux-gnu/debug/deps --target aa"
+            },
+            {
+              "line": 16254,
+              "text": "[  160s] dh_auto_test: error: /usr/share/cargo/bin/cargo build returned exit code 101"
+            },
+            {
+              "line": 16255,
+              "text": "[  160s] make: *** [debian/rules:3: binary] Error 25"
+            },
+            {
+              "line": 16256,
+              "text": "[  160s] dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2"
+            },
+            {
+              "line": 16257,
+              "text": "[  160s] "
+            },
+            {
+              "line": 16258,
+              "text": "[  160s] adf92ac068e5 failed \"build rust-subversion_0.0.8-3.dsc\" at Tue Oct 20 00:00:13 UTC 2026."
+            },
+            {
+              "line": 16259,
+              "text": "[  160s] "
+            },
+            {
+              "line": 16260,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "full-agent",
+      "classification": "environment_blocked",
+      "case_id": "launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e",
+      "repaired": false,
+      "termination_reason": "no_edit_applied",
+      "agent_termination": "model_stop",
+      "agent_message": "The build fails during the debootstrap stage with QEMU segmentation faults, before any package source files are used. This infrastructure failure cannot be repaired by editing files under input/.",
+      "edits_proposed": 0,
+      "edits_applied": 0,
+      "usage": {
+        "input_tokens": 2868,
+        "output_tokens": 650
+      },
+      "wall_seconds": 173.4,
+      "source_record": "demo2-full-agent-retest-20261019T225339Z/runs/09-launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e/record.json",
+      "record_sha256": "a944819f7e6db1347462eaaccca4fea65c0d1f0244422a20a69e76a8b74ee922",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e",
+        "duration_seconds": 165.0,
+        "message": "infrastructure error: evaluation could not run",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-full-agent-retest-20261019T225339Z/runs/09-launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e/baseline",
+        "status": "infrastructure_error",
+        "timed_out": false
+      },
+      "result": null,
+      "attempt_count": 0,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/09-launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e/baseline/build.log",
+          "sha256": "075fe27d9389294adf518eae99321aa2d7fab1b4ee249186cc112a63f1db8747",
+          "selected_lines": [
+            {
+              "line": 337,
+              "text": "[   87s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 339,
+              "text": "[   87s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 365,
+              "text": "[  111s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 368,
+              "text": "[  112s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 370,
+              "text": "[  112s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 422,
+              "text": "[  136s] /usr/lib/build/build-recipe-debootstrap: line 32: 28632 Segmentation fault      (core dumped) chroot $BUILD_ROOT grep -q '/sid' /etc/debian_version"
+            },
+            {
+              "line": 426,
+              "text": "[  163s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 428,
+              "text": "[  163s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 430,
+              "text": "[  163s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 432,
+              "text": "[  163s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 434,
+              "text": "[  163s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 436,
+              "text": "[  164s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 438,
+              "text": "[  164s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 440,
+              "text": "[  164s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 442,
+              "text": "[  164s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 461,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ],
+          "tail": [
+            {
+              "line": 450,
+              "text": "[  166s] chroot: failed to run command 'apt-cache': No such file or directory"
+            },
+            {
+              "line": 451,
+              "text": "[  166s] mv: cannot move '/tmp/build-case-root-dkcx2qfv//usr/src/packages' to '/tmp/build-case-root-dkcx2qfv/debootstraproot//usr/src': No such file or directory"
+            },
+            {
+              "line": 452,
+              "text": "[  166s] Recipe file 'libevtx_20240504-1build1.dsc' is being checked for 'DEBTRANSFORM-FILES'... not found"
+            },
+            {
+              "line": 453,
+              "text": "[  166s] chroot: failed to run command '/bin/sh': No such file or directory"
+            },
+            {
+              "line": 454,
+              "text": "[  166s] umount: /tmp/build-case-root-dkcx2qfv/debootstraproot/proc: no mount point specified."
+            },
+            {
+              "line": 455,
+              "text": "[  166s] umount: /tmp/build-case-root-dkcx2qfv/debootstraproot/sys: no mount point specified."
+            },
+            {
+              "line": 456,
+              "text": "[  166s] umount: /tmp/build-case-root-dkcx2qfv/debootstraproot/dev/pts: no mount point specified."
+            },
+            {
+              "line": 457,
+              "text": "[  166s] mv: cannot stat '/tmp/build-case-root-dkcx2qfv/debootstraproot//usr/src/packages': No such file or directory"
+            },
+            {
+              "line": 458,
+              "text": "[  166s] "
+            },
+            {
+              "line": 459,
+              "text": "[  166s] 1020c5ee973e failed \"build libevtx_20240504-1build1.dsc\" at Tue Oct 20 00:06:43 UTC 2026."
+            },
+            {
+              "line": 460,
+              "text": "[  166s] "
+            },
+            {
+              "line": 461,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "full-agent",
+      "classification": "already_building",
+      "case_id": "launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84",
+      "repaired": false,
+      "termination_reason": "case_not_failing",
+      "agent_termination": null,
+      "agent_message": null,
+      "edits_proposed": 0,
+      "edits_applied": 0,
+      "usage": {},
+      "wall_seconds": 107.6,
+      "source_record": "demo2-full-agent-retest-20261019T225339Z/runs/10-launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84/record.json",
+      "record_sha256": "036c8ab87d8a996b629889195cf8da11a4a50f6a30661c688112203299be402b",
+      "baseline": {
+        "artifact_validation_passed": true,
+        "binary_artifacts": [
+          "html-xml-utils-dbgsym_7.7-1.2_arm64.ddeb",
+          "html-xml-utils_7.7-1.2_arm64.deb"
+        ],
+        "build_exit_code": 0,
+        "case_id": "launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84",
+        "duration_seconds": 105.0,
+        "message": "build completed successfully",
+        "repaired": true,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-full-agent-retest-20261019T225339Z/runs/10-launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84/baseline",
+        "status": "succeeded",
+        "timed_out": false
+      },
+      "result": null,
+      "attempt_count": 0,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/10-launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84/baseline/build.log",
+          "sha256": "f57ebb793568805fd016862afe34f0d814566b2e322a19c4637a38306f1088f8",
+          "selected_lines": [],
+          "tail": [
+            {
+              "line": 2300,
+              "text": "[  105s] \tRenaming html-xml-utils-dbgsym_7.7-1.2_arm64.deb to html-xml-utils-dbgsym_7.7-1.2_arm64.ddeb"
+            },
+            {
+              "line": 2301,
+              "text": "[  106s]  dpkg-genbuildinfo -O../html-xml-utils_7.7-1.2_arm64.buildinfo"
+            },
+            {
+              "line": 2302,
+              "text": "[  106s]  dpkg-genchanges -O../html-xml-utils_7.7-1.2_arm64.changes"
+            },
+            {
+              "line": 2303,
+              "text": "[  106s] dpkg-genchanges: info: not including original source code in upload"
+            },
+            {
+              "line": 2304,
+              "text": "[  106s]  dpkg-source --after-build ."
+            },
+            {
+              "line": 2305,
+              "text": "[  106s] dpkg-buildpackage: info: binary and diff upload (original source NOT included)"
+            },
+            {
+              "line": 2306,
+              "text": "[  106s] ln: failed to create hard link '/tmp/build-case-root-j126y7m4//usr/src/packages/DEBS/html-xml-utils_7.7-1.2.dsc': File exists"
+            },
+            {
+              "line": 2307,
+              "text": "[  106s] ln: failed to create hard link '/tmp/build-case-root-j126y7m4//usr/src/packages/DEBS/html-xml-utils_7.7-1.2.debian.tar.xz': File exists"
+            },
+            {
+              "line": 2308,
+              "text": "[  106s] "
+            },
+            {
+              "line": 2309,
+              "text": "[  106s] 47d91937f847 finished \"build html-xml-utils_7.7-1.2.dsc\" at Tue Oct 20 00:08:36 UTC 2026."
+            },
+            {
+              "line": 2310,
+              "text": "[  106s] "
+            },
+            {
+              "line": 2311,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"completed\",\"state\":\"completed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "full-agent",
+      "classification": "environment_blocked",
+      "case_id": "launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce",
+      "repaired": false,
+      "termination_reason": "no_edit_applied",
+      "agent_termination": "model_stop",
+      "agent_message": "The build fails during the debootstrap setup phase with QEMU internal segmentation faults and a passwd postinst error unrelated to the package's source files. These errors stem from the emulated environment and cannot be fixed by editing files under input/.",
+      "edits_proposed": 0,
+      "edits_applied": 0,
+      "usage": {
+        "input_tokens": 2789,
+        "output_tokens": 1493
+      },
+      "wall_seconds": 106.8,
+      "source_record": "demo2-full-agent-retest-20261019T225339Z/runs/11-launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce/record.json",
+      "record_sha256": "70c54fb1eb0a51a63c0be18c8056dfb4110af1211d0b3978650a62047c782f96",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce",
+        "duration_seconds": 93.0,
+        "message": "build failed; Debian artifact root is missing; expected binary artifact pattern '*.deb' was not matched; expected source artifact pattern '*.dsc' was not matched; no physical Debian artifacts were collected",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-full-agent-retest-20261019T225339Z/runs/11-launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce/baseline",
+        "status": "failed",
+        "timed_out": false
+      },
+      "result": null,
+      "attempt_count": 0,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-full-agent-retest-20261019T225339Z/runs/11-launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce/baseline/build.log",
+          "sha256": "0a822d8ae965e02c14cefedfedacf7ecbecd671eafa4126a0aee269ea167aa7e",
+          "selected_lines": [
+            {
+              "line": 332,
+              "text": "[   85s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 334,
+              "text": "[   85s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 348,
+              "text": "[   93s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 357,
+              "text": "[   93s]  old passwd package postinst maintainer script subprocess failed with exit status 1"
+            },
+            {
+              "line": 364,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_setup\",\"state\":\"failed\"}"
+            }
+          ],
+          "tail": [
+            {
+              "line": 353,
+              "text": "[   93s] Note that both user and group IDs in the range 0-99 are globally"
+            },
+            {
+              "line": 354,
+              "text": "[   93s] allocated by the Debian project and must be the same on every Debian"
+            },
+            {
+              "line": 355,
+              "text": "[   93s] system."
+            },
+            {
+              "line": 356,
+              "text": "[   93s] dpkg: error processing package passwd (--install):"
+            },
+            {
+              "line": 357,
+              "text": "[   93s]  old passwd package postinst maintainer script subprocess failed with exit status 1"
+            },
+            {
+              "line": 358,
+              "text": "[   93s] Errors were encountered while processing:"
+            },
+            {
+              "line": 359,
+              "text": "[   93s]  passwd"
+            },
+            {
+              "line": 360,
+              "text": "[   93s] exit ..."
+            },
+            {
+              "line": 361,
+              "text": "[   93s] "
+            },
+            {
+              "line": 362,
+              "text": "[   93s] 8857d21e579d failed \"build pybigwig_0.3.23+dfsg-1build6.dsc\" at Tue Oct 20 00:10:11 UTC 2026."
+            },
+            {
+              "line": 363,
+              "text": "[   93s] "
+            },
+            {
+              "line": 364,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_setup\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "one-shot",
+      "classification": "source_repair_evaluated",
+      "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "edits_proposed": 1,
+      "edits_applied": 1,
+      "usage": {
+        "input_tokens": 11095,
+        "output_tokens": 1046
+      },
+      "wall_seconds": 191.1,
+      "source_record": "demo2-oneshot-retest-20261019T212712Z/runs/01-launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f/record.json",
+      "record_sha256": "2198ae5169474a764582807cdc564798faeca4c74d3573d27e449ff9f3a1fa03",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+        "duration_seconds": 88.0,
+        "message": "build failed; expected binary artifact pattern 'r-cran-digest_*_arm64.deb' was not matched",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/01-launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f/baseline",
+        "status": "failed",
+        "timed_out": false
+      },
+      "result": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+        "duration_seconds": 88.0,
+        "message": "build failed; expected binary artifact pattern 'r-cran-digest_*_arm64.deb' was not matched",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/01-launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f/result",
+        "status": "failed",
+        "timed_out": false
+      },
+      "attempt_count": 0,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-oneshot-retest-20261019T212712Z/runs/01-launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f/baseline/build.log",
+          "sha256": "84b01b87561ddf0120e7251b7c16f2c52873f503151cba695ec95c687992fc95",
+          "selected_lines": [
+            {
+              "line": 1858,
+              "text": "[   88s] crc32c/crc32c_prefetch.h:18:10: fatal error: xmmintrin.h: No such file or directory"
+            },
+            {
+              "line": 1859,
+              "text": "[   88s]    18 | #include <xmmintrin.h>"
+            }
+          ],
+          "tail": [
+            {
+              "line": 1865,
+              "text": "[   88s] make[2]: Leaving directory '/usr/src/packages/BUILD/src'"
+            },
+            {
+              "line": 1866,
+              "text": "[   88s] ERROR: compilation failed for package 'digest'"
+            },
+            {
+              "line": 1867,
+              "text": "[   88s] * removing '/usr/src/packages/BUILD/debian/r-cran-digest/usr/lib/R/site-library/digest'"
+            },
+            {
+              "line": 1868,
+              "text": "[   88s] dh_auto_install: error: R CMD INSTALL -l /usr/src/packages/BUILD/debian/r-cran-digest/usr/lib/R/site-library --clean . \"--built-timestamp='Tue, 27 Jun 2023 16:19:01 -0500'\" returned exit code 1"
+            },
+            {
+              "line": 1869,
+              "text": "[   88s] make[1]: *** [debian/rules:10: override_dh_auto_install] Error 25"
+            },
+            {
+              "line": 1870,
+              "text": "[   88s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 1871,
+              "text": "[   88s] make: *** [debian/rules:7: binary] Error 2"
+            },
+            {
+              "line": 1872,
+              "text": "[   88s] dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2"
+            },
+            {
+              "line": 1873,
+              "text": "[   88s] "
+            },
+            {
+              "line": 1874,
+              "text": "[   88s] 16b96edde7e1 failed \"build r-cran-digest_0.6.32-1.dsc\" at Mon Oct 19 21:28:42 UTC 2026."
+            },
+            {
+              "line": 1875,
+              "text": "[   88s] "
+            },
+            {
+              "line": 1876,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-oneshot-retest-20261019T212712Z/runs/01-launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f/result/build.log",
+          "sha256": "d047611407fa81d98105ffdd0ed08983ea8bac1b9b82f6f1ced98a176af2fabf",
+          "selected_lines": [
+            {
+              "line": 1764,
+              "text": "[   87s] sed -i 's/#include <xmmintrin.h>/\\/\\/#include <xmmintrin.h>/g' src/crc32c_portable.cpp"
+            },
+            {
+              "line": 1859,
+              "text": "[   89s] crc32c/crc32c_prefetch.h:18:10: fatal error: xmmintrin.h: No such file or directory"
+            },
+            {
+              "line": 1860,
+              "text": "[   89s]    18 | #include <xmmintrin.h>"
+            }
+          ],
+          "tail": [
+            {
+              "line": 1866,
+              "text": "[   89s] make[2]: Leaving directory '/usr/src/packages/BUILD/src'"
+            },
+            {
+              "line": 1867,
+              "text": "[   89s] ERROR: compilation failed for package 'digest'"
+            },
+            {
+              "line": 1868,
+              "text": "[   89s] * removing '/usr/src/packages/BUILD/debian/r-cran-digest/usr/lib/R/site-library/digest'"
+            },
+            {
+              "line": 1869,
+              "text": "[   89s] dh_auto_install: error: R CMD INSTALL -l /usr/src/packages/BUILD/debian/r-cran-digest/usr/lib/R/site-library --clean . \"--built-timestamp='Tue, 27 Jun 2023 16:19:01 -0500'\" returned exit code 1"
+            },
+            {
+              "line": 1870,
+              "text": "[   89s] make[1]: *** [debian/rules:10: override_dh_auto_install] Error 25"
+            },
+            {
+              "line": 1871,
+              "text": "[   89s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 1872,
+              "text": "[   89s] make: *** [debian/rules:7: binary] Error 2"
+            },
+            {
+              "line": 1873,
+              "text": "[   89s] dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2"
+            },
+            {
+              "line": 1874,
+              "text": "[   89s] "
+            },
+            {
+              "line": 1875,
+              "text": "[   89s] b556c8e7bc53 failed \"build r-cran-digest_0.6.32-1.dsc\" at Mon Oct 19 21:30:22 UTC 2026."
+            },
+            {
+              "line": 1876,
+              "text": "[   89s] "
+            },
+            {
+              "line": 1877,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "one-shot",
+      "classification": "environment_blocked",
+      "case_id": "launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280",
+      "repaired": false,
+      "termination_reason": "no_edit_applied",
+      "edits_proposed": 0,
+      "edits_applied": 0,
+      "usage": {
+        "input_tokens": 11318,
+        "output_tokens": 1021
+      },
+      "wall_seconds": 132.4,
+      "source_record": "demo2-oneshot-retest-20261019T212712Z/runs/02-launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280/record.json",
+      "record_sha256": "6249af209cef955bbd8275cead6604347c0be27d544d653f5a7665e9ff9f8912",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280",
+        "duration_seconds": 120.0,
+        "message": "build failed; Debian artifact root is missing; expected binary artifact pattern 'libbpp-core-dev_*_amd64.deb' was not matched; expected source artifact pattern 'libbpp-core_*.dsc' was not matched; no physical Debian artifacts were collected",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/02-launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280/baseline",
+        "status": "failed",
+        "timed_out": false
+      },
+      "result": null,
+      "attempt_count": 0,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-oneshot-retest-20261019T212712Z/runs/02-launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280/baseline/build.log",
+          "sha256": "0011ec588c8f1fa5606d7c26b3287e20a28a2f80979fb2cf3f529e03973515a6",
+          "selected_lines": [
+            {
+              "line": 294,
+              "text": "[   66s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 296,
+              "text": "[   66s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 298,
+              "text": "[   66s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 300,
+              "text": "[   66s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 327,
+              "text": "[   87s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 329,
+              "text": "[   87s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 353,
+              "text": "[  104s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 355,
+              "text": "[  104s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 370,
+              "text": "[  111s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 372,
+              "text": "[  111s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 377,
+              "text": "[  118s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 381,
+              "text": "[  120s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 390,
+              "text": "[  120s]  installed passwd package post-installation script subprocess returned error exit status 1"
+            },
+            {
+              "line": 397,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_setup\",\"state\":\"failed\"}"
+            }
+          ],
+          "tail": [
+            {
+              "line": 386,
+              "text": "[  120s] Note that both user and group IDs in the range 0-99 are globally"
+            },
+            {
+              "line": 387,
+              "text": "[  120s] allocated by the Debian project and must be the same on every Debian"
+            },
+            {
+              "line": 388,
+              "text": "[  120s] system."
+            },
+            {
+              "line": 389,
+              "text": "[  120s] dpkg: error processing package passwd (--install):"
+            },
+            {
+              "line": 390,
+              "text": "[  120s]  installed passwd package post-installation script subprocess returned error exit status 1"
+            },
+            {
+              "line": 391,
+              "text": "[  120s] Errors were encountered while processing:"
+            },
+            {
+              "line": 392,
+              "text": "[  120s]  passwd"
+            },
+            {
+              "line": 393,
+              "text": "[  120s] exit ..."
+            },
+            {
+              "line": 394,
+              "text": "[  120s] "
+            },
+            {
+              "line": 395,
+              "text": "[  120s] 865ae95e7d90 failed \"build libbpp-core_2.4.1-6.dsc\" at Mon Oct 19 21:32:25 UTC 2026."
+            },
+            {
+              "line": 396,
+              "text": "[  120s] "
+            },
+            {
+              "line": 397,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_setup\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "one-shot",
+      "classification": "source_repair_evaluated",
+      "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "edits_proposed": 1,
+      "edits_applied": 1,
+      "usage": {
+        "input_tokens": 15985,
+        "output_tokens": 1335
+      },
+      "wall_seconds": 195.4,
+      "source_record": "demo2-oneshot-retest-20261019T212712Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/record.json",
+      "record_sha256": "60a0f46d48c9e76a16054e004a4267a55c87a6e694ec45eb1ba5d024096c30cf",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+        "duration_seconds": 90.0,
+        "message": "build failed; expected binary artifact pattern 'libectrans-0_*_arm64.deb' was not matched",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/baseline",
+        "status": "failed",
+        "timed_out": false
+      },
+      "result": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+        "duration_seconds": 89.0,
+        "message": "build failed; expected binary artifact pattern 'libectrans-0_*_arm64.deb' was not matched",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/result",
+        "status": "failed",
+        "timed_out": false
+      },
+      "attempt_count": 0,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-oneshot-retest-20261019T212712Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/baseline/build.log",
+          "sha256": "cf989bced24bd695238ac3c6e63efb86d0709a24a83b996146c25f4338a6eb88",
+          "selected_lines": [
+            {
+              "line": 1763,
+              "text": "[   91s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1779,
+              "text": "[   91s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1795,
+              "text": "[   91s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1811,
+              "text": "[   91s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1827,
+              "text": "[   91s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1843,
+              "text": "[   91s]   Imported target \"fiat\" includes non-existent path"
+            }
+          ],
+          "tail": [
+            {
+              "line": 3004,
+              "text": "[   91s] //perl script to generate persistent objects"
+            },
+            {
+              "line": 3005,
+              "text": "[   91s] sg_perl:INTERNAL=/usr/share/ecbuild/cmake/sg.pl"
+            },
+            {
+              "line": 3006,
+              "text": "[   91s] "
+            },
+            {
+              "line": 3007,
+              "text": "[   91s] dh_auto_configure: error: cd debian/build && cmake -DCMAKE_MODULE_PATH=/usr/share/ecbuild/cmake -DECBUILD_MACROS_DIR=/usr/share/ecbuild/cmake -DENABLE_BIT_REPRODUCIBLE=On -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DDISABLE_OS_CHECK=On -DBUILD_SITE=debian -DCMAKE_INSTALL_LOCALSTATEDIR=/var -DCMAKE_EXPORT_NO_PACKAGE_REGISTRY=ON -DCMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY=ON \"-GUnix Makefiles\" -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_INSTALL_LIBDIR=lib/aarch64-linux-gnu -DENABLE_DOCS=On -DENABLE_MKL=Off -DENABLE_MPI=On -DENABLE_FFTW=On -DENABLE_OMP=On -DENABLE_FORTRAN=On ../.. returned exit code 1"
+            },
+            {
+              "line": 3008,
+              "text": "[   91s] make[1]: *** [debian/rules:40: override_dh_auto_configure] Error 2"
+            },
+            {
+              "line": 3009,
+              "text": "[   91s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 3010,
+              "text": "[   91s] make: *** [debian/rules:37: build] Error 2"
+            },
+            {
+              "line": 3011,
+              "text": "[   91s] dpkg-buildpackage: error: debian/rules build subprocess returned exit status 2"
+            },
+            {
+              "line": 3012,
+              "text": "[   91s] "
+            },
+            {
+              "line": 3013,
+              "text": "[   91s] 7f93918ca527 failed \"build ectrans_1.3.0-1build1.dsc\" at Mon Oct 19 21:34:08 UTC 2026."
+            },
+            {
+              "line": 3014,
+              "text": "[   91s] "
+            },
+            {
+              "line": 3015,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-oneshot-retest-20261019T212712Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/result/build.log",
+          "sha256": "16ea8efc7452edeb46a76d60205d4ab2183f1be79a4e13d73c55ddcdb231351b",
+          "selected_lines": [
+            {
+              "line": 1759,
+              "text": "[   90s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1775,
+              "text": "[   90s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1791,
+              "text": "[   90s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1807,
+              "text": "[   90s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1823,
+              "text": "[   90s]   Imported target \"fiat\" includes non-existent path"
+            },
+            {
+              "line": 1839,
+              "text": "[   90s]   Imported target \"fiat\" includes non-existent path"
+            }
+          ],
+          "tail": [
+            {
+              "line": 3000,
+              "text": "[   90s] //perl script to generate persistent objects"
+            },
+            {
+              "line": 3001,
+              "text": "[   90s] sg_perl:INTERNAL=/usr/share/ecbuild/cmake/sg.pl"
+            },
+            {
+              "line": 3002,
+              "text": "[   90s] "
+            },
+            {
+              "line": 3003,
+              "text": "[   90s] dh_auto_configure: error: cd debian/build && cmake -DCMAKE_MODULE_PATH=/usr/share/ecbuild/cmake -DECBUILD_MACROS_DIR=/usr/share/ecbuild/cmake -DENABLE_BIT_REPRODUCIBLE=On -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DDISABLE_OS_CHECK=On -DBUILD_SITE=debian -DCMAKE_INSTALL_LOCALSTATEDIR=/var -DCMAKE_EXPORT_NO_PACKAGE_REGISTRY=ON -DCMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY=ON \"-GUnix Makefiles\" -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_INSTALL_LIBDIR=lib/aarch64-linux-gnu -DENABLE_DOCS=On -DENABLE_MKL=Off -DENABLE_MPI=On -DENABLE_FFTW=On -DENABLE_OMP=On -DENABLE_FORTRAN=On ../.. returned exit code 1"
+            },
+            {
+              "line": 3004,
+              "text": "[   90s] make[1]: *** [debian/rules:40: override_dh_auto_configure] Error 2"
+            },
+            {
+              "line": 3005,
+              "text": "[   90s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 3006,
+              "text": "[   90s] make: *** [debian/rules:37: build] Error 2"
+            },
+            {
+              "line": 3007,
+              "text": "[   90s] dpkg-buildpackage: error: debian/rules build subprocess returned exit status 2"
+            },
+            {
+              "line": 3008,
+              "text": "[   90s] "
+            },
+            {
+              "line": 3009,
+              "text": "[   90s] aec8a3fed0bd failed \"build ectrans_1.3.0-1build1.dsc\" at Mon Oct 19 21:35:50 UTC 2026."
+            },
+            {
+              "line": 3010,
+              "text": "[   90s] "
+            },
+            {
+              "line": 3011,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "one-shot",
+      "classification": "source_repair_evaluated",
+      "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "edits_proposed": 1,
+      "edits_applied": 1,
+      "usage": {
+        "input_tokens": 18761,
+        "output_tokens": 681
+      },
+      "wall_seconds": 179.8,
+      "source_record": "demo2-oneshot-retest-20261019T212712Z/runs/04-launchpad-noble-amd64-arm64-libmceliece-5020df9683fc/record.json",
+      "record_sha256": "4aac3ec2b596ef1d03e9ceb9022800a8eec285aaefc2c4cd3744de97c07c5390",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+        "duration_seconds": 84.0,
+        "message": "build failed; expected binary artifact pattern 'libmceliece-dev_*_arm64.deb' was not matched",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/04-launchpad-noble-amd64-arm64-libmceliece-5020df9683fc/baseline",
+        "status": "failed",
+        "timed_out": false
+      },
+      "result": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+        "duration_seconds": 83.0,
+        "message": "build failed; expected binary artifact pattern 'libmceliece-dev_*_arm64.deb' was not matched",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/04-launchpad-noble-amd64-arm64-libmceliece-5020df9683fc/result",
+        "status": "failed",
+        "timed_out": false
+      },
+      "attempt_count": 0,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-oneshot-retest-20261019T212712Z/runs/04-launchpad-noble-amd64-arm64-libmceliece-5020df9683fc/baseline/build.log",
+          "sha256": "660394f83eb3f7d10f0408e30ee8edfca99ecd49f4bd49aefa410510bf0af223",
+          "selected_lines": [],
+          "tail": [
+            {
+              "line": 2029,
+              "text": "[   85s] make[3]: Leaving directory '/usr/src/packages/BUILD/build/arm64'"
+            },
+            {
+              "line": 2030,
+              "text": "[   85s] make[2]: *** [Makefile:2: default] Error 2"
+            },
+            {
+              "line": 2031,
+              "text": "[   85s] make[2]: Leaving directory '/usr/src/packages/BUILD/build'"
+            },
+            {
+              "line": 2032,
+              "text": "[   85s] make[1]: *** [Makefile:2: default] Error 2"
+            },
+            {
+              "line": 2033,
+              "text": "[   85s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 2034,
+              "text": "[   85s] dh_auto_build: error: make -j2 returned exit code 2"
+            },
+            {
+              "line": 2035,
+              "text": "[   85s] make: *** [debian/rules:14: binary] Error 25"
+            },
+            {
+              "line": 2036,
+              "text": "[   85s] dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2"
+            },
+            {
+              "line": 2037,
+              "text": "[   85s] "
+            },
+            {
+              "line": 2038,
+              "text": "[   85s] 5b17b4e41b6a failed \"build libmceliece_0~20230612-1.dsc\" at Mon Oct 19 21:37:17 UTC 2026."
+            },
+            {
+              "line": 2039,
+              "text": "[   85s] "
+            },
+            {
+              "line": 2040,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-oneshot-retest-20261019T212712Z/runs/04-launchpad-noble-amd64-arm64-libmceliece-5020df9683fc/result/build.log",
+          "sha256": "64591751d4cfded242ef7c09e4f9ef0e542ff84e630b73b89e0ce6e8920281dc",
+          "selected_lines": [],
+          "tail": [
+            {
+              "line": 2026,
+              "text": "[   84s] make[3]: Leaving directory '/usr/src/packages/BUILD/build/arm64'"
+            },
+            {
+              "line": 2027,
+              "text": "[   84s] make[2]: *** [Makefile:2: default] Error 2"
+            },
+            {
+              "line": 2028,
+              "text": "[   84s] make[2]: Leaving directory '/usr/src/packages/BUILD/build'"
+            },
+            {
+              "line": 2029,
+              "text": "[   84s] make[1]: *** [Makefile:2: default] Error 2"
+            },
+            {
+              "line": 2030,
+              "text": "[   84s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 2031,
+              "text": "[   84s] dh_auto_build: error: make -j2 returned exit code 2"
+            },
+            {
+              "line": 2032,
+              "text": "[   84s] make: *** [debian/rules:15: binary] Error 25"
+            },
+            {
+              "line": 2033,
+              "text": "[   84s] dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2"
+            },
+            {
+              "line": 2034,
+              "text": "[   84s] "
+            },
+            {
+              "line": 2035,
+              "text": "[   84s] 7492c65039d6 failed \"build libmceliece_0~20230612-1.dsc\" at Mon Oct 19 21:38:50 UTC 2026."
+            },
+            {
+              "line": 2036,
+              "text": "[   84s] "
+            },
+            {
+              "line": 2037,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "one-shot",
+      "classification": "environment_blocked",
+      "case_id": "launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "edits_proposed": 1,
+      "edits_applied": 1,
+      "usage": {
+        "input_tokens": 12370,
+        "output_tokens": 1674
+      },
+      "wall_seconds": 181.9,
+      "source_record": "demo2-oneshot-retest-20261019T212712Z/runs/05-launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f/record.json",
+      "record_sha256": "c1b8905fbf75a896fbd8da6571f66a282e4c3a71d17efc16c84fb401020ee237",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f",
+        "duration_seconds": 163.0,
+        "message": "infrastructure error: evaluation could not run",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/05-launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f/baseline",
+        "status": "infrastructure_error",
+        "timed_out": false
+      },
+      "result": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f",
+        "duration_seconds": 1.0,
+        "message": "build dependencies are unresolvable",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/05-launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f/result",
+        "status": "unresolvable",
+        "timed_out": false
+      },
+      "attempt_count": 0,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-oneshot-retest-20261019T212712Z/runs/05-launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f/baseline/build.log",
+          "sha256": "9f8fc108a42b48878e5a45ac3671fef07f349801331af8a5a7c42d5115529d75",
+          "selected_lines": [
+            {
+              "line": 322,
+              "text": "[   91s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 324,
+              "text": "[   91s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 379,
+              "text": "[  115s] /usr/lib/build/build-recipe-debootstrap: line 32: 27789 Segmentation fault      (core dumped) chroot $BUILD_ROOT grep -q '/sid' /etc/debian_version"
+            },
+            {
+              "line": 383,
+              "text": "[  161s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 385,
+              "text": "[  161s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 387,
+              "text": "[  161s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 389,
+              "text": "[  161s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 391,
+              "text": "[  161s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 393,
+              "text": "[  161s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 395,
+              "text": "[  162s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 397,
+              "text": "[  162s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 399,
+              "text": "[  162s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 418,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ],
+          "tail": [
+            {
+              "line": 407,
+              "text": "[  163s] chroot: failed to run command 'apt-cache': No such file or directory"
+            },
+            {
+              "line": 408,
+              "text": "[  163s] mv: cannot move '/tmp/build-case-root-r72bii8a//usr/src/packages' to '/tmp/build-case-root-r72bii8a/debootstraproot//usr/src': No such file or directory"
+            },
+            {
+              "line": 409,
+              "text": "[  163s] Recipe file 'libbpp-qt_2.4.1-9.1.dsc' is being checked for 'DEBTRANSFORM-FILES'... not found"
+            },
+            {
+              "line": 410,
+              "text": "[  163s] chroot: failed to run command '/bin/sh': No such file or directory"
+            },
+            {
+              "line": 411,
+              "text": "[  163s] umount: /tmp/build-case-root-r72bii8a/debootstraproot/proc: no mount point specified."
+            },
+            {
+              "line": 412,
+              "text": "[  163s] umount: /tmp/build-case-root-r72bii8a/debootstraproot/sys: no mount point specified."
+            },
+            {
+              "line": 413,
+              "text": "[  163s] umount: /tmp/build-case-root-r72bii8a/debootstraproot/dev/pts: no mount point specified."
+            },
+            {
+              "line": 414,
+              "text": "[  163s] mv: cannot stat '/tmp/build-case-root-r72bii8a/debootstraproot//usr/src/packages': No such file or directory"
+            },
+            {
+              "line": 415,
+              "text": "[  163s] "
+            },
+            {
+              "line": 416,
+              "text": "[  163s] 73dd5639b571 failed \"build libbpp-qt_2.4.1-9.1.dsc\" at Mon Oct 19 21:41:36 UTC 2026."
+            },
+            {
+              "line": 417,
+              "text": "[  163s] "
+            },
+            {
+              "line": 418,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-oneshot-retest-20261019T212712Z/runs/05-launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f/result/build.log",
+          "sha256": "06e9e752917dcbd9f352e441aa0bdf990cf371c008290eac7fd086bf94ca8555",
+          "selected_lines": [],
+          "tail": [
+            {
+              "line": 10,
+              "text": "[    0s] processing recipe /tmp/build-case-work-f0w6ejh4/input/libbpp-qt_2.4.1-9.1.dsc ..."
+            },
+            {
+              "line": 11,
+              "text": "[    0s] init_buildsystem --configdir /usr/lib/build/configs --cachedir /var/cache/build --clean --create-build-binaries /tmp/build-case-work-f0w6ejh4/input/libbpp-qt_2.4.1-9.1.dsc ..."
+            },
+            {
+              "line": 12,
+              "text": "[    0s] initializing /tmp/build-case-root-92n7vaov/.srcfiles.cache ..."
+            },
+            {
+              "line": 13,
+              "text": "[    0s] /usr/lib/build/createdirdeps --oldfile /tmp/build-case-root-92n7vaov/.srcfiles.cache /home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/05-launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f/case/dependencies/ubuntu-noble-amd64"
+            },
+            {
+              "line": 14,
+              "text": "[    1s] /usr/lib/build/createdirdeps --oldfile /tmp/build-case-root-92n7vaov/.srcfiles.cache //home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/05-launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f/case/dependencies/ubuntu-noble-all"
+            },
+            {
+              "line": 15,
+              "text": "[    1s] expanding package dependencies..."
+            },
+            {
+              "line": 16,
+              "text": "[    1s] expansion error"
+            },
+            {
+              "line": 17,
+              "text": "[    1s]   nothing provides qemu-user-static"
+            },
+            {
+              "line": 18,
+              "text": "[    1s] "
+            },
+            {
+              "line": 19,
+              "text": "[    1s] a22e514cfe59 failed \"build libbpp-qt_2.4.1-9.1.dsc\" at Mon Oct 19 21:41:52 UTC 2026."
+            },
+            {
+              "line": 20,
+              "text": "[    1s] "
+            },
+            {
+              "line": 21,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"dependency_resolution\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "one-shot",
+      "classification": "environment_blocked",
+      "case_id": "launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446",
+      "repaired": false,
+      "termination_reason": "no_edit_applied",
+      "edits_proposed": 0,
+      "edits_applied": 0,
+      "usage": {
+        "input_tokens": 12707,
+        "output_tokens": 1324
+      },
+      "wall_seconds": 183.3,
+      "source_record": "demo2-oneshot-retest-20261019T212712Z/runs/06-launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446/record.json",
+      "record_sha256": "65c6e4a3fd6903a0a789ecaee89bc00d7e7011865b61508d3925d750e8c5b124",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446",
+        "duration_seconds": 174.0,
+        "message": "infrastructure error: evaluation could not run",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/06-launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446/baseline",
+        "status": "infrastructure_error",
+        "timed_out": false
+      },
+      "result": null,
+      "attempt_count": 0,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-oneshot-retest-20261019T212712Z/runs/06-launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446/baseline/build.log",
+          "sha256": "f508b1d5abc33865857f041345718a863729b9f3319b7874aa63b8a8c1655289",
+          "selected_lines": [
+            {
+              "line": 324,
+              "text": "[   82s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 326,
+              "text": "[   82s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 364,
+              "text": "[  106s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 366,
+              "text": "[  106s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 383,
+              "text": "[  126s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 428,
+              "text": "[  140s] /usr/lib/build/build-recipe-debootstrap: line 32: 29938 Segmentation fault      (core dumped) chroot $BUILD_ROOT grep -q '/sid' /etc/debian_version"
+            },
+            {
+              "line": 432,
+              "text": "[  172s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 434,
+              "text": "[  172s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 436,
+              "text": "[  172s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 438,
+              "text": "[  172s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 440,
+              "text": "[  173s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 442,
+              "text": "[  173s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 444,
+              "text": "[  173s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 446,
+              "text": "[  173s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 448,
+              "text": "[  173s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 467,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ],
+          "tail": [
+            {
+              "line": 456,
+              "text": "[  175s] chroot: failed to run command 'apt-cache': No such file or directory"
+            },
+            {
+              "line": 457,
+              "text": "[  175s] mv: cannot move '/tmp/build-case-root-6nmcdvdy//usr/src/packages' to '/tmp/build-case-root-6nmcdvdy/debootstraproot//usr/src': No such file or directory"
+            },
+            {
+              "line": 458,
+              "text": "[  175s] Recipe file 'python-intbitset_2.3.0-3.2build3.dsc' is being checked for 'DEBTRANSFORM-FILES'... not found"
+            },
+            {
+              "line": 459,
+              "text": "[  175s] chroot: failed to run command '/bin/sh': No such file or directory"
+            },
+            {
+              "line": 460,
+              "text": "[  175s] umount: /tmp/build-case-root-6nmcdvdy/debootstraproot/proc: no mount point specified."
+            },
+            {
+              "line": 461,
+              "text": "[  175s] umount: /tmp/build-case-root-6nmcdvdy/debootstraproot/sys: no mount point specified."
+            },
+            {
+              "line": 462,
+              "text": "[  175s] umount: /tmp/build-case-root-6nmcdvdy/debootstraproot/dev/pts: no mount point specified."
+            },
+            {
+              "line": 463,
+              "text": "[  175s] mv: cannot stat '/tmp/build-case-root-6nmcdvdy/debootstraproot//usr/src/packages': No such file or directory"
+            },
+            {
+              "line": 464,
+              "text": "[  175s] "
+            },
+            {
+              "line": 465,
+              "text": "[  175s] 3716ed6f9458 failed \"build python-intbitset_2.3.0-3.2build3.dsc\" at Mon Oct 19 21:44:49 UTC 2026."
+            },
+            {
+              "line": 466,
+              "text": "[  175s] "
+            },
+            {
+              "line": 467,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "one-shot",
+      "classification": "source_repair_evaluated",
+      "case_id": "launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91",
+      "repaired": false,
+      "termination_reason": "no_edit_applied",
+      "edits_proposed": 1,
+      "edits_applied": 0,
+      "usage": {
+        "input_tokens": 104253,
+        "output_tokens": 1086
+      },
+      "wall_seconds": 172.5,
+      "source_record": "demo2-oneshot-retest-20261019T212712Z/runs/07-launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91/record.json",
+      "record_sha256": "8b561d04d0b004e09bac1186cf9574e56fbd9b8db0e4e5887cebfb0aac6a40c2",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91",
+        "duration_seconds": 152.0,
+        "message": "build failed; expected binary artifact pattern 'libunwind-dev_*_arm64.deb' was not matched",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/07-launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91/baseline",
+        "status": "failed",
+        "timed_out": false
+      },
+      "result": null,
+      "attempt_count": 0,
+      "edit_warnings": [
+        "edit_rejected index=0 path='debian/rules' reason=path_outside_allowed_prefix"
+      ],
+      "log_excerpts": [
+        {
+          "source": "demo2-oneshot-retest-20261019T212712Z/runs/07-launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91/baseline/build.log",
+          "sha256": "81c5cd7698fe1e7f75bf21e8e6338b4d2e3464b3cf5df879c6f82632516571cc",
+          "selected_lines": [
+            {
+              "line": 2259,
+              "text": "[  151s] /bin/ld: .libs/Lperf-simple: hidden symbol `__aarch64_cas8_acq_rel' in /usr/lib/gcc/aarch64-linux-gnu/14/libgcc.a(cas_8_4.o) is referenced by DSO"
+            },
+            {
+              "line": 2265,
+              "text": "[  151s] /bin/ld: .libs/Gperf-trace: hidden symbol `__aarch64_cas8_acq_rel' in /usr/lib/gcc/aarch64-linux-gnu/14/libgcc.a(cas_8_4.o) is referenced by DSO"
+            }
+          ],
+          "tail": [
+            {
+              "line": 2269,
+              "text": "[  151s] make[3]: Leaving directory '/usr/src/packages/BUILD/tests'"
+            },
+            {
+              "line": 2270,
+              "text": "[  151s] make[2]: *** [Makefile:624: all-recursive] Error 1"
+            },
+            {
+              "line": 2271,
+              "text": "[  151s] make[2]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 2272,
+              "text": "[  151s] dh_auto_build: error: make -j2 returned exit code 2"
+            },
+            {
+              "line": 2273,
+              "text": "[  151s] make[1]: *** [debian/rules:20: override_dh_auto_build] Error 25"
+            },
+            {
+              "line": 2274,
+              "text": "[  151s] make[1]: Leaving directory '/usr/src/packages/BUILD'"
+            },
+            {
+              "line": 2275,
+              "text": "[  151s] make: *** [debian/rules:14: binary] Error 2"
+            },
+            {
+              "line": 2276,
+              "text": "[  151s] dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2"
+            },
+            {
+              "line": 2277,
+              "text": "[  152s] "
+            },
+            {
+              "line": 2278,
+              "text": "[  152s] 9d2d4c160738 failed \"build libunwind_1.8.1-0.1.dsc\" at Mon Oct 19 21:47:31 UTC 2026."
+            },
+            {
+              "line": 2279,
+              "text": "[  152s] "
+            },
+            {
+              "line": 2280,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "one-shot",
+      "classification": "source_repair_evaluated",
+      "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+      "repaired": false,
+      "termination_reason": "no_edit_applied",
+      "edits_proposed": 9,
+      "edits_applied": 0,
+      "usage": {
+        "input_tokens": 12393,
+        "output_tokens": 1764
+      },
+      "wall_seconds": 175.3,
+      "source_record": "demo2-oneshot-retest-20261019T212712Z/runs/08-launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2/record.json",
+      "record_sha256": "98d6c0b565fd18d852afb6a69e666bc8ab18538a2267ad798adbb5340dac38d6",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+        "duration_seconds": 161.0,
+        "message": "build failed; expected binary artifact pattern 'librust-subversion-dev_*_arm64.deb' was not matched",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/08-launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2/baseline",
+        "status": "failed",
+        "timed_out": false
+      },
+      "result": null,
+      "attempt_count": 0,
+      "edit_warnings": [
+        "edit_rejected index=0 path='src/uri.rs' reason=path_outside_allowed_prefix",
+        "edit_rejected index=1 path='src/uri.rs' reason=path_outside_allowed_prefix",
+        "edit_rejected index=2 path='src/uri.rs' reason=path_outside_allowed_prefix",
+        "edit_rejected index=3 path='src/io.rs' reason=path_outside_allowed_prefix",
+        "edit_rejected index=4 path='src/io.rs' reason=path_outside_allowed_prefix",
+        "edit_rejected index=5 path='src/io.rs' reason=path_outside_allowed_prefix",
+        "edit_rejected index=6 path='src/io.rs' reason=path_outside_allowed_prefix",
+        "edit_rejected index=7 path='src/repos.rs' reason=path_outside_allowed_prefix",
+        "edit_rejected index=8 path='src/string.rs' reason=path_outside_allowed_prefix"
+      ],
+      "log_excerpts": [
+        {
+          "source": "demo2-oneshot-retest-20261019T212712Z/runs/08-launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2/baseline/build.log",
+          "sha256": "71179fb6a4d4ac03f8c6280da44f467ffdf8bd132688a94841d89ad1cb78f607",
+          "selected_lines": [
+            {
+              "line": 14523,
+              "text": "[  159s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14536,
+              "text": "[  159s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14549,
+              "text": "[  159s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14562,
+              "text": "[  159s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14575,
+              "text": "[  159s] error[E0308]: arguments to this function are incorrect"
+            },
+            {
+              "line": 14601,
+              "text": "[  159s] error[E0308]: arguments to this function are incorrect"
+            },
+            {
+              "line": 14627,
+              "text": "[  159s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14643,
+              "text": "[  159s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14663,
+              "text": "[  159s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14679,
+              "text": "[  159s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14699,
+              "text": "[  159s] error[E0308]: arguments to this function are incorrect"
+            },
+            {
+              "line": 14725,
+              "text": "[  159s] error[E0308]: arguments to this function are incorrect"
+            },
+            {
+              "line": 14751,
+              "text": "[  159s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14771,
+              "text": "[  159s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14816,
+              "text": "[  159s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14829,
+              "text": "[  160s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14845,
+              "text": "[  160s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14862,
+              "text": "[  160s] error[E0308]: arguments to this function are incorrect"
+            },
+            {
+              "line": 14888,
+              "text": "[  160s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14901,
+              "text": "[  160s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14918,
+              "text": "[  160s] error[E0308]: arguments to this function are incorrect"
+            },
+            {
+              "line": 14944,
+              "text": "[  160s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14957,
+              "text": "[  160s] error[E0308]: arguments to this function are incorrect"
+            },
+            {
+              "line": 14983,
+              "text": "[  160s] error[E0308]: mismatched types"
+            },
+            {
+              "line": 14996,
+              "text": "[  160s] error[E0308]: mismatched types"
+            }
+          ],
+          "tail": [
+            {
+              "line": 16249,
+              "text": "[  161s] For more information about an error, try `rustc --explain E0277`."
+            },
+            {
+              "line": 16250,
+              "text": "[  161s] error: could not compile `subversion` (lib) due to 104 previous errors"
+            },
+            {
+              "line": 16251,
+              "text": "[  161s] "
+            },
+            {
+              "line": 16252,
+              "text": "[  161s] Caused by:"
+            },
+            {
+              "line": 16253,
+              "text": "[  161s]   process didn't exit successfully: `CARGO=/usr/lib/rust-1.84/bin/cargo CARGO_CRATE_NAME=subversion CARGO_MANIFEST_DIR=/usr/src/packages/BUILD CARGO_MANIFEST_PATH=/usr/src/packages/BUILD/Cargo.toml CARGO_PKG_AUTHORS='Jelmer Vernoo\u0133 <jelmer@apache.org>' CARGO_PKG_DESCRIPTION='Rust bindings for Subversion' CARGO_PKG_HOMEPAGE='https://github.com/jelmer/subversion-rs' CARGO_PKG_LICENSE=Apache-2.0 CARGO_PKG_LICENSE_FILE='' CARGO_PKG_NAME=subversion CARGO_PKG_README=README.md CARGO_PKG_REPOSITORY='https://github.com/jelmer/subversion-rs.git' CARGO_PKG_RUST_VERSION='' CARGO_PKG_VERSION=0.0.8 CARGO_PKG_VERSION_MAJOR=0 CARGO_PKG_VERSION_MINOR=0 CARGO_PKG_VERSION_PATCH=8 CARGO_PKG_VERSION_PRE='' CARGO_PRIMARY_PACKAGE=1 LD_LIBRARY_PATH=/usr/src/packages/BUILD/target/debug/deps OUT_DIR=/usr/src/packages/BUILD/target/aarch64-unknown-linux-gnu/debug/build/subversion-e56403b4a2b40aea/out rustc --crate-name subversion --edition=2021 src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata,link -C embed-bitcode=no -C debuginfo=2 --cfg 'feature=\"client\"' --cfg 'feature=\"default\"' --cfg 'feature=\"delta\"' --cfg 'feature=\"ra\"' --cfg 'feature=\"wc\"' --check-cfg 'cfg(docsrs)' --check-cfg 'cfg(feature, values(\"client\", \"default\", \"delta\", \"pyo3\", \"ra\", \"url\", \"wc\"))' -C metadata=dc9aa94f138cbc06 -C extra-filename=-dc9aa94f138cbc06 --out-dir /usr/src/packages/BUILD/target/aarch64-unknown-linux-gnu/debug/deps --target aa"
+            },
+            {
+              "line": 16254,
+              "text": "[  161s] dh_auto_test: error: /usr/share/cargo/bin/cargo build returned exit code 101"
+            },
+            {
+              "line": 16255,
+              "text": "[  161s] make: *** [debian/rules:3: binary] Error 25"
+            },
+            {
+              "line": 16256,
+              "text": "[  161s] dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2"
+            },
+            {
+              "line": 16257,
+              "text": "[  161s] "
+            },
+            {
+              "line": 16258,
+              "text": "[  161s] 10c15c8d3157 failed \"build rust-subversion_0.0.8-3.dsc\" at Mon Oct 19 21:50:32 UTC 2026."
+            },
+            {
+              "line": 16259,
+              "text": "[  161s] "
+            },
+            {
+              "line": 16260,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"package_build\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "one-shot",
+      "classification": "environment_blocked",
+      "case_id": "launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "edits_proposed": 1,
+      "edits_applied": 1,
+      "usage": {
+        "input_tokens": 16109,
+        "output_tokens": 1402
+      },
+      "wall_seconds": 348.6,
+      "source_record": "demo2-oneshot-retest-20261019T212712Z/runs/09-launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e/record.json",
+      "record_sha256": "56ccfa551dcc4b40864de2cad7d0324c7a014ffa1c0e21723c18b2c178b9cee2",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e",
+        "duration_seconds": 165.0,
+        "message": "infrastructure error: evaluation could not run",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/09-launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e/baseline",
+        "status": "infrastructure_error",
+        "timed_out": false
+      },
+      "result": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e",
+        "duration_seconds": 165.0,
+        "message": "infrastructure error: evaluation could not run",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/09-launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e/result",
+        "status": "infrastructure_error",
+        "timed_out": false
+      },
+      "attempt_count": 0,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-oneshot-retest-20261019T212712Z/runs/09-launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e/baseline/build.log",
+          "sha256": "23e1c39f53f8eef4a00d3c2120d593fefa1db3e3b89ab905e7a12c8002df3285",
+          "selected_lines": [
+            {
+              "line": 337,
+              "text": "[   90s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 339,
+              "text": "[   90s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 365,
+              "text": "[  114s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 368,
+              "text": "[  115s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 370,
+              "text": "[  115s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 422,
+              "text": "[  136s] /usr/lib/build/build-recipe-debootstrap: line 32: 28632 Segmentation fault      (core dumped) chroot $BUILD_ROOT grep -q '/sid' /etc/debian_version"
+            },
+            {
+              "line": 426,
+              "text": "[  163s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 428,
+              "text": "[  163s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 430,
+              "text": "[  163s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 432,
+              "text": "[  163s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 434,
+              "text": "[  163s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 436,
+              "text": "[  163s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 438,
+              "text": "[  164s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 440,
+              "text": "[  164s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 442,
+              "text": "[  164s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 461,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ],
+          "tail": [
+            {
+              "line": 450,
+              "text": "[  165s] chroot: failed to run command 'apt-cache': No such file or directory"
+            },
+            {
+              "line": 451,
+              "text": "[  165s] mv: cannot move '/tmp/build-case-root-7isu4rq0//usr/src/packages' to '/tmp/build-case-root-7isu4rq0/debootstraproot//usr/src': No such file or directory"
+            },
+            {
+              "line": 452,
+              "text": "[  166s] Recipe file 'libevtx_20240504-1build1.dsc' is being checked for 'DEBTRANSFORM-FILES'... not found"
+            },
+            {
+              "line": 453,
+              "text": "[  166s] chroot: failed to run command '/bin/sh': No such file or directory"
+            },
+            {
+              "line": 454,
+              "text": "[  166s] umount: /tmp/build-case-root-7isu4rq0/debootstraproot/proc: no mount point specified."
+            },
+            {
+              "line": 455,
+              "text": "[  166s] umount: /tmp/build-case-root-7isu4rq0/debootstraproot/sys: no mount point specified."
+            },
+            {
+              "line": 456,
+              "text": "[  166s] umount: /tmp/build-case-root-7isu4rq0/debootstraproot/dev/pts: no mount point specified."
+            },
+            {
+              "line": 457,
+              "text": "[  166s] mv: cannot stat '/tmp/build-case-root-7isu4rq0/debootstraproot//usr/src/packages': No such file or directory"
+            },
+            {
+              "line": 458,
+              "text": "[  166s] "
+            },
+            {
+              "line": 459,
+              "text": "[  166s] 8e055b30162c failed \"build libevtx_20240504-1build1.dsc\" at Mon Oct 19 21:53:32 UTC 2026."
+            },
+            {
+              "line": 460,
+              "text": "[  166s] "
+            },
+            {
+              "line": 461,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-oneshot-retest-20261019T212712Z/runs/09-launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e/result/build.log",
+          "sha256": "6fbfcb3aceaab6c8c9a9b62f1ae49a1da8acab90e3ab00bae850263fe2353d40",
+          "selected_lines": [
+            {
+              "line": 337,
+              "text": "[   89s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 339,
+              "text": "[   89s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 365,
+              "text": "[  113s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 368,
+              "text": "[  114s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 370,
+              "text": "[  114s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 419,
+              "text": "[  135s] /usr/lib/build/build-recipe-debootstrap: line 32: 28638 Segmentation fault      (core dumped) chroot $BUILD_ROOT grep -q '/sid' /etc/debian_version"
+            },
+            {
+              "line": 423,
+              "text": "[  162s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 425,
+              "text": "[  162s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 427,
+              "text": "[  162s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 429,
+              "text": "[  162s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 431,
+              "text": "[  162s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 433,
+              "text": "[  163s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 435,
+              "text": "[  163s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 437,
+              "text": "[  163s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 439,
+              "text": "[  163s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 458,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ],
+          "tail": [
+            {
+              "line": 447,
+              "text": "[  165s] chroot: failed to run command 'apt-cache': No such file or directory"
+            },
+            {
+              "line": 448,
+              "text": "[  165s] mv: cannot move '/tmp/build-case-root-wmg84kxg//usr/src/packages' to '/tmp/build-case-root-wmg84kxg/debootstraproot//usr/src': No such file or directory"
+            },
+            {
+              "line": 449,
+              "text": "[  165s] Recipe file 'libevtx_20240504-1build1.dsc' is being checked for 'DEBTRANSFORM-FILES'... not found"
+            },
+            {
+              "line": 450,
+              "text": "[  165s] chroot: failed to run command '/bin/sh': No such file or directory"
+            },
+            {
+              "line": 451,
+              "text": "[  165s] umount: /tmp/build-case-root-wmg84kxg/debootstraproot/proc: no mount point specified."
+            },
+            {
+              "line": 452,
+              "text": "[  165s] umount: /tmp/build-case-root-wmg84kxg/debootstraproot/sys: no mount point specified."
+            },
+            {
+              "line": 453,
+              "text": "[  165s] umount: /tmp/build-case-root-wmg84kxg/debootstraproot/dev/pts: no mount point specified."
+            },
+            {
+              "line": 454,
+              "text": "[  165s] mv: cannot stat '/tmp/build-case-root-wmg84kxg/debootstraproot//usr/src/packages': No such file or directory"
+            },
+            {
+              "line": 455,
+              "text": "[  165s] "
+            },
+            {
+              "line": 456,
+              "text": "[  165s] 16b918115285 failed \"build libevtx_20240504-1build1.dsc\" at Mon Oct 19 21:56:32 UTC 2026."
+            },
+            {
+              "line": 457,
+              "text": "[  165s] "
+            },
+            {
+              "line": 458,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_infrastructure\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "one-shot",
+      "classification": "already_building",
+      "case_id": "launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84",
+      "repaired": false,
+      "termination_reason": "case_not_failing",
+      "edits_proposed": 0,
+      "edits_applied": 0,
+      "usage": {},
+      "wall_seconds": 115.2,
+      "source_record": "demo2-oneshot-retest-20261019T212712Z/runs/10-launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84/record.json",
+      "record_sha256": "307a5944b7d36dd4bcb1d9d0d49d653837dd620bf0f7d414466672bbf31706ea",
+      "baseline": {
+        "artifact_validation_passed": true,
+        "binary_artifacts": [
+          "html-xml-utils-dbgsym_7.7-1.2_arm64.ddeb",
+          "html-xml-utils_7.7-1.2_arm64.deb"
+        ],
+        "build_exit_code": 0,
+        "case_id": "launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84",
+        "duration_seconds": 112.0,
+        "message": "build completed successfully",
+        "repaired": true,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/10-launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84/baseline",
+        "status": "succeeded",
+        "timed_out": false
+      },
+      "result": null,
+      "attempt_count": 0,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-oneshot-retest-20261019T212712Z/runs/10-launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84/baseline/build.log",
+          "sha256": "371204ef7eadfa01a85c55a2aef4a8ebf9b78ec0017a51dce4b918b3bc35b51f",
+          "selected_lines": [],
+          "tail": [
+            {
+              "line": 2300,
+              "text": "[  112s] \tRenaming html-xml-utils-dbgsym_7.7-1.2_arm64.deb to html-xml-utils-dbgsym_7.7-1.2_arm64.ddeb"
+            },
+            {
+              "line": 2301,
+              "text": "[  113s]  dpkg-genbuildinfo -O../html-xml-utils_7.7-1.2_arm64.buildinfo"
+            },
+            {
+              "line": 2302,
+              "text": "[  113s]  dpkg-genchanges -O../html-xml-utils_7.7-1.2_arm64.changes"
+            },
+            {
+              "line": 2303,
+              "text": "[  113s] dpkg-genchanges: info: not including original source code in upload"
+            },
+            {
+              "line": 2304,
+              "text": "[  113s]  dpkg-source --after-build ."
+            },
+            {
+              "line": 2305,
+              "text": "[  113s] dpkg-buildpackage: info: binary and diff upload (original source NOT included)"
+            },
+            {
+              "line": 2306,
+              "text": "[  113s] ln: failed to create hard link '/tmp/build-case-root-2u0sohh3//usr/src/packages/DEBS/html-xml-utils_7.7-1.2.dsc': File exists"
+            },
+            {
+              "line": 2307,
+              "text": "[  113s] ln: failed to create hard link '/tmp/build-case-root-2u0sohh3//usr/src/packages/DEBS/html-xml-utils_7.7-1.2.debian.tar.xz': File exists"
+            },
+            {
+              "line": 2308,
+              "text": "[  113s] "
+            },
+            {
+              "line": 2309,
+              "text": "[  113s] ce0d9d1e52bf finished \"build html-xml-utils_7.7-1.2.dsc\" at Mon Oct 19 21:58:27 UTC 2026."
+            },
+            {
+              "line": 2310,
+              "text": "[  113s] "
+            },
+            {
+              "line": 2311,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"completed\",\"state\":\"completed\"}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "one-shot",
+      "classification": "environment_blocked",
+      "case_id": "launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "edits_proposed": 1,
+      "edits_applied": 1,
+      "usage": {
+        "input_tokens": 10061,
+        "output_tokens": 1519
+      },
+      "wall_seconds": 201.3,
+      "source_record": "demo2-oneshot-retest-20261019T212712Z/runs/11-launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce/record.json",
+      "record_sha256": "496700dc3941f58efb09a686e4e12ae8b69792bce8ad3b7defb7b6550b3d094f",
+      "baseline": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce",
+        "duration_seconds": 94.0,
+        "message": "build failed; Debian artifact root is missing; expected binary artifact pattern '*.deb' was not matched; expected source artifact pattern '*.dsc' was not matched; no physical Debian artifacts were collected",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/11-launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce/baseline",
+        "status": "failed",
+        "timed_out": false
+      },
+      "result": {
+        "artifact_validation_passed": false,
+        "binary_artifacts": [],
+        "build_exit_code": 1,
+        "case_id": "launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce",
+        "duration_seconds": 93.0,
+        "message": "build failed; Debian artifact root is missing; expected binary artifact pattern '*.deb' was not matched; expected source artifact pattern '*.dsc' was not matched; no physical Debian artifacts were collected",
+        "repaired": false,
+        "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/11-launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce/result",
+        "status": "failed",
+        "timed_out": false
+      },
+      "attempt_count": 0,
+      "edit_warnings": [],
+      "log_excerpts": [
+        {
+          "source": "demo2-oneshot-retest-20261019T212712Z/runs/11-launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce/baseline/build.log",
+          "sha256": "372d666fb85b0295b8d5f853844ca44b17ba43d95eafbc772f45113d147e0939",
+          "selected_lines": [
+            {
+              "line": 332,
+              "text": "[   86s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 334,
+              "text": "[   86s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 348,
+              "text": "[   94s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 357,
+              "text": "[   94s]  old passwd package postinst maintainer script subprocess failed with exit status 1"
+            },
+            {
+              "line": 364,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_setup\",\"state\":\"failed\"}"
+            }
+          ],
+          "tail": [
+            {
+              "line": 353,
+              "text": "[   94s] Note that both user and group IDs in the range 0-99 are globally"
+            },
+            {
+              "line": 354,
+              "text": "[   94s] allocated by the Debian project and must be the same on every Debian"
+            },
+            {
+              "line": 355,
+              "text": "[   94s] system."
+            },
+            {
+              "line": 356,
+              "text": "[   94s] dpkg: error processing package passwd (--install):"
+            },
+            {
+              "line": 357,
+              "text": "[   94s]  old passwd package postinst maintainer script subprocess failed with exit status 1"
+            },
+            {
+              "line": 358,
+              "text": "[   94s] Errors were encountered while processing:"
+            },
+            {
+              "line": 359,
+              "text": "[   94s]  passwd"
+            },
+            {
+              "line": 360,
+              "text": "[   94s] exit ..."
+            },
+            {
+              "line": 361,
+              "text": "[   94s] "
+            },
+            {
+              "line": 362,
+              "text": "[   94s] d8cc11e01ab7 failed \"build pybigwig_0.3.23+dfsg-1build6.dsc\" at Mon Oct 19 22:00:04 UTC 2026."
+            },
+            {
+              "line": 363,
+              "text": "[   94s] "
+            },
+            {
+              "line": 364,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_setup\",\"state\":\"failed\"}"
+            }
+          ]
+        },
+        {
+          "source": "demo2-oneshot-retest-20261019T212712Z/runs/11-launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce/result/build.log",
+          "sha256": "50299650f2ef66900d28a22d24440935df17592ce22f56ff08fcf04dbae03d68",
+          "selected_lines": [
+            {
+              "line": 332,
+              "text": "[   86s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 334,
+              "text": "[   86s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 348,
+              "text": "[   94s] Segmentation fault (core dumped)"
+            },
+            {
+              "line": 357,
+              "text": "[   94s]  old passwd package postinst maintainer script subprocess failed with exit status 1"
+            },
+            {
+              "line": 364,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_setup\",\"state\":\"failed\"}"
+            }
+          ],
+          "tail": [
+            {
+              "line": 353,
+              "text": "[   94s] Note that both user and group IDs in the range 0-99 are globally"
+            },
+            {
+              "line": 354,
+              "text": "[   94s] allocated by the Debian project and must be the same on every Debian"
+            },
+            {
+              "line": 355,
+              "text": "[   94s] system."
+            },
+            {
+              "line": 356,
+              "text": "[   94s] dpkg: error processing package passwd (--install):"
+            },
+            {
+              "line": 357,
+              "text": "[   94s]  old passwd package postinst maintainer script subprocess failed with exit status 1"
+            },
+            {
+              "line": 358,
+              "text": "[   94s] Errors were encountered while processing:"
+            },
+            {
+              "line": 359,
+              "text": "[   94s]  passwd"
+            },
+            {
+              "line": 360,
+              "text": "[   94s] exit ..."
+            },
+            {
+              "line": 361,
+              "text": "[   94s] "
+            },
+            {
+              "line": 362,
+              "text": "[   94s] 239bde92c948 failed \"build pybigwig_0.3.23+dfsg-1build6.dsc\" at Mon Oct 19 22:01:49 UTC 2026."
+            },
+            {
+              "line": 363,
+              "text": "[   94s] "
+            },
+            {
+              "line": 364,
+              "text": "[build-case] [event] {\"event\":\"stage\",\"stage\":\"build_setup\",\"state\":\"failed\"}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

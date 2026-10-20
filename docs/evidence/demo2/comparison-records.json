@@ -1,0 +1,550 @@
+{
+  "source_archive": "demo2-evidence.tar.gz",
+  "source_archive_sha256": "3a5a399c348ce07510eecd7cf2b706c5766a86d8972525b8d59cf5f34d12fd13",
+  "notes": [
+    "Compact selected fields; raw build trees not included.",
+    "Configuration labels are archive directories, not a reconstruction of absent switches."
+  ],
+  "records": [
+    {
+      "configuration": "one-shot-v1",
+      "source_member": "demo2-evidence/one-shot-v1/runs.jsonl",
+      "run_id": "one-shot-v1--launchpad-noble-amd64-arm64-ectrans-50e45e72102d--r1",
+      "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+      "agent_version": "1.0.0+16e31a424d0d",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": null,
+      "wall_seconds": 98.4,
+      "usage": {
+        "input_tokens": 15985,
+        "output_tokens": 943
+      },
+      "edits_applied": 1,
+      "edits_proposed": 1,
+      "config": null
+    },
+    {
+      "configuration": "one-shot-v1",
+      "source_member": "demo2-evidence/one-shot-v1/runs.jsonl",
+      "run_id": "one-shot-v1--launchpad-noble-amd64-arm64-libmceliece-5020df9683fc--r1",
+      "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+      "agent_version": "1.0.0+16e31a424d0d",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": null,
+      "wall_seconds": 100.2,
+      "usage": {
+        "input_tokens": 18755,
+        "output_tokens": 1094
+      },
+      "edits_applied": 1,
+      "edits_proposed": 1,
+      "config": null
+    },
+    {
+      "configuration": "one-shot-v1",
+      "source_member": "demo2-evidence/one-shot-v1/runs.jsonl",
+      "run_id": "one-shot-v1--launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91--r1",
+      "case_id": "launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91",
+      "agent_version": "1.0.0+16e31a424d0d",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "no_edit_applied",
+      "agent_termination": null,
+      "wall_seconds": 21.2,
+      "usage": {
+        "input_tokens": 104251,
+        "output_tokens": 1470
+      },
+      "edits_applied": 0,
+      "edits_proposed": 1,
+      "config": null
+    },
+    {
+      "configuration": "one-shot-v1",
+      "source_member": "demo2-evidence/one-shot-v1/runs.jsonl",
+      "run_id": "one-shot-v1--launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2--r1",
+      "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+      "agent_version": "1.0.0+16e31a424d0d",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "no_edit_applied",
+      "agent_termination": null,
+      "wall_seconds": 13.5,
+      "usage": {
+        "input_tokens": 12391,
+        "output_tokens": 1976
+      },
+      "edits_applied": 0,
+      "edits_proposed": 7,
+      "config": null
+    },
+    {
+      "configuration": "one-shot-v1",
+      "source_member": "demo2-evidence/one-shot-v1/runs.jsonl",
+      "run_id": "one-shot-v1--launchpad-noble-amd64-arm64-ectrans-50e45e72102d--r2",
+      "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+      "agent_version": "1.0.0+16e31a424d0d",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": null,
+      "wall_seconds": 104.7,
+      "usage": {
+        "input_tokens": 15985,
+        "output_tokens": 1051
+      },
+      "edits_applied": 1,
+      "edits_proposed": 1,
+      "config": null
+    },
+    {
+      "configuration": "one-shot-v1",
+      "source_member": "demo2-evidence/one-shot-v1/runs.jsonl",
+      "run_id": "one-shot-v1--launchpad-noble-amd64-arm64-libmceliece-5020df9683fc--r2",
+      "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+      "agent_version": "1.0.0+16e31a424d0d",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": null,
+      "wall_seconds": 90.6,
+      "usage": {
+        "input_tokens": 18755,
+        "output_tokens": 527
+      },
+      "edits_applied": 1,
+      "edits_proposed": 1,
+      "config": null
+    },
+    {
+      "configuration": "one-shot-v1",
+      "source_member": "demo2-evidence/one-shot-v1/runs.jsonl",
+      "run_id": "one-shot-v1--launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91--r2",
+      "case_id": "launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91",
+      "agent_version": "1.0.0+16e31a424d0d",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "no_edit_applied",
+      "agent_termination": null,
+      "wall_seconds": 20.4,
+      "usage": {
+        "input_tokens": 104251,
+        "output_tokens": 1176
+      },
+      "edits_applied": 0,
+      "edits_proposed": 1,
+      "config": null
+    },
+    {
+      "configuration": "one-shot-v1",
+      "source_member": "demo2-evidence/one-shot-v1/runs.jsonl",
+      "run_id": "one-shot-v1--launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2--r2",
+      "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+      "agent_version": "1.0.0+16e31a424d0d",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "no_edit_applied",
+      "agent_termination": null,
+      "wall_seconds": 49.4,
+      "usage": {
+        "input_tokens": 12391,
+        "output_tokens": 3281
+      },
+      "edits_applied": 0,
+      "edits_proposed": 11,
+      "config": null
+    },
+    {
+      "configuration": "one-shot-v1",
+      "source_member": "demo2-evidence/one-shot-v1/runs.jsonl",
+      "run_id": "one-shot-v1--launchpad-noble-amd64-arm64-ectrans-50e45e72102d--r3",
+      "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+      "agent_version": "1.0.0+16e31a424d0d",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": null,
+      "wall_seconds": 105.7,
+      "usage": {
+        "input_tokens": 15985,
+        "output_tokens": 928
+      },
+      "edits_applied": 1,
+      "edits_proposed": 1,
+      "config": null
+    },
+    {
+      "configuration": "one-shot-v1",
+      "source_member": "demo2-evidence/one-shot-v1/runs.jsonl",
+      "run_id": "one-shot-v1--launchpad-noble-amd64-arm64-libmceliece-5020df9683fc--r3",
+      "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+      "agent_version": "1.0.0+16e31a424d0d",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": null,
+      "wall_seconds": 95.9,
+      "usage": {
+        "input_tokens": 18755,
+        "output_tokens": 682
+      },
+      "edits_applied": 1,
+      "edits_proposed": 1,
+      "config": null
+    },
+    {
+      "configuration": "one-shot-v1",
+      "source_member": "demo2-evidence/one-shot-v1/runs.jsonl",
+      "run_id": "one-shot-v1--launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91--r3",
+      "case_id": "launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91",
+      "agent_version": "1.0.0+16e31a424d0d",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "no_edit_applied",
+      "agent_termination": null,
+      "wall_seconds": 28.2,
+      "usage": {
+        "input_tokens": 104251,
+        "output_tokens": 830
+      },
+      "edits_applied": 0,
+      "edits_proposed": 1,
+      "config": null
+    },
+    {
+      "configuration": "one-shot-v1",
+      "source_member": "demo2-evidence/one-shot-v1/runs.jsonl",
+      "run_id": "one-shot-v1--launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2--r3",
+      "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+      "agent_version": "1.0.0+16e31a424d0d",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "no_edit_applied",
+      "agent_termination": null,
+      "wall_seconds": 13.6,
+      "usage": {
+        "input_tokens": 12391,
+        "output_tokens": 1946
+      },
+      "edits_applied": 0,
+      "edits_proposed": 8,
+      "config": null
+    },
+    {
+      "configuration": "full-history-on",
+      "source_member": "demo2-evidence/full-history-on/runs.jsonl",
+      "run_id": "full-history-on--launchpad-noble-amd64-arm64-ectrans-50e45e72102d--r1",
+      "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+      "agent_version": "0.1.0+948ce2940473",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "token_budget",
+      "wall_seconds": 348.6,
+      "usage": {
+        "input_tokens": 89923,
+        "output_tokens": 10660
+      },
+      "edits_applied": 2,
+      "edits_proposed": 2,
+      "config": {
+        "use_build_feedback": true,
+        "use_evidence_manager": true,
+        "use_history": true,
+        "use_tools": true
+      }
+    },
+    {
+      "configuration": "full-history-on",
+      "source_member": "demo2-evidence/full-history-on/runs.jsonl",
+      "run_id": "full-history-on--launchpad-noble-amd64-arm64-libmceliece-5020df9683fc--r1",
+      "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+      "agent_version": "0.1.0+948ce2940473",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "repeated_diagnostic",
+      "wall_seconds": 302.5,
+      "usage": {
+        "input_tokens": 44413,
+        "output_tokens": 7415
+      },
+      "edits_applied": 2,
+      "edits_proposed": 2,
+      "config": {
+        "use_build_feedback": true,
+        "use_evidence_manager": true,
+        "use_history": true,
+        "use_tools": true
+      }
+    },
+    {
+      "configuration": "full-history-on",
+      "source_member": "demo2-evidence/full-history-on/runs.jsonl",
+      "run_id": "full-history-on--launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91--r1",
+      "case_id": "launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91",
+      "agent_version": "0.1.0+948ce2940473",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "no_edit_applied",
+      "agent_termination": "token_budget",
+      "wall_seconds": 91.6,
+      "usage": {
+        "input_tokens": 106047,
+        "output_tokens": 8962
+      },
+      "edits_applied": 0,
+      "edits_proposed": 1,
+      "config": {
+        "use_build_feedback": true,
+        "use_evidence_manager": true,
+        "use_history": true,
+        "use_tools": true
+      }
+    },
+    {
+      "configuration": "full-history-on",
+      "source_member": "demo2-evidence/full-history-on/runs.jsonl",
+      "run_id": "full-history-on--launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2--r1",
+      "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+      "agent_version": "0.1.0+948ce2940473",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "repeated_diagnostic",
+      "wall_seconds": 583.3,
+      "usage": {
+        "input_tokens": 51709,
+        "output_tokens": 8321
+      },
+      "edits_applied": 2,
+      "edits_proposed": 2,
+      "config": {
+        "use_build_feedback": true,
+        "use_evidence_manager": true,
+        "use_history": true,
+        "use_tools": true
+      }
+    },
+    {
+      "configuration": "full-history-on",
+      "source_member": "demo2-evidence/full-history-on/runs.jsonl",
+      "run_id": "full-history-on--launchpad-noble-amd64-arm64-ectrans-50e45e72102d--r2",
+      "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+      "agent_version": "0.1.0+948ce2940473",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "token_budget",
+      "wall_seconds": 377.5,
+      "usage": {
+        "input_tokens": 97474,
+        "output_tokens": 13026
+      },
+      "edits_applied": 2,
+      "edits_proposed": 2,
+      "config": {
+        "use_build_feedback": true,
+        "use_evidence_manager": true,
+        "use_history": true,
+        "use_tools": true
+      }
+    },
+    {
+      "configuration": "full-history-on",
+      "source_member": "demo2-evidence/full-history-on/runs.jsonl",
+      "run_id": "full-history-on--launchpad-noble-amd64-arm64-libmceliece-5020df9683fc--r2",
+      "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+      "agent_version": "0.1.0+948ce2940473",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "repeated_diagnostic",
+      "wall_seconds": 499.8,
+      "usage": {
+        "input_tokens": 57652,
+        "output_tokens": 7315
+      },
+      "edits_applied": 2,
+      "edits_proposed": 2,
+      "config": {
+        "use_build_feedback": true,
+        "use_evidence_manager": true,
+        "use_history": true,
+        "use_tools": true
+      }
+    },
+    {
+      "configuration": "full-history-on",
+      "source_member": "demo2-evidence/full-history-on/runs.jsonl",
+      "run_id": "full-history-on--launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91--r2",
+      "case_id": "launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91",
+      "agent_version": "0.1.0+948ce2940473",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "repeated_diagnostic",
+      "wall_seconds": 542.3,
+      "usage": {
+        "input_tokens": 90334,
+        "output_tokens": 10295
+      },
+      "edits_applied": 3,
+      "edits_proposed": 3,
+      "config": {
+        "use_build_feedback": true,
+        "use_evidence_manager": true,
+        "use_history": true,
+        "use_tools": true
+      }
+    },
+    {
+      "configuration": "full-history-on",
+      "source_member": "demo2-evidence/full-history-on/runs.jsonl",
+      "run_id": "full-history-on--launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2--r2",
+      "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+      "agent_version": "0.1.0+948ce2940473",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "token_budget",
+      "wall_seconds": 339.8,
+      "usage": {
+        "input_tokens": 93563,
+        "output_tokens": 13786
+      },
+      "edits_applied": 1,
+      "edits_proposed": 2,
+      "config": {
+        "use_build_feedback": true,
+        "use_evidence_manager": true,
+        "use_history": true,
+        "use_tools": true
+      }
+    },
+    {
+      "configuration": "full-history-on",
+      "source_member": "demo2-evidence/full-history-on/runs.jsonl",
+      "run_id": "full-history-on--launchpad-noble-amd64-arm64-ectrans-50e45e72102d--r3",
+      "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+      "agent_version": "0.1.0+948ce2940473",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "token_budget",
+      "wall_seconds": 354.7,
+      "usage": {
+        "input_tokens": 94939,
+        "output_tokens": 11615
+      },
+      "edits_applied": 2,
+      "edits_proposed": 2,
+      "config": {
+        "use_build_feedback": true,
+        "use_evidence_manager": true,
+        "use_history": true,
+        "use_tools": true
+      }
+    },
+    {
+      "configuration": "full-history-on",
+      "source_member": "demo2-evidence/full-history-on/runs.jsonl",
+      "run_id": "full-history-on--launchpad-noble-amd64-arm64-libmceliece-5020df9683fc--r3",
+      "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+      "agent_version": "0.1.0+948ce2940473",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "repeated_diagnostic",
+      "wall_seconds": 372.1,
+      "usage": {
+        "input_tokens": 81984,
+        "output_tokens": 13760
+      },
+      "edits_applied": 2,
+      "edits_proposed": 3,
+      "config": {
+        "use_build_feedback": true,
+        "use_evidence_manager": true,
+        "use_history": true,
+        "use_tools": true
+      }
+    },
+    {
+      "configuration": "full-history-on",
+      "source_member": "demo2-evidence/full-history-on/runs.jsonl",
+      "run_id": "full-history-on--launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91--r3",
+      "case_id": "launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91",
+      "agent_version": "0.1.0+948ce2940473",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "no_edit_applied",
+      "agent_termination": "token_budget",
+      "wall_seconds": 57.9,
+      "usage": {
+        "input_tokens": 95958,
+        "output_tokens": 8360
+      },
+      "edits_applied": 0,
+      "edits_proposed": 1,
+      "config": {
+        "use_build_feedback": true,
+        "use_evidence_manager": true,
+        "use_history": true,
+        "use_tools": true
+      }
+    },
+    {
+      "configuration": "full-history-on",
+      "source_member": "demo2-evidence/full-history-on/runs.jsonl",
+      "run_id": "full-history-on--launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2--r3",
+      "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+      "agent_version": "0.1.0+948ce2940473",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "repeated_diagnostic",
+      "wall_seconds": 624.2,
+      "usage": {
+        "input_tokens": 86602,
+        "output_tokens": 17545
+      },
+      "edits_applied": 2,
+      "edits_proposed": 2,
+      "config": {
+        "use_build_feedback": true,
+        "use_evidence_manager": true,
+        "use_history": true,
+        "use_tools": true
+      }
+    }
+  ]
+}

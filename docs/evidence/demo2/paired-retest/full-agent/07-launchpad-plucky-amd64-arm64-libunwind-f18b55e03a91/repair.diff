@@ -1,0 +1,12 @@
+--- a/input/tests/Makefile.am
++++ b/input/tests/Makefile.am
+@@ -97,6 +97,9 @@
+ 			test-mem test-reg-state Ltest-varargs		 \
+ 			Ltest-nomalloc Ltest-nocalloc Lrs-race
+  noinst_PROGRAMS_cdep += forker Gperf-simple Lperf-simple \
++Lperf-simple_LDFLAGS = -lgcc_s
++Gperf-simple_LDFLAGS = -lgcc_s
++Gperf-trace_LDFLAGS = -lgcc_s
+ 			Gperf-trace Lperf-trace
+ 
+ # unw_init_local2() is not implemented on ia64

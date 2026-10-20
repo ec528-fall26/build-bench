@@ -1,0 +1,10 @@
+--- a/input/debian/control
++++ b/input/debian/control
+@@ -7,7 +7,6 @@
+                pybuild-plugin-pyproject,
+                libcurl4-gnutls-dev,
+                zlib1g-dev,
+-               libbigwig-dev,
+                python3-all,
+                python3-all-dev,
+                python3-numpy,

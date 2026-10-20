@@ -1,0 +1,19 @@
+--- a/input/CMakeLists.txt
++++ b/input/CMakeLists.txt
+@@ -17,6 +17,16 @@
+ ### Find (optional) dependencies 
+ 
+ ecbuild_find_package( NAME fiat REQUIRED )
++# Adjust include directory for fiat on this architecture
++set_target_properties(fiat PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}/fortran")
++
++# Clear invalid include directories for parkind targets on this architecture
++if(TARGET parkind_dp)
++  set_target_properties(parkind_dp PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}/fortran")
++endif()
++if(TARGET parkind_sp)
++  set_target_properties(parkind_sp PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}/fortran")
++endif()
+ 
+ ecbuild_add_option( FEATURE MPI 
+                     DESCRIPTION "Support for MPI distributed memory parallelism"

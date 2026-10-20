@@ -2,12 +2,14 @@
 
 **Team:** Anthony Capraru, Austin Li, Joonseo Moon, Juliette Jacques, Owen Zhang
 **Mentor:** Minghua Ma, Microsoft
-**Demo 2 snapshot:** 19 October 2026; due on `demo-2`. Update this document for Demo 3 and the final.
+**Demo 2 evaluation snapshot:** 19 October 2026. **Documentation and readiness update:** 20 October 2026. Due on `demo-2`; update for Demo 3 and the final.
 
 
-This document describes the implemented local research pipeline through commit `001f3b9`, not only the original proposal. The main Demo 2 deliverable is the frozen one-shot repair pipeline and its public-case evaluation. The iterative full agent is a separate extension. TA entry points are `scripts/demo2_demo.py` for individual demonstrations and `scripts/demo2_retest.py` for the complete retest. The entry point adds reproducibility checks and records; it does not change either repair agent. Commit these files to `demo-2` before the TA clones it. Each run records its actual Git commit, source hashes, settings and outcome. Do not imply that results from earlier versions were produced by the current version.
+This document describes the implemented local research pipeline through commit `001f3b9`, not only the original proposal. The main Demo 2 deliverable is the frozen one-shot repair pipeline and its public-case evaluation. The iterative full agent is a separate extension. TA entry points are `scripts/demo2_demo.py` for individual demonstrations and `scripts/demo2_retest.py` for the complete retest. The entry point adds reproducibility checks and records; it does not change either repair agent. The handoff files are committed on `demo-2`; record the exact checkout used by the TA. Each run records its actual Git commit, source hashes, settings and outcome. Do not imply that results from earlier versions were produced by the current version.
 
 **What works:** a real package can be unpacked, inspected, edited, repackaged and validated on ARM64. There are recorded live-model rcran repairs and a scripted full-agent failed-build/revision/success demonstration. **What does not yet work reliably:** autonomous repair of the harder development cases, including Rust Subversion. An assisted Rust repair builds successfully, but it is not an autonomous success. **The latest one-shot retest completed all ten development cases:** zero repairs, five failed candidate builds, four runs with no edit applied, and one case that already built unchanged. Rcran was tested separately and also failed in this repeat. See [the completed one-shot results](demo2-one-shot-results.md). The full-agent retest also completed all eleven evaluations and repaired rcran autonomously (1/11 overall, 0/10 bundle). Log review found all five reverse-direction cases blocked during environment setup in both arms. The four source-evaluable development cases remained unrepaired. See [the paired diagnostic review](demo2-comparison-diagnostics.md) for the complete case table, evidence and remaining work.
+
+**Hosted compatibility update (20 October):** The organizer guide now specifies the hosted model channel: `BB_MODEL_BASE_URL`, `BB_MODEL_NAME`, and a short-lived credential read from `BB_MODEL_TOKEN_FILE`. Local `bb test` and `bb ready` do not inject this access. Our rc.2 one-shot readiness test passed submission validation but made no model call because it received no API key; it produced no edits and did not pass readiness. The hosted adapter and Hosted Smoke remain unverified. The official platform does not offer agent-requested builds during a run, so the local full-agent build loop is not a demonstrated hosted capability. These findings do not change the October 19 repair counts. See §§1.5 and 4.5–4.6.
 
 ## 1. Architecture
 
@@ -58,7 +60,7 @@ For rcran, the original failure is an x86-only `xmmintrin.h` include enabled on 
 
 Agent paths in this document are relative to `buildbench-starter-kit-0.1.0-rc.2/`. The baseline tag is `one-shot-v1`. Before the live retest the driver checks that `agents/one-shot/` has no tracked difference from that tag and records source hashes. It does not insert a known repair or change the baseline prompt. The supplied reference fix is used only by explicitly named replay controls.
 
-### 1.2 Extension: iterative full-agent architecture
+### 1.2 Local research extension: iterative full-agent architecture
 
 ```mermaid
 flowchart TD
@@ -95,7 +97,7 @@ This extension adds structured diagnostics, tool use, multiple candidate builds,
 | Build adapter | `harness/build_feedback.py` | Copy candidate, repack its Debian source, run the organizer's local validator, parse feedback without modifying the agent's retained tree. |
 | Results | `harness/record.py`, `harness/summarize.py` | Independent final verdict, append-only run records, timing, usage, failure reasons and diff classification. |
 
-Agent module paths above are relative to `buildbench-starter-kit-0.1.0-rc.2/`. The harness is outside the submitted agent. Its Docker access and local credentials are host-side development facilities; the hosted build-feedback implementation is not established by a successful local run. This prototype uses a direct local callback, not the originally proposed file bridge.
+Agent module paths above are relative to `buildbench-starter-kit-0.1.0-rc.2/`. The harness is outside the submitted agent. Its Docker access and local credentials are host-side development facilities; the current organizer contract does not provide an in-run official build interface. This prototype uses a direct local callback, not the originally proposed file bridge. Its repeated candidate builds are a local research facility. Hosted adaptation must not assume that callback or Docker access exists; any official multi-round repair schedule is organizer-controlled.
 
 ### 1.4 Full-agent state, edits and correctness
 
@@ -115,6 +117,29 @@ AND artifact_validation_passed == true
 ```
 
 An applied edit, model claim, `status: completed`, or zero harness exit code does not establish repair. `patch_applied` is not the success predicate: this harness transports changes inside a rebuilt source package rather than the validator's separate patch mechanism.
+
+### 1.5 Hosted contract and required adaptation
+
+This section records requirements from the supplied organizer participation and model-access PDFs, reviewed on 20 October 2026. It describes the migration target, **not an implemented or qualified hosted adapter**. The guide names Starter Kit `0.1.0-rc.5`; the recorded research implementation and readiness attempt used rc.2. Keep the historical baseline and its source hashes intact while developing a separately versioned hosted submission.
+
+| Concern | Recorded local implementation | Hosted contract / required work |
+| --- | --- | --- |
+| Model configuration | Bedrock endpoint and `BB_MODEL_API_KEY`; recorded supplier model ID | Read injected `BB_MODEL_BASE_URL`, `BB_MODEL_NAME`, and `BB_MODEL_TOKEN_FILE`. Use the alias unchanged and read the file's contents as the credential. Never substitute a personal key for an invalid hosted credential. |
+| Connectivity | Host-side HTTPS access to Bedrock | Organizer prepares model access before entrypoint startup while outbound networking remains disabled. Use the supplied interface; do not enable arbitrary external access or hard-code its host, port or credential path. |
+| API | Existing OpenAI-compatible client and JSON reply parser | Chat Completions only: `/v1/chat/completions`; Responses is not part of this contract. When using the SDK, pass the injected base URL (already including `/v1`) as `base_url`. |
+| Model actions | One-shot edits/rationale; full-agent JSON action protocol | Native function tools are supported, but executed and validated by the agent. They grant no official build or Docker access. Strict JSON Schema final-answer output is not supported; our reply-text JSON approach may remain, subject to hosted testing. |
+| Workspace and repair | Local harness materializes `work/input/` and saves a diff | Resolve from `BB_WORKSPACE`; read `/workspace/input`, modify only permitted paths in `/workspace/work/repo`, and write `/workspace/output/agent-result.json`. Audit path mapping; do not confuse read-only hosted input with the local source-tree prefix. |
+| Completion and errors | Observed missing-key run exited normally with `status: completed` | If model initialization prevents progress, log the failure stage/type without secrets and exit nonzero. Normal protocol completion is not proof of a successful model call or repair. |
+| Build feedback | Harness copies, repacks and builds candidates during the loop | No agent-requested official builds within a run. If repair rounds are arranged, organizers provide updated logs to the same confirmed agent; teams cannot intervene or replace it between rounds. |
+| Final repair | Harness transports edited source in a repacked Debian package | Final worktree state defines the repair. Platform derives a canonical diff, reapplies it to a clean case and independently validates. An unapplied patch in output is insufficient. |
+
+**Request handling to audit before submission.** Use the injected model alias and a nonempty Chat messages array with isolated per-case history, `store=false`, and one completion (`n=1`). Use `max_completion_tokens` with a positive value no larger than 32,768; do not also send `max_tokens` or `max_output_tokens`. The approximate 1.05M context window is separate from the output ceiling, which includes reasoning and tool-call tokens. Each request body may be at most 16 MiB. Disable SDK automatic retries. After a timeout or interrupted stream, preserve diagnostics and avoid automatic retries. A 401/403 requires checking the injected credential; 409 forbids concurrent calls; 429 requires stopping new calls and reviewing the error. Length-limited, refused or interrupted output is not a complete success. Do not depend on unlisted sampling or reasoning settings.
+
+The SDK example uses `max_retries=0`, an explicit timeout, `trust_env=False`, and `Accept-Encoding: identity`. Its example package pins (`openai==2.54.0`, `httpx==0.28.1`) are not installed requirements of our historical standard-library client. If adopted, pin and test them in the new submission. Function-tool histories must preserve `tool_call_id`; streaming clients must assemble deltas, check completion and terminal usage. The guide recommends `parallel_tool_calls=false` in its tool row but elsewhere says parallel-tool-call options are outside the interface specification; verify this detail against the current guide before depending on the option. Sequential calls are required by the per-case concurrency rule.
+
+**Hosted Smoke budgets in the supplied guide:** up to 10 minutes per model request, 20 minutes for agent execution including calls/tools, 15 minutes each for initial and final build validation, and 60 minutes for the entire smoke run excluding queue wait. Requests are also bounded by remaining agent time. These are Hosted Smoke limits, not the historical local budgets or announced Full Evaluation case limits. The 128-token and 620-second SDK example settings are examples, not additional allowances.
+
+Hosted Smoke must establish **at least one successful official model call and a successful independent repair validation**. Development Validation checks uploaded repaired worktrees; it does not execute the agent or validate this model channel. A local replay, `bb demo`, unit tests, or local submission validation cannot substitute for Hosted Smoke.
 
 ## 2. Design decisions and failed approaches
 
@@ -150,9 +175,9 @@ Committed full-agent defaults at the documented code milestone: five attempts, t
 
 The TA wrapper uses the source defaults actually present and records them in `settings.json`. It resets inherited ablation/strategy/review/trace settings explicitly. It does not silently raise limits or edit source. The `--review` option activates shared-cause investigation and proposed-diff review for a live full-agent run only. Default controls and replay use review off, because scripted replies do not contain approval actions.
 
-## 3. Setup from a clean AWS instance
+## 3. Setup from a clean AWS instance for the recorded local experiments
 
-This guide uses only the **rcran-v1** and **development-v1 ten-case validator bundles**, plus this repository. The bundles contain their runtime images, original sources, target configurations and frozen dependencies. Do not download the general 200-case development dataset, a separate runtime image release, or an assisted repair.
+This guide uses only the **rcran-v1** and **development-v1 ten-case validator bundles**, plus this repository. The bundles contain their runtime images, original sources, target configurations and frozen dependencies. No general 200-case development dataset, separate Starter Kit runtime-image release, or assisted repair is needed for this local reproduction route. The separate current-kit hosted qualification route in §4.6 uses its own release-pinned images; do not mix that environment into the historical reproduction checkout.
 
 The recorded evaluation used code commit `001f3b9dd15f89665794609c8b04b73acfae167e`. The helper below restores that source and the saved full-agent limits in a separate directory. It does not promise identical model outputs or an identical host environment. The new TA wrappers have offline tests; this fresh-instance walkthrough still needs a real acceptance run.
 
@@ -280,7 +305,9 @@ python3 scripts/demo2_demo.py controls \
 
 Expected: the positive known-fix control produces a verified repair; the negative comment-only control applies a change and fails its build. Both results must be recorded. These are scripted infrastructure controls, not autonomous successes. Inspect the new output directory's `summary.json`, console logs and `runs/*/record.json`. Stop and diagnose if either control fails its expected check. Reconnect with `tmux attach -t demo2-ta`.
 
-### 4.2 Short-term Bedrock API key for live runs
+### 4.2 Short-term Bedrock API key for local live runs
+
+This section is for the team's local research harness only. Hosted submissions use the organizer-injected token file (§1.5), not a Bedrock key. Local `bb ready` does not inject official model access.
 
 Use a **short-term Amazon Bedrock API key generated in us-east-1**. In the AWS Bedrock console choose the region, then **API keys → Short-term API keys → Generate short-term API keys**. The generating identity needs permission to use the model. AWS documents that the key inherits that identity's permissions, is region-specific, and expires at the earlier of the session expiry or 12 hours. See [AWS key-generation instructions](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-generate.html).
 
@@ -351,6 +378,61 @@ The recorded single repeat was one-shot 0/11, full agent 1/11 (rcran), with five
 Retain the handoff commit, prepared profile, plan, settings, records, patches, baseline/candidate/final logs and summaries. Check that a claimed success has both validator success and passed expected-artifact validation. Review setup-stage failures separately. Stop the AWS instance after exporting the evidence.
 
 Handoff acceptance remains pending until a fresh host passes bundle verification, offline tests, both real rcran controls and at least one recorded live invocation. The code/document update itself did not provision AWS, test website account access, call Bedrock or build packages. The five reverse cases and hosted competition qualification remain separately unresolved.
+### 4.5 Recorded local readiness check (20 October 2026)
+
+**Purpose:** distinguish package validation from model integration and repair success. This was an additional check of the committed one-shot package, not a rerun of the 22-case research evaluation.
+
+| Item | Observed evidence |
+| --- | --- |
+| Checkout | `8724cf7` on `demo-2` (short commit printed by Git; full SHA saved in the host evidence directory) |
+| Agent / kit | `agents/one-shot`, version `1.0.0`, entrypoint `python -m src.main`; Starter Kit rc.2 |
+| Image configuration | Published rc.3 validator and example-assets images, supplied through environment overrides; mixed-version compatibility check, not an rc.5 qualification |
+| Submission check | Passed; 9 files, 40,077 bytes |
+| Local case | `hello` prepared and original build failure reproduced |
+| Agent result | Zero proposed and applied edits; message: `No model API key configured (set BB_MODEL_API_KEY).`; `status: completed` |
+| Runner result | Patch generation reported `Agent made no allowed textual change`; case `runner_error`, 0/1 passed, `bb ready` exit code 5 |
+| Interpretation | No model call and no candidate repair were tested. This is not evidence that the model failed to solve hello, and it is not a readiness pass. |
+
+The inspected rc.2 agent launch uses `--network none` and forwards neither `BB_MODEL_API_KEY` nor an organizer model credential. Refreshing a key in the host shell cannot fix that unchanged launch. The participation guide explicitly says local `bb test` and `bb ready` do not inject official model access, and directs model-dependent agents to local check/package followed by Hosted Smoke. We will not remove the network restriction or hard-code a hello repair to claim qualification.
+
+Earlier attempts stopped before agent execution: an output ZIP outside the kit was rejected (exit 2), then unavailable default validator/example-assets images blocked preparation (exit 3). Published rc.3 overrides allowed the test to reach agent execution. The final image references were:
+
+```text
+ghcr.io/terriyyy/buildbench-validator-runtime@sha256:11151f88f6b12c578b9c9fafd0420d6da27c6969b5909aaa4c51e78dd9acd7c7
+ghcr.io/terriyyy/buildbench-example-assets@sha256:98bdf0f445cf0296f67ffc8b4601ab1cb1f82b957f84bd9739276f5659cdde54
+```
+
+Evidence remains on the team's EC2 host; this documentation update does not claim it has been imported into Git:
+
+```text
+/home/ubuntu/buildbench-experiments/bb-ready-oneshot-20261020T175811Z/
+  commit.txt, runtime-images.txt, ready.log, exit-code.txt
+/home/ubuntu/build-bench-demo2/buildbench-starter-kit-0.1.0-rc.2/runs/tests/one-shot/20261020T175827Z-2260/
+  summary.json, progress.log
+  cases/hello/agent-result.json, agent.log, initial-build-result.json, initial-build.log
+```
+
+Archive the compact records and image references without credentials. Do not report this as a completed `bb package` run or as evidence of a valid final ZIP: readiness stopped at the example test.
+
+### 4.6 Separate hosted qualification plan (not yet executed)
+
+This is a future submission workflow, not a prerequisite for reproducing §§3–4.3. Use a separate directory and the current release documented by the organizers (rc.5 in the supplied PDF), with its own pinned runtime images. Do not upgrade the historical research checkout in place or relabel past results as rc.5 runs.
+
+1. Download and verify the current versioned Starter Kit from [Data & Downloads](https://matrix.cstcloud.cn/build-bench/data-downloads.html), or follow the official [baseline repository](https://github.com/AIOps-Lab-NKU/BuildBench-Agent-Baseline) instructions and record its exact commit. Read that kit's contract before adapting an agent. The PDF specifies Linux/WSL2 and Docker Engine 24+ or Docker Desktop with Linux containers.
+2. Run `./bb doctor` and `./bb demo` in that kit. Demo uses the official example agent, not ours; its success qualifies the example environment only.
+3. Create a separately versioned hosted agent, implement the injected model configuration and error handling in §1.5, audit permitted worktree paths and request parameters, and pin all third-party dependencies. Preserve the frozen local baseline unchanged. This document update has not implemented these changes.
+4. In the current kit, run the following **after** the adapted agent exists at `agents/demo2-hosted`. These are documented target commands, not completed checks:
+
+```bash
+./bb check --agent ./agents/demo2-hosted &&
+./bb package --agent ./agents/demo2-hosted
+```
+
+5. Record the exact source version, kit release, ZIP path, size and SHA-256. The package root must contain `agent.yaml`, `src/`, `requirements.lock`, and `README.md`; exclude credentials, generated evidence and case-specific answer patches. Upload the kit-produced ZIP through My Submissions, then run Hosted Smoke. An adapter change requires a new immutable version.
+6. Retain the submission/run IDs and redacted logs establishing both an official model call and independent repair validation. Only then mark hosted integration qualified. Confirming a final version is a separate team action; do not select or finalize a version as part of this documentation update.
+
+The supplied guide retains a general local-example checklist alongside its explicit exception for model-dependent agents. We record the local failure honestly and follow its check/package/Hosted Smoke guidance; we do not describe local readiness as passed or fabricate an offline success. According to the supplied guide, final confirmation is due by the end of 13 November 2026, Beijing time (UTC+8), is irreversible, and requires current Hosted Smoke revalidation. Verify the current organizer notice before acting; no final confirmation or Full Evaluation was performed here.
+
 ## 5. Claims, milestones and limitations
 
 ### 5.1 Milestone accountability
@@ -358,10 +440,10 @@ Handoff acceptance remains pending until a fresh host passes bundle verification
 | Original commitment | Current evidence/status | Remaining work |
 | --- | --- | --- |
 | Demo 2: compatible end-to-end LLM prototype and materialized Debian trace | **Local prototype demonstrated.** rcran live repairs documented; model/tool/edit/build records implemented. Commands above expose both controls and live paths. | No additional implementation required for this local prototype milestone. |
-| Demo 2: runnable packaged agent; starter compatibility documented | **Local harness is not hosted qualification.** Agent entrypoint and kit packaging exist, but this document has not verified current `bb ready`/Hosted Smoke Test success. | Run and retain current packaging/compatibility checks; report any blocker. Do not replace them with unit-test counts. |
+| Demo 2: runnable packaged agent; starter compatibility documented | **Submission validation observed; hosted qualification open.** rc.2 + rc.3-image one-shot check passed static validation, but hello produced no edits because no model credential was supplied (§4.5). | Implement the hosted configuration/error adapter in a separate version; check/package using the current kit and pass Hosted Smoke. Preserve the local failure evidence. |
 | Demo 2: freeze/evaluate ten public cases, aiming five per direction | **Coverage complete for both agents, one repeat per case.** One-shot bundle: five `build_failed`, four `no_edit_applied`, one `case_not_failing`; zero repairs. Full agent: zero bundle repairs, plus a verified rcran repair. Original records and plans are imported. | Five reverse cases failed during environment setup in both arms; rerun their intended source failures after fixing setup. Keep the unchanged case separate. This is not the future controlled repeated comparison. |
 | Demo 3: history-based revision and ablation | Loop/history implemented early; scripted revision works and live Rust attempts show sequential changes. | Controlled history-on/off comparison with common settings on the frozen set; no measured history benefit claimed yet. |
-| Demo 3: measurable improvement | **Not demonstrated.** Both recorded arms are 0/12 on the four harder cases. | Freeze version/budgets, run planned paired repeats, report gains and regressions. |
+| Demo 3: measurable improvement | **Not demonstrated.** Each arm repaired 0/4 source-evaluable development cases in the latest single-repeat retest. | Freeze version/budgets, run planned paired repeats, report gains and regressions. |
 | Final: 40-case evaluation and second targeted improvement | Future work, not completed by this prototype. | Preserve package-group holdout and avoid tuning on held-out cases. |
 
 The proposal explicitly promised **no minimum Demo 2 repair rate**, but did promise evaluation coverage and a runnable prototype. Successful rcran demonstrates a real capability. Ten-case evaluation completion depends on recorded coverage, not repair count; packaging verification is a separate obligation. Announce any milestone revision rather than silently changing the denominator.
@@ -383,7 +465,7 @@ Known limitations include repeated prompt cost, limited cross-file reasoning, st
 
 ### 5.3 Findings from the completed paired retest
 
-The full diagnostic review is [Demo 2 comparison diagnostics](demo2-comparison-diagnostics.md). Both plans record commit `001f3b9dd15f89665794609c8b04b73acfae167e`. The full agent used default strategy, history on and **proposal review off**, with local limits of 1M tokens, 80 turns, 10 loop builds, 12 attempts, 200 tool calls and 7,200 seconds. The TA scripts use recorded source defaults; they do not reproduce these elevated limits automatically. Optional review and shared-cause features were not evaluated by this paired run.
+The full diagnostic review is [Demo 2 comparison diagnostics](demo2-comparison-diagnostics.md). Both plans record commit `001f3b9dd15f89665794609c8b04b73acfae167e`. The full agent used default strategy, history on and **proposal review off**, with local limits of 1M tokens, 80 turns, 10 loop builds, 12 attempts, 200 tool calls and 7,200 seconds. The `demo2_prepare_recorded.py` helper in §3.3 explicitly restores these elevated limits and verifies recorded source hashes in a separate checkout. Without that preparation, wrappers use the source defaults present; they do not silently raise limits. Optional review and shared-cause features were not evaluated by this paired run.
 
 | Latest evidence | One-shot | Full agent |
 | --- | ---: | ---: |
@@ -398,7 +480,7 @@ The full agent changed `HAVE_MM_PREFETCH` from 1 to 0 in the rcran configuration
 
 Frozen dependencies and a validator runtime did not prevent host/emulation setup crashes. All five x86-target baseline logs contain QEMU crashes and finish in setup/infrastructure failure. Their underlying intended source defects were not evaluated successfully. The high-level harness categories can mislabel such runs as ordinary build failures or no edit; future reporting must retain raw verdicts while exposing stage-based categories.
 
-Immediate work is to qualify the reverse-direction environment, improve stage classification and proposal accounting, and test edit-correction changes against saved failures. Later work is controlled repeats/history ablation, hosted compatibility validation and broader cases. The Rust full-agent run exhausted twelve correction responses before applying a batch; its zero proposed-edit summary does not mean the model never proposed edits. Increasing token limits alone has not established a solution.
+Immediate work is to qualify the reverse-direction environment, improve stage classification and proposal accounting, and test edit-correction changes against saved failures. Later work is controlled repeats/history ablation and broader cases. Hosted compatibility requires the separately versioned adapter and qualification workflow in §§1.5 and 4.6; an in-run official build callback is unavailable under the supplied contract. The Rust full-agent run exhausted twelve correction responses before applying a batch; its zero proposed-edit summary does not mean the model never proposed edits. Increasing token limits alone has not established a solution.
 
 ### 5.4 Handoff acceptance checklist
 
@@ -407,11 +489,11 @@ Before the team calls the handoff ready:
 - Commit this document, driver, driver tests and compact evidence to `demo-2`; record the full commit used by the TA.
 - Provide repository and validator-archive access; verify bundle checksums on the TA host.
 - Run both replay commands on that commit and preserve their real build results. Run at least one live rcran example and preserve its actual outcome, even if it fails.
-- Verify current packaged-agent checks and report hosted/local boundaries honestly.
+- Preserve the observed readiness failure (§4.5). Complete current-kit check/package and Hosted Smoke only after the hosted adapter is implemented; do not describe these as already passed.
 - Preserve the imported 22 run records and the paired diagnostic table. Keep setup-blocked cases, the unchanged successful case, genuine source-repair failures and the rcran repair distinct. Re-run the five reverse cases after environment qualification; keep assisted successes separate.
 - Keep credentials, unpacked dependency bundles and build trees out of Git and the submitted agent ZIP.
 
-The accompanying drivers were tested offline during document preparation. No new EC2 build or paid model experiment was performed by preparing these files. A passing clean-machine walkthrough is the remaining acceptance gate, not an assumed result.
+The accompanying drivers were tested offline during document preparation. This documentation revision performed no new EC2 build or paid model experiment; §4.5 records the separate readiness test supplied by the team. A passing clean-machine walkthrough is the remaining acceptance gate, not an assumed result.
 
 ### Source map
 
@@ -421,4 +503,7 @@ The accompanying drivers were tested offline during document preparation. No new
 - `reviewed-repairs.md`: optional replace-all and proposed-review semantics.
 - `evidence/demo2/comparison-records.json`: older compact 24-run archive evidence; not the new ten-case run.
 - `demo2-one-shot-results.md` and `evidence/demo2/one-shot-retest-summary.json`: completed eleven-case one-shot aggregate verified against imported original records. The paired-retest evidence contains both plans, summaries, all 22 records, actual patches and line-numbered log excerpts.
-- Organizer bundle READMEs and manifests: pinned runtime/dependencies and platform requirements. No current external policy/date claims are inferred from older proposal notes.
+- Organizer bundle READMEs and manifests: pinned local runtime/dependencies and platform requirements.
+- Supplied `Participate | Build-Bench Challenge.pdf` and `Model Access.pdf`, reviewed 20 October 2026: hosted contract, model configuration, local/hosted distinction and qualification requirements. The Participate PDF includes expanded request/error/adaptation sections absent from the collapsed view in the earlier PDF. Source links extracted from the supplied PDF: [participation and model access](https://matrix.cstcloud.cn/build-bench/submission.html?lang=en#model-access), [versioned model-access guide](https://matrix.cstcloud.cn/build-bench/downloads/model-access-v0.1-20261016/model-access.en.md), and [guide checksums](https://matrix.cstcloud.cn/build-bench/downloads/model-access-v0.1-20261016/MODEL_ACCESS_SHA256SUMS). Policy statements here describe those supplied snapshots, not an independent verification of later website changes.
+- [Runtime images rc.3 release](https://github.com/terriyyy/BuildBench-Runtime-Images/releases/tag/v0.1.0-rc.3): image digests used in the mixed-version readiness attempt. These are not asserted to be rc.5's pins.
+- Team-pasted EC2 output from 20 October 2026 and the host evidence paths in §4.5: actual readiness outcome, missing-key agent result and runner isolation flags. Full host artifacts still need to be retained in repository evidence; do not infer a hosted pass from these logs.

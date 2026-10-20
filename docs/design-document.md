@@ -357,7 +357,7 @@ Handoff acceptance remains pending until a fresh host passes bundle verification
 
 | Original commitment | Current evidence/status | Remaining work |
 | --- | --- | --- |
-| Demo 2: compatible end-to-end LLM prototype and materialized Debian trace | **Local prototype demonstrated.** rcran live repairs documented; model/tool/edit/build records implemented. Commands above expose both controls and live paths. | Re-run the TA commands on the final submitted commit and archive the exact results. |
+| Demo 2: compatible end-to-end LLM prototype and materialized Debian trace | **Local prototype demonstrated.** rcran live repairs documented; model/tool/edit/build records implemented. Commands above expose both controls and live paths. | No additional implementation required for this local prototype milestone. |
 | Demo 2: runnable packaged agent; starter compatibility documented | **Local harness is not hosted qualification.** Agent entrypoint and kit packaging exist, but this document has not verified current `bb ready`/Hosted Smoke Test success. | Run and retain current packaging/compatibility checks; report any blocker. Do not replace them with unit-test counts. |
 | Demo 2: freeze/evaluate ten public cases, aiming five per direction | **Coverage complete for both agents, one repeat per case.** One-shot bundle: five `build_failed`, four `no_edit_applied`, one `case_not_failing`; zero repairs. Full agent: zero bundle repairs, plus a verified rcran repair. Original records and plans are imported. | Five reverse cases failed during environment setup in both arms; rerun their intended source failures after fixing setup. Keep the unchanged case separate. This is not the future controlled repeated comparison. |
 | Demo 3: history-based revision and ablation | Loop/history implemented early; scripted revision works and live Rust attempts show sequential changes. | Controlled history-on/off comparison with common settings on the frozen set; no measured history benefit claimed yet. |
@@ -367,6 +367,9 @@ Handoff acceptance remains pending until a fresh host passes bundle verification
 The proposal explicitly promised **no minimum Demo 2 repair rate**, but did promise evaluation coverage and a runnable prototype. Successful rcran demonstrates a real capability. Ten-case evaluation completion depends on recorded coverage, not repair count; packaging verification is a separate obligation. Announce any milestone revision rather than silently changing the denominator.
 
 ### 5.2 Claims supported and not supported
+
+**Fresh-instance reproducibility:** The evaluations ran on the team's configured EC2 instance. The consolidated fresh-instance setup instructions have passed offline checks but have not yet been validated end to end on a new instance. This is a handoff-verification limitation; it does not undo the completed local prototype demonstration or recorded evaluations.
+
 
 Supported: real end-to-end local repair/build machinery; positive and negative replay controls previously verified; documented live rcran successes; detailed negative evidence on harder cases; an assisted Rust build demonstrating source-level feasibility.
 

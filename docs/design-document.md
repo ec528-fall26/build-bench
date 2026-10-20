@@ -1,7 +1,5 @@
 # Design Document — Demo 2 one-shot repair pipeline and evaluation
 
-> **TA start here:** [Fresh AWS setup and recorded evaluation settings](ta-aws-setup.md). This guide supersedes the earlier setup instructions for reproducing the recorded raised limits; the evaluation findings below remain unchanged.
-
 **Team:** Anthony Capraru, Austin Li, Joonseo Moon, Juliette Jacques, Owen Zhang
 **Mentor:** Minghua Ma, Microsoft
 **Demo 2 snapshot:** 19 October 2026; due on `demo-2`. Update this document for Demo 3 and the final.
@@ -152,58 +150,68 @@ Committed full-agent defaults at the documented code milestone: five attempts, t
 
 The TA wrapper uses the source defaults actually present and records them in `settings.json`. It resets inherited ablation/strategy/review/trace settings explicitly. It does not silently raise limits or edit source. The `--review` option activates shared-cause investigation and proposed-diff review for a live full-agent run only. Default controls and replay use review off, because scripted replies do not contain approval actions.
 
-## 3. Setup from a clean machine
+## 3. Setup from a clean AWS instance
 
-### 3.1 Required materials and hardware
+This guide uses only the **rcran-v1** and **development-v1 ten-case validator bundles**, plus this repository. The bundles contain their runtime images, original sources, target configurations and frozen dependencies. Do not download the general 200-case development dataset, a separate runtime image release, or an assisted repair.
 
-Use a **disposable native Linux ARM64 host**, Ubuntu Server 24.04 LTS. The recorded rcran host was an AWS Graviton `m7g.xlarge` (4 vCPU, 16 GiB RAM) with 80 GiB storage. Recommend that capacity for this walkthrough. The runtime uses privileged Docker; do not execute these cases on a shared machine containing unrelated sensitive data. macOS is used for authoring, not for this build walkthrough.
+The recorded evaluation used code commit `001f3b9dd15f89665794609c8b04b73acfae167e`. The helper below restores that source and the saved full-agent limits in a separate directory. It does not promise identical model outputs or an identical host environment. The new TA wrappers have offline tests; this fresh-instance walkthrough still needs a real acceptance run.
 
-The TA needs repository access and these organizer-provided files, which are **not installed by pip and are not reconstructed from dataset metadata**:
+### 3.1 Access and instance
 
-1. `buildbench-local-rcran-v1.tar` for the short walkthrough.
-2. Optional `buildbench-local-development-v1.tar` for the ten-case set.
+You need repository access, permission to download the official bundles, and for live runs an AWS identity permitted to invoke the recorded Bedrock model. Neither bundle nor model credential is stored in Git. Replay controls need no model credential but still perform real local builds.
 
-Place archives in `~/Downloads/` on the Linux host using the course/team transfer location. **Before handoff, the team must supply an accessible location for these archives and repository access.** A missing archive is a setup blocker, not a failed repair. This document does not invent a public download URL.
+Use Ubuntu Server **24.04 LTS, ARM64**, on a Graviton instance. The recorded host was an `m7g.xlarge` with 4 vCPUs, 16 GiB RAM and 80 GiB storage; use at least that capacity and monitor free disk space. Use a disposable evaluation host with sudo and Docker access. Allow outbound HTTPS for GitHub, package repositories, bundle downloads and Bedrock. SSH access is needed if using the SSH examples; restrict inbound SSH to your own address. No public application port is required. AWS charges are the evaluator's responsibility; stop the instance when finished and retain results first.
 
-The agent/harness use the Python standard library, Python >=3.10; Ubuntu 24.04's Python 3.12 is the recommended host runtime. Development tests also ran under Python 3.13 on macOS. Required system packages: `git`, `python3`, `docker.io`, `dpkg-dev`, `xz-utils`, `gzip`, `tar`, `ca-certificates`, `tmux`. No model SDK or third-party Python package is needed for these harness commands. Historical notes recorded Docker 29.1.3 and dpkg-dev 1.22.6; those are observations, not a promise that current apt repositories install those exact versions. The wrapper captures installed versions. We have not established a fully pinned host image, so exact host package-version reproducibility remains a limitation.
-
-The target runtime and dependency snapshots **are pinned** by the supplied bundles:
-
-| Bundle | Runtime image identity |
-| --- | --- |
-| rcran-v1 | `sha256:5d7c27e0ee1e62d90d88e5170f3fa6e6448ad295ef3b87c9f23a15f6393e2967` |
-| development-v1 | `sha256:593013328b8b8bfb1a399da4b1b0b68ad979fd289fe3373575cc578e06c9b641` |
-
-### 3.2 Install and clone — Linux terminal
+On the new **EC2 Linux terminal**:
 
 ```bash
 sudo apt-get update &&
-sudo apt-get install -y git python3 docker.io dpkg-dev xz-utils gzip tar ca-certificates tmux &&
+sudo apt-get install -y git python3 docker.io dpkg-dev xz-utils gzip tar ca-certificates tmux qemu-user-static binfmt-support &&
 sudo systemctl enable --now docker &&
 sudo usermod -aG docker "$USER"
 ```
 
-Log out and reconnect so Docker group membership takes effect, then:
+Log out and reconnect, then:
 
 ```bash
-uname -m                         # must print aarch64 for this walkthrough
-python3 --version
+uname -m
 docker info --format '{{.Architecture}}'
+python3 --version
 dpkg-source --version
+df -h "$HOME"
 mkdir -p "$HOME/Downloads"
-cd "$HOME" &&
-git clone --branch demo-2 https://github.com/ec528-fall26/build-bench.git build-bench-demo2 &&
+git clone --branch demo-2 https://github.com/ec528-fall26/build-bench.git "$HOME/build-bench-demo2"
 cd "$HOME/build-bench-demo2" &&
+git fetch origin --tags &&
 git rev-parse HEAD &&
 git status --short
 ```
 
-Authenticate to GitHub if the course repository is private. Record the full commit for the demo; use that same commit for reruns, rather than silently following later branch updates. Do not copy an experimental EC2 checkout with unrecorded budget edits into the TA setup.
+`uname -m` must report `aarch64`. Python 3.12 on Ubuntu 24.04 is suitable; the harness uses the standard library, so no pip install is required. Record the handoff commit printed above. If the repository is private, authenticate using your approved GitHub access; do not embed tokens in a saved clone URL. Host package versions are not fully pinned by this guide.
 
-### 3.3 Verify and load rcran
+### 3.2 Download exactly two official bundles
+
+Open [Build-Bench Data & Downloads](https://matrix.cstcloud.cn/build-bench/data-downloads.html):
+
+| Website row | Version | Select |
+| --- | --- | --- |
+| Local Validator Example | rcran-v1 | Download local example; also Checksums and Local validation guide |
+| Local Validator Bundle: 10 Cases | development-v1 | Download bundle; also SHA-256 and Guide |
+
+Use the official page's links rather than guessed URLs. Website authentication and direct-link availability were not independently verified during preparation. The TA must confirm download access before evaluation. The ten-case archive is approximately 2.29 GB. Verify downloaded archives against the published checksums; if filenames or hashes differ, stop and confirm the release rather than substituting another dataset.
+
+If downloading through your laptop's browser, transfer the archives to EC2. In your **laptop terminal**, replace the key path and IP with those of your own instance:
 
 ```bash
-test -f "$HOME/Downloads/buildbench-local-rcran-v1.tar" &&
+scp -i /path/to/your-ec2-key.pem \
+  "$HOME/Downloads/buildbench-local-rcran-v1.tar" \
+  "$HOME/Downloads/buildbench-local-development-v1.tar" \
+  ubuntu@YOUR_EC2_PUBLIC_IP:/home/ubuntu/Downloads/
+```
+
+The following commands assume those archive filenames. If the official download uses a different extension, inspect it and follow its accompanying guide; do not merely rename compressed formats. On **EC2**, extract into new directories, verify the internal checksums and load the bundled images:
+
+```bash
 test ! -e "$HOME/buildbench-local-rcran-v1" &&
 tar -xf "$HOME/Downloads/buildbench-local-rcran-v1.tar" -C "$HOME" &&
 cd "$HOME/buildbench-local-rcran-v1" &&
@@ -212,11 +220,20 @@ docker load -i runtime-image.tar.gz &&
 bash run.sh --check
 ```
 
-If already extracted, omit extraction and rerun verification/load/check in that directory. Stop on checksum or preflight errors. The image may appear untagged; the runner uses its digest. `--check` validates material and dependencies, **not compilation**.
+```bash
+test ! -e "$HOME/buildbench-local-development-v1" &&
+tar -xf "$HOME/Downloads/buildbench-local-development-v1.tar" -C "$HOME" &&
+cd "$HOME/buildbench-local-development-v1" &&
+sha256sum -c SHA256SUMS &&
+docker load -i runtime-image.tar &&
+bash run.sh --list
+```
 
-### 3.4 Offline code checks
+These are the recorded bundle layouts. Stop on any missing file, checksum error or failed preflight. `--check` does not prove a real build works. Keep the archives outside Git.
 
-From the repository root, clear experimental switches for tests:
+### 3.3 Offline checks, then the recorded source profile
+
+First test the unmodified handoff checkout; tests that assume default limits must run before preparing the historical enlarged-budget profile:
 
 ```bash
 cd "$HOME/build-bench-demo2" &&
@@ -226,106 +243,99 @@ env -u BB_MODEL_TRACE -u BB_REPAIR_STRATEGY -u BB_REVIEW_EDITS \
   python3 -m unittest discover -s tests/full-agent -p 'test_*.py' &&
 python3 -m unittest discover -s harness/tests -t . &&
 python3 -m unittest discover -s tests/demo2 -p 'test_*.py' &&
-git diff --check
+python3 scripts/demo2_evidence_report.py
 ```
 
-At `001f3b9`, 320 full-agent and 79 harness tests passed in the author's complete checkout. Counts increase when subsequent patches are installed; `OK` is the acceptance condition. An `edit_rejected ... old_text_not_found` line is an expected negative-test log if the suite ends `OK`. Tests exercise mocked interfaces; they do not substitute for the real builds below.
-
-## 4. Running the experiments
-
-Always use a fresh output directory. The wrapper refuses overwrite. Run long jobs inside `tmux new -s demo2`; reconnect with `tmux attach -t demo2`. Each command below runs from `~/build-bench-demo2`. Logs are saved while work runs; a quiet terminal during compilation is normal.
-
-### Experiment 1 — completed eleven-case evaluations and optional reproduction
-
-**Completed runs:** `demo2-oneshot-retest-20261019T212712Z` and `demo2-full-agent-retest-20261019T225339Z` used the existing harness directly, not the new paired driver. Each processed rcran plus all ten bundle cases. One-shot repaired 0/11; full agent repaired rcran (1/11). Both repaired 0/10 bundle cases. Each bundle arm includes five setup-blocked cases, four source-level failures and one unchanged success. Original records have been imported and checked; see [the diagnostic report](demo2-comparison-diagnostics.md).
-
-**Optional paired rerun:** the commands below schedule fresh evaluations using the source limits in that checkout. They do not automatically reproduce the locally increased full-agent limits of the completed run. No further run is needed merely to document the completed evaluation. Diagnose the reverse-direction environment before interpreting another full schedule as a source-repair comparison. Preserve every outcome rather than repeating only failures or seeking a favorable result.
-
-This is the primary retest, rather than a replay demonstration. It schedules **22 live runs** for one repeat: eleven cases × two agents. Rcran is a calibration case **outside** the frozen development ten. The schedule runs rcran with one-shot and full-agent first, then both agents on each development case. It applies no assisted/reference patch. Use three repeats only for a deliberately scheduled 66-run comparison; do not repeat only the successes.
-
-First finish §3 and the development-bundle extraction/image-loading/case-view commands in Supporting experiment 5. In the EC2 terminal, configure reverse-direction execution and inspect it:
+Prepare the separate checkout. Do not point `--out` at an existing directory:
 
 ```bash
-sudo apt-get update &&
-sudo apt-get install -y qemu-user-static binfmt-support &&
+python3 scripts/demo2_prepare_recorded.py --out "$HOME/build-bench-demo2-recorded" &&
+cd "$HOME/build-bench-demo2-recorded" &&
+cat ta-recorded-profile.json &&
+python3 -m harness.case_views "$HOME/buildbench-local-development-v1" "$HOME/bb-cases"
+```
+
+The helper checks out the historical commit, applies only the saved budget diff, verifies every recorded full-agent Python source hash and checks the one-shot tag. The settings are 12 attempts, 10 loop builds, 1M reported tokens, 7,200 seconds, 120 seconds reserve, 80 turns and 200 tool calls. The runner sets default strategy, history on and review off; no reference repair is supplied in live mode. Baseline and final validation builds are additional harness work. A model call can overshoot the token threshold.
+
+Do not commit the prepared checkout's intentional local budget modifications. Record its `ta-recorded-profile.json` with the results. Source verification does not pin host kernel, Docker, QEMU or model-serving changes.
+
+## 4. Running and verifying the experiments
+
+### 4.1 Prove the rcran pipeline without a model key
+
+Start a persistent session on EC2:
+
+```bash
+tmux new -s demo2-ta
+```
+
+Inside that session:
+
+```bash
+cd "$HOME/build-bench-demo2-recorded" &&
+python3 scripts/demo2_demo.py controls \
+  --bundle "$HOME/buildbench-local-rcran-v1" \
+  --out "$HOME/buildbench-experiments/ta-rcran-controls-01"
+```
+
+Expected: the positive known-fix control produces a verified repair; the negative comment-only control applies a change and fails its build. Both results must be recorded. These are scripted infrastructure controls, not autonomous successes. Inspect the new output directory's `summary.json`, console logs and `runs/*/record.json`. Stop and diagnose if either control fails its expected check. Reconnect with `tmux attach -t demo2-ta`.
+
+### 4.2 Short-term Bedrock API key for live runs
+
+Use a **short-term Amazon Bedrock API key generated in us-east-1**. In the AWS Bedrock console choose the region, then **API keys → Short-term API keys → Generate short-term API keys**. The generating identity needs permission to use the model. AWS documents that the key inherits that identity's permissions, is region-specific, and expires at the earlier of the session expiry or 12 hours. See [AWS key-generation instructions](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-generate.html).
+
+Generate the key shortly before starting the live evaluation. A long schedule may exceed its lifetime. Do not put it in Git, a script, a URL, a screenshot or an evidence archive. Paste it with hidden input **inside the same EC2 tmux shell** that launches the run:
+
+```bash
+set +x
+read -r -s -p 'Paste short-term Bedrock API key for us-east-1: ' BB_MODEL_API_KEY
+export BB_MODEL_API_KEY
+printf '\n'
+export BB_MODEL_BASE_URL='https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1'
+```
+
+The historical agent fixes the model ID to `openai.gpt-oss-120b-1:0`; the wrappers do not substitute a newer model. This uses the Bedrock OpenAI-compatible endpoint, not an OpenAI account key. A correctly formatted key is not proof of authorization. A 401/403, expired key, unavailable model or endpoint error is an execution problem, not a source-repair result.
+
+### 4.3 Live evaluation: rcran plus the ten cases
+
+The full schedule contains 22 jobs, one repeat per agent per case, with rcran first. The new scheduler interleaves agents; the archived evaluations ran the one-shot arm and full-agent arm separately. Source, limits and case identities are reproduced; scheduling and model outcomes are not asserted identical.
+
+Enable the reverse-direction handler:
+
+```bash
 sudo update-binfmts --enable qemu-x86_64 &&
 cat /proc/sys/fs/binfmt_misc/qemu-x86_64
 ```
 
-The handler must say `enabled` and its `flags:` line must contain `F`. If not, stop and fix the host registration; the driver refuses to start the full schedule. Installing a handler is not itself proof that all target builds work. The organizer bundle uses an ARM64 runtime plus x86_64 emulation for reverse-direction targets.
+It must be enabled and include `F` in flags. **This check alone is insufficient:** in the recorded run all five x86-target cases encountered QEMU/setup crashes before package compilation. The pipeline retains these outcomes. Do not report them as five established source-repair failures or promise that the TA's host fixes them.
 
-Start or attach to tmux, then use the **EC2** repository checkout containing the new scripts:
+Inspect the schedule without model calls or builds:
 
 ```bash
-cd "$HOME/build-bench-demo2" &&
-git fetch origin --tags &&
+cd "$HOME/build-bench-demo2-recorded" &&
 python3 scripts/demo2_retest.py \
   --rcran "$HOME/buildbench-local-rcran-v1" \
   --views "$HOME/bb-cases" \
-  --out "$HOME/buildbench-experiments/demo2-retest-01" \
+  --out "$HOME/buildbench-experiments/ta-paired-recorded-01" \
   --dry-run
 ```
 
-Expected dry-run output: 22 scheduled run IDs; no files written, API requests or builds. Then set the key inside the same tmux session and launch:
+Then launch all 22 jobs:
 
 ```bash
-read -r -s -p 'Paste Bedrock API key: ' BB_MODEL_API_KEY
-export BB_MODEL_API_KEY
-printf '\n'
-export BB_MODEL_BASE_URL='https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1'
 python3 scripts/demo2_retest.py \
   --rcran "$HOME/buildbench-local-rcran-v1" \
   --views "$HOME/bb-cases" \
-  --out "$HOME/buildbench-experiments/demo2-retest-01"
+  --out "$HOME/buildbench-experiments/ta-paired-recorded-01"
 ```
 
-This uses the actual source budgets recorded in `plan.json`, full-agent history on, default strategy and review off. It does not silently adopt the earlier 1M-token Rust tuning. One-shot has its own fixed single-proposal protocol, not the full-agent loop budget. Keep the final code and settings constant during the schedule; retain the recorded differences in computational opportunity when comparing one-shot to an iterative system.
+Expect progress lines and `coverage.json`, `results.md`, `plan.json`, and per-job evidence under `jobs/`. An unchanged successful build is not a repair. A valid live failed repair is retained, not retried until success. The complete schedule can take hours; individual manifest build timeouts differ and two allow four hours. Quiet output during compilation is normal.
 
-**Runtime:** rcran should finish early, but the complete schedule can take many hours. Reverse-direction builds in prior notes took 20–82 minutes; two case manifests allow four-hour builds, and a full-agent run can request several builds plus final validation. Do not promise a short completion time or run this interactively during a brief presentation. Each individual build retains its manifest timeout and harness margin; there is no single short schedule deadline.
+After interruption, refresh an expired key in the same shell and add `--resume` to the same command, without changing code, endpoint, Python or case files. Resume skips jobs with completed summaries, including failures. **It does not automatically retry a completed authentication-error job.** Keep that evidence and run any deliberate retry into a fresh output directory, clearly labeled, rather than deleting records or combining retries into the original score.
 
-The driver writes `coverage.json` and `results.md` after each job. It pauses on execution/model errors, rather than letting an expired key produce a misleading batch of repair failures. Completed outcomes, including errors, stay recorded. After resolving an environment/credential problem, use the exact same command with `--resume`. Finished records are skipped; an interrupted job with no final summary receives a new attempt directory, preserving the interrupted evidence. Do not start two copies of the schedule. Source, case, endpoint or Python changes require a fresh output folder. To retry a completed model-error job, explicitly use a new individual-run output and report it as a retry; resume never silently replaces its result.
-
-**Acceptance:** every one of the 22 scheduled rows must have a final record or an explicitly documented interruption/blocker. For each case and agent, report original status, model/agent version, proposed/applied edits, final validation, usage, runtime and stop reason from its `record.json`. A `build_failed` or `no_edit_applied` row is a tested negative result. `case_not_failing` is an already-building case, not an autonomous success. `not_completed` is not a failed repair. Preserve the twelve-run historical comparison separately from this new schedule.
-
-### Supporting demonstrations and historical claims
-
-### Supporting experiment 2 — positive and negative rcran pipeline controls (no API key)
-
-**Supports:** source extraction, actual edit application, repackaging, clean target compilation, artifact verification, and correct reporting of a non-repair. **Does not support:** model intelligence or autonomous repair rate.
+For a shorter live demonstration instead of the full schedule, run these separately with fresh output directories:
 
 ```bash
-python3 scripts/demo2_demo.py controls \
-  --bundle "$HOME/buildbench-local-rcran-v1" \
-  --out "$HOME/buildbench-experiments/ta-controls-01"
-```
-
-The positive fixture supplies the known architecture-guard repair to one-shot's harness interface. The negative fixture changes a comment without fixing the fault. Both start from fresh source and reproduce the baseline. Expect positive `repaired: true`, `build_succeeded`; negative `repaired: false`, `build_failed`, with an edit actually applied. The wrapper returns nonzero if either control violates its expected result. A negative control is a successful pipeline test, not a successful package repair.
-
-Historical builds take about 85–100 seconds each on the recorded host; allow roughly 6–10 minutes for four builds plus overhead. These are estimates, not timeouts. The rcran manifest build timeout is 3,600 seconds, with a 600-second harness margin per validator call.
-
-### Supporting experiment 3 — full-agent revise loop (scripted, no API key)
-
-**Supports:** tools → intentionally ineffective edit → failed build → revised edit → successful loop build → separate final clean validation. The decisions are replayed, not generated by a live model.
-
-```bash
-python3 scripts/demo2_demo.py revise-replay \
-  --bundle "$HOME/buildbench-local-rcran-v1" \
-  --out "$HOME/buildbench-experiments/ta-revise-01"
-```
-
-Expect `REPAIRED`, at least one failed and one successful attempt build, and a successful final artifact check. The wrapper checks that both loop outcomes occurred. Allow about 6–10 minutes for a baseline, two loop builds and final build. This is the dependable demonstration of iteration; do not describe it as a model learning from feedback.
-
-### Supporting experiment 4 — live rcran repair, one-shot and full-agent
-
-**Supports:** an actual model-generated repair and real validation when successful. Failure is retained as a result. No known fix is supplied. Historical frozen one-shot runs repaired 1/3; four full-agent runs with different history/excerpt/follow-up settings were documented as successful. Those four are **not** four identical repeats or an estimate of general repair rate. A new model run is not guaranteed to succeed.
-
-Set credentials **inside the running tmux session**, using a valid provider-issued key:
-
-```bash
-read -r -s -p 'Paste Bedrock API key: ' BB_MODEL_API_KEY
-export BB_MODEL_API_KEY
-printf '\n'
-export BB_MODEL_BASE_URL='https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1'
 python3 scripts/demo2_demo.py live-one-shot \
   --bundle "$HOME/buildbench-local-rcran-v1" \
   --out "$HOME/buildbench-experiments/ta-rcran-one-shot-01"
@@ -334,75 +344,13 @@ python3 scripts/demo2_demo.py live-full \
   --out "$HOME/buildbench-experiments/ta-rcran-full-01"
 ```
 
-The configured model is `openai.gpt-oss-120b-1:0`, temperature 0, maximum 8,192 completion tokens per request. Endpoint availability and account access must be established by the team. The wrapper rejects empty/non-ASCII/whitespace-containing keys without printing them; it cannot prove a key is unexpired without a request. If authentication fails, preserve the error and replace the key; do not count that as evidence of poor repair quality.
+The recorded single repeat was one-shot 0/11, full agent 1/11 (rcran), with five setup-blocked and one already-building case per arm. Model behavior is nondeterministic; an identical score is not the acceptance criterion. Require valid records and actual clean-build/artifact verification for every claimed repair.
 
-Allow about 3–5 minutes for one-shot and 5–15 minutes for a typical rcran full-agent run. Worst cases follow the independent model, loop and validator limits. Model calls incur provider charges. Run `live-full ... --review` only as a separately labeled exploratory configuration; it enables shared-cause prompts and model review, and is not the historical rcran setting.
+### 4.4 Preserve evidence and assess readiness
 
-### Supporting experiment 5 — reproduce a harder-case failure or observe a new repair
+Retain the handoff commit, prepared profile, plan, settings, records, patches, baseline/candidate/final logs and summaries. Check that a claimed success has both validator success and passed expected-artifact validation. Review setup-stage failures separately. Stop the AWS instance after exporting the evidence.
 
-**Supports:** recorded outcomes beyond the easy calibration case. We do not force failure or assert that a live rerun must fail. Historical results below are versioned observations, not expected answers for every future model call.
-
-One-time optional development-bundle setup:
-
-```bash
-test -f "$HOME/Downloads/buildbench-local-development-v1.tar" &&
-test ! -e "$HOME/buildbench-local-development-v1" &&
-tar -xf "$HOME/Downloads/buildbench-local-development-v1.tar" -C "$HOME" &&
-cd "$HOME/buildbench-local-development-v1" &&
-sha256sum -c SHA256SUMS &&
-docker load -i runtime-image.tar &&
-bash run.sh --list &&
-cd "$HOME/build-bench-demo2" &&
-python3 -m harness.case_views "$HOME/buildbench-local-development-v1" "$HOME/bb-cases"
-```
-
-Preflight and run Rust, natively on ARM64:
-
-```bash
-bash "$HOME/bb-cases/launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2/run.sh" --check &&
-python3 scripts/demo2_demo.py live-full \
-  --bundle "$HOME/bb-cases/launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2" \
-  --out "$HOME/buildbench-experiments/ta-rust-full-01"
-```
-
-Use `live-one-shot` with a separate output directory for the baseline. Rust candidate builds measured about 160–173 seconds, and prior full-agent runs took roughly 1–14 minutes depending on whether they reached builds. A failure run must still have `record.json`; inspect both `termination_reason` and `agent_termination`. No edit, exhausted budget, model failure and failed compilation are different outcomes.
-
-The five reverse-direction cases additionally require an enabled `qemu-x86_64` binfmt registration with the `F` flag. The completed one-shot retest includes all five reverse-direction cases; its aggregate is reported separately from the older four-case archive. The paired retest driver checks the handler before starting. Both completed retests nevertheless encountered QEMU/setup failures on all five reverse-direction cases. Handler registration is insufficient evidence of a working environment. Inspect the unchanged-case log and require setup to reach the intended package failure before interpreting an agent outcome as a source-repair test.
-
-### Supporting experiment 6 — audit saved comparison evidence without running models
-
-**Supports:** the latest paired eleven-case results and the separately labeled historical four-case table. This does not rerun builds.
-
-```bash
-python3 scripts/demo2_evidence_report.py
-```
-
-The checked-in compact evidence was extracted from `demo2-evidence.tar.gz` with source provenance. It contains the 24 run summaries, not the multi-gigabyte build trees. Expected report: one-shot 0/12 and full-history-on 0/12 across the same four cases, three runs per case. Every failure remains in the denominator.
-
-| Case | Frozen one-shot | Earlier full-history-on | Scope |
-| --- | ---: | ---: | --- |
-| ectrans | 0/3 | 0/3 | x86_64 → aarch64 |
-| libmceliece | 0/3 | 0/3 | x86_64 → aarch64 |
-| libunwind | 0/3 | 0/3 | x86_64 → aarch64 |
-| rust-subversion | 0/3 | 0/3 | x86_64 → aarch64 |
-
-The archive records one-shot fingerprint `1.0.0+16e31a424d0d` and full-agent fingerprint `0.1.0+948ce2940473`. Full-agent rows do not themselves record all ablation switches; the arm label comes from the launch folder, a provenance limitation. No history-off arm is present. Later Rust tuning changed code and budgets and must not be pooled with this comparison.
-
-### Evidence to inspect after a new run
-
-| File | What to inspect |
-| --- | --- |
-| `settings.json` | Commit, source hashes, Python/system tools, case manifest hash, actual source budget defaults and switches. No API key is stored. |
-| `summary.json` | Compact verdict and control-check outcome. |
-| `runs/runs.jsonl` and `runs/<id>/record.json` | Final verified result, baseline, usage, full-agent stop reason, attempts and builds. |
-| `runs/<id>/repair.diff` | Actual changes before Debian repacking. Inspect build-time commands as well as source edits. |
-| `runs/<id>/baseline/build.log` | Original failure reproduced in this run. |
-| `runs/<id>/builds/build-NN/feedback.json` | Per-attempt build and parsed diagnostics for full-agent. |
-| `runs/<id>/result/build-result.json` | Separate final validation status and artifact check. |
-| `<id>.console.log`, `harness.log`, `replies.jsonl` | Execution and model diagnostics; not every mode produces every file. |
-
-`summary.json` does not replace raw records. Missing tokens remain unknown. To follow progress from another tmux pane, use `tail -f` on the named console or harness log. A stopped run may lack a final result; do not mark it repaired. Export and checksum evidence before shutting down the host.
-
+Handoff acceptance remains pending until a fresh host passes bundle verification, offline tests, both real rcran controls and at least one recorded live invocation. The code/document update itself did not provision AWS, test website account access, call Bedrock or build packages. The five reverse cases and hosted competition qualification remain separately unresolved.
 ## 5. Claims, milestones and limitations
 
 ### 5.1 Milestone accountability

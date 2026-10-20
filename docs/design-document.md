@@ -1,5 +1,7 @@
 # Design Document — Demo 2 one-shot repair pipeline and evaluation
 
+> **TA start here:** [Fresh AWS setup and recorded evaluation settings](ta-aws-setup.md). This guide supersedes the earlier setup instructions for reproducing the recorded raised limits; the evaluation findings below remain unchanged.
+
 **Team:** Anthony Capraru, Austin Li, Joonseo Moon, Juliette Jacques, Owen Zhang
 **Mentor:** Minghua Ma, Microsoft
 **Demo 2 snapshot:** 19 October 2026; due on `demo-2`. Update this document for Demo 3 and the final.

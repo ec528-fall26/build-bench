@@ -1,60 +1,471 @@
-# Design Document
+# Design Document — Demo 2 one-shot repair pipeline and evaluation
 
-*Due in the `demo-2` branch, updated for `demo-3` and `final-demo`.
-**The TA will run this document.** If they cannot follow it, you lose the points.*
+**Team:** Anthony Capraru, Austin Li, Joonseo Moon, Juliette Jacques, Owen Zhang
+**Mentor:** Minghua Ma, Microsoft
+**Demo 2 snapshot:** 19 October 2026; due on `demo-2`. Update this document for Demo 3 and the final.
+
+
+This document describes the implemented local research pipeline through commit `001f3b9`, not only the original proposal. The main Demo 2 deliverable is the frozen one-shot repair pipeline and its public-case evaluation. The iterative full agent is a separate extension. TA entry points are `scripts/demo2_demo.py` for individual demonstrations and `scripts/demo2_retest.py` for the complete retest. The entry point adds reproducibility checks and records; it does not change either repair agent. Commit these files to `demo-2` before the TA clones it. Each run records its actual Git commit, source hashes, settings and outcome. Do not imply that results from earlier versions were produced by the current version.
+
+**What works:** a real package can be unpacked, inspected, edited, repackaged and validated on ARM64. There are recorded live-model rcran repairs and a scripted full-agent failed-build/revision/success demonstration. **What does not yet work reliably:** autonomous repair of the harder development cases, including Rust Subversion. An assisted Rust repair builds successfully, but it is not an autonomous success. **The latest one-shot retest completed all ten development cases:** zero repairs, five failed candidate builds, four runs with no edit applied, and one case that already built unchanged. Rcran was tested separately and also failed in this repeat. See [the completed one-shot results](demo2-one-shot-results.md). The full-agent retest also completed all eleven evaluations and repaired rcran autonomously (1/11 overall, 0/10 bundle). Log review found all five reverse-direction cases blocked during environment setup in both arms. The four source-evaluable development cases remained unrepaired. See [the paired diagnostic review](demo2-comparison-diagnostics.md) for the complete case table, evidence and remaining work.
 
 ## 1. Architecture
 
-What you actually built — not what you originally planned. Include a diagram.
+### 1.1 Main Demo 2 architecture: the frozen one-shot pipeline
 
-## 2. Design decisions
+```mermaid
+flowchart TD
+    A[Released case: original Debian source, manifest and locked dependencies] --> B[Harness runs original target build]
+    B -->|already succeeds| X[Record case_not_failing; no repair credit]
+    B -->|fails with build log| C[Unpack a fresh work/input tree]
+    C --> D[Prompt: last 500 log lines plus fixed package files]
+    D --> E[One-shot model: one repair proposal]
+    E --> F[Parse edits and rationale]
+    F --> G[Validate and apply exact permitted replacements]
+    G -->|no edits applied| N[Record no_edit_applied]
+    G -->|changes applied| H[Save repair.diff; repack Debian source]
+    H --> I[Unchanged local validator: clean target build]
+    I --> J[Check status AND expected binary artifacts]
+    J --> K[Record repaired or failed, usage, time and evidence]
+```
 
-The choices that mattered, the alternatives, and why you chose as you did.
-Include the things that did not work.
+The one-shot pipeline is a complete LLM repair system, not a replay of the assisted Rust fix. It supplies an actual failing case to the model, applies the model's proposed source changes, and determines the outcome through an independent build. A negative result is still a completed evaluation when the run is recorded correctly. There is no minimum repair-rate promise for Demo 2.
 
-## 3. Setup
+#### What the frozen agent sees and does
 
-Exact dependencies, versions, and hardware assumptions. Written so that someone
-starting from a clean machine can follow it.
+1. `harness/run_case.py` reads the supplied case manifest and first runs the unmodified case. An already-building case is recorded as `case_not_failing`; it is not presented as a repair. Missing or invalid validator output is an environment error.
+2. The harness runs `dpkg-source -x` into a fresh `work/input/`, keeping the upstream archive beside the tree for later repacking. The patch policy comes from the case, rather than from a model-selected path.
+3. The one-shot agent receives the **last 500 log lines** and a predetermined source-file list. It does not run the full agent's diagnostic retrieval or tools. The fixed files are `input/debian/rules`, `input/debian/control`, `input/debian/patches/series`, `input/CMakeLists.txt`, `input/configure.ac`, `input/Makefile`, `input/setup.py`, `input/Cargo.toml`, and `input/meson.build`. Each file is bounded at 8 KiB; total file evidence is bounded at 32 KiB. Missing/truncated content is labeled. The log-tail line limit is not an equivalent byte/token cap: the libunwind baseline used over 104,000 input tokens in one call.
+4. `agents/one-shot/src/model_client.py` requests one proposal from the configured model. Its output is a JSON object containing `edits` and `rationale`, rather than the full agent's `tool/edit/approve/stop` protocol. HTTP transport retries are not repair iterations: the agent never uses a failed candidate build to generate a second repair.
+5. Each proposed edit contains `path`, `old_text`, and `new_text`. The frozen applier requires a unique literal match in an existing permitted UTF-8 file under `input/`. It rejects unsafe paths, missing or ambiguous text and unsupported changes. The later full-agent replace-all/review features do **not** modify this baseline. Rejections are recorded; the harness records proposed and applied counts separately.
+6. If no edit applies, the run ends with `no_edit_applied`. Otherwise the harness saves the actual source diff before repacking. Some edits in a multi-edit proposal may be rejected; the final verdict concerns the changes actually applied.
+7. The harness repacks with `dpkg-source --auto-commit -b`, assembles a case with original manifest/configuration/dependencies and modified source artifacts, and runs the supplied validator. This is necessary for Debian quilt packages: editing an unpacked file alone does not create the source package the local validator consumes.
+8. Only a successful clean build **and** passed expected-artifact validation count as a repair. Every run, including a refusal, rejected proposal, failed build or infrastructure error, is recorded. There is no repair retry in one-shot.
+
+For rcran, the original failure is an x86-only `xmmintrin.h` include enabled on ARM64. Recorded one-shot successes modified `debian/rules` to guard or remove that include before compilation. Those are model-generated build-time changes, distinct from the hand-authored direct-source replay fixture. The harness flags file-modifying build commands for manual review; a passing package alone does not establish ideal patch quality.
+
+#### One-shot modules and boundaries
+
+| Component | Code | Interface / responsibility |
+| --- | --- | --- |
+| Entry and repair orchestration | `agents/one-shot/src/main.py` | Read context, obtain one proposal, apply permitted edits; no build-feedback loop. |
+| Failure evidence | `agents/one-shot/src/log_tail.py` | Extract the bounded-line log tail. |
+| Model access and fixed evidence | `agents/one-shot/src/model_client.py` | Construct fixed prompt, call endpoint, parse edit plan and report usage. |
+| Edit application | `agents/one-shot/src/edit_applier.py` | Literal replacements, path/file checks and rejected-edit logging. |
+| Evaluation harness | `harness/run_case.py` | Original build, fresh extraction, actual diff, repack, clean final build and run record. |
+| Outcome interpretation | `harness/record.py` | Require successful status and artifact check; do not use `patch_applied` as a success flag. |
+| Repeated evaluation | `scripts/demo2_retest.py` | Fixed case/agent schedule, separate evidence directories, resume without hiding completed failures. |
+
+Agent paths in this document are relative to `buildbench-starter-kit-0.1.0-rc.2/`. The baseline tag is `one-shot-v1`. Before the live retest the driver checks that `agents/one-shot/` has no tracked difference from that tag and records source hashes. It does not insert a known repair or change the baseline prompt. The supplied reference fix is used only by explicitly named replay controls.
+
+### 1.2 Extension: iterative full-agent architecture
+
+```mermaid
+flowchart TD
+    A[Same original case and failure evidence] --> E[Structured diagnostics and source retrieval]
+    E --> M[Model action]
+    M -->|tool| T[Read-only inspection]
+    T --> M
+    M -->|edit| P[Snapshot and sequential preflight]
+    P -->|invalid| C[Focused correction]
+    C --> M
+    P -->|optional review| R[Pending diff, counts, coverage hints]
+    R --> M
+    M -->|approve pending batch| W[Revalidate and apply]
+    P -->|review off| W
+    W --> B[Copy, repack and request target build]
+    B --> H[Attempt history and candidate retention]
+    H -->|failure and budget remains| M
+    H -->|success or stop| V[Separate final clean validation]
+```
+
+This extension adds structured diagnostics, tool use, multiple candidate builds, history and optional pre-build review. These features address failure modes observed in one-shot; they are not necessary to describe the baseline's operation, and their effectiveness must be measured separately. No model weights are trained during either workflow.
+
+### 1.3 Full-agent components and contracts
+
+| Component | Implementation | Responsibility |
+| --- | --- | --- |
+| Case materialization | `harness/run_case.py`, `harness/case_views.py` | Load a released environment; unpack the Debian source package into a fresh `work/input/`; retain original source and policy. |
+| Diagnostics | `agents/full-agent/src/evidence.py` | Stream log evidence; remove validator timing prefixes; preserve Rust expected/found notes and locations; resolve compiler paths against actual source. |
+| Tools | `agents/full-agent/src/tools.py` | Bounded read-only listing, finding, searching, file reading and inspection. The model receives labeled results and truncation notices. |
+| Model adapter | `model_client.py`, `model_adapter.py`, `reply.py`, `prompts.py` | OpenAI-compatible HTTP requests, structured JSON actions, follow-up for malformed responses, prompt composition, token accounting and raw reply records. |
+| Controller | `loop.py`, `contracts.py`, `candidates.py` | Budget checks, attempts, build feedback, history, candidate selection and snapshot restoration. |
+| Edit validation | `edit_applier.py`, `edit_preflight.py`, `path_feedback.py` | Existing permitted UTF-8 files only; exact literal edits; sequential simulation; actionable rejection feedback. |
+| Optional proposal review | `proposal_review.py` | Present pending diff, measured match counts, retained diagnostics and cross-file search hints before applying an approved batch. |
+| Build adapter | `harness/build_feedback.py` | Copy candidate, repack its Debian source, run the organizer's local validator, parse feedback without modifying the agent's retained tree. |
+| Results | `harness/record.py`, `harness/summarize.py` | Independent final verdict, append-only run records, timing, usage, failure reasons and diff classification. |
+
+Agent module paths above are relative to `buildbench-starter-kit-0.1.0-rc.2/`. The harness is outside the submitted agent. Its Docker access and local credentials are host-side development facilities; the hosted build-feedback implementation is not established by a successful local run. This prototype uses a direct local callback, not the originally proposed file bridge.
+
+### 1.4 Full-agent state, edits and correctness
+
+A **model turn** is one controller interaction, sometimes including a same-turn corrective model call. It can request tools, propose edits, approve a pending review, stop, or be malformed. An **attempt** is a repair candidate considered by the loop; it is not interchangeable with a turn. A **build** invokes the validator. Several model turns can occur before any source changes or builds.
+
+An edit names `input/...`, exact `old_text`, `new_text`, and optionally `replace_all: true`. Ordinary replacements must match uniquely. Replace-all is explicit, literal and limited to one named file; it is not a regex or permission to change every similar file. Edits are simulated in order, so later edits see earlier replacements. Paths outside policy, symlinks, ambiguous/missing text and no-op changes are rejected. A compiler path such as `src/client.rs` is evidence, not necessarily a valid edit path: the local worktree requires `input/src/client.rs`.
+
+Invalid batches enter focused correction before writing or building. Review mode additionally requires model approval of the pending diff; approval is bound to the affected source snapshot and exact proposal. Changed source requires renewed review. Partial application in review mode is restored. Model approval establishes neither semantic correctness nor package success.
+
+The loop ranks candidates using build success, stage reached and diagnostic count. These are retention heuristics; fewer diagnostics does not prove a correct repair. Snapshot restoration retains the selected candidate rather than treating every last edit as an improvement. The revised repeated-diagnostic stop rule permits continued work when the leading error is unchanged but other progress is observed.
+
+The final success predicate is:
+
+```text
+validator status == "succeeded"
+AND artifact_validation_passed == true
+```
+
+An applied edit, model claim, `status: completed`, or zero harness exit code does not establish repair. `patch_applied` is not the success predicate: this harness transports changes inside a rebuilt source package rather than the validator's separate patch mechanism.
+
+## 2. Design decisions and failed approaches
+
+### 2.1 Decisions defining the Demo 2 baseline
+
+The one-shot baseline deliberately fixes the evidence policy and model interface so later improvements have a stable comparison. A small fixed file set is simpler and cheaper than repository exploration, but can omit the actual root-cause file. A single proposal makes cost and behavior easy to inspect, but a wrong path or repair cannot be corrected from compiler feedback. Literal edits avoid unconstrained shell execution by the agent, but demand exact source text the model may not have seen. Independent Debian repackaging and clean artifact validation make the outcome meaningful even when the proposed patch is plausible but wrong.
+
+We considered a rule-based patch for each package and supplying the known successful Rust diff. Those can validate infrastructure or investigate feasibility, but are not an autonomous baseline evaluation. The live one-shot and full-agent retest receive no reference repair. Build-time commands proposed in `debian/rules` are allowed by the existing pipeline and flagged for review; they are not silently scored as safer than direct source changes.
+
+### 2.2 Full-agent extensions and lessons from unsuccessful trials
+
+| Decision | Alternative and observed tradeoff |
+| --- | --- |
+| Keep one-shot frozen | Changing its prompt after failures would move the baseline. `one-shot-v1` remains the comparison point; full-agent source is separate. |
+| Exact edits and preflight | Blind or fuzzy replacement can touch unintended code. Exact matching exposed missing prefixes, duplicate proposals and ambiguous snippets; the controller now returns precise correction feedback. |
+| Preserve compiler detail | Early Rust summaries discarded expected/found argument notes and merged distinct locations. Retaining those notes improves available evidence, but has not yet produced an autonomous Rust success. |
+| Include complete diagnosed source when it fits | The original bounded retrieval approach sometimes caused repeated inspection. Current source inclusion allows two files, at most 64,000 bytes each and 100,000 total. An offline check found both entire `client.rs` and `delta.rs` present in a 98,655-character request. This disproved the assumption that every failure was caused by missing those files. Other affected files still require discovery. |
+| Iteration with independent builds | A one-shot cannot revise from its own compiler failure. Full-agent attempts can, but investigation and correction often consume the budget before a build. |
+| Small-group strategy was tested | Three-edit groups produced valid incremental changes but addressed too little of a package-wide cause. Three builds reduced Rust diagnostics from 103 to 95 without repairing it. It is not the default demonstration strategy. |
+| Shared-cause strategy is opt-in | It asks the model to inspect shared producers/consumers across files. It removes the three-edit grouping, but does not automatically discover or fix all affected locations. |
+| Explicit replace-all and pre-build diff review | Repeated pointer-type fixes motivated whole-file literal replacement with measured counts and cross-file coverage hints. A valid review can still omit files; coverage is bounded search, not semantic proof. |
+| Retain budgets, record exploratory increases | Rust experiments used 100k, 200k and 300k token ceilings and 20/30 turns; a later run allowed 1M tokens, 80 turns and ten loop builds. More allowance alone did not solve erroneous or redundant edits. These are different exploratory configurations, not controlled improvement comparisons. |
+| Snapshot/copy before building | Debian `3.0 (quilt)` repacking creates patch metadata. Building a copy keeps these generated changes out of the agent's retained source and repair diff. `dpkg-source --auto-commit -b` avoids an interactive patch-recording step. |
+| JSON actions in reply text | Provides an explicit controller protocol without requiring native tool-calling support. Malformed reasoning-only responses remain a measured failure mode. |
+
+A concrete unresolved failure at `001f3b9`: the model first replaces every `*const i8`, then asks to replace `as *const i8` in the same file. The second text no longer exists in the simulated result. Focused correction repeatedly resubmitted the redundant operation, so no batch reached review or build. A separately prepared recovery patch removes only redundancies proven equivalent by whole-file simulation; it is **not assumed installed or live-validated by this document**.
+
+The assisted Rust repair replaced 55 C pointer-type occurrences across seven files with the platform's `std::os::raw::c_char`. This fixed shared wrapper interfaces as well as call sites and produced a package. It demonstrates that editing permitted source is sufficient; it does not show that the autonomous agent found that scope. A model given the worked solution still omitted `string.rs`; assistance supplied its two missing replacements. That second successful build is example-assisted, not independent generalization.
+
+### 2.3 Resource configuration
+
+Committed full-agent defaults at the documented code milestone: five attempts, three loop builds, 100,000 reported model tokens, 1,800 seconds with a 120-second reserve, 20 model turns and 30 tool calls. A baseline build and final validation are additional harness work. Default investigation allows six consecutive tool turns; small-group mode uses two. Token ceilings are checked around calls, so the last request can overshoot; missing usage is unknown, not zero. Build subprocesses have their own manifest timeout and harness margin; the agent clock is not a hard kill of the entire experiment.
+
+The TA wrapper uses the source defaults actually present and records them in `settings.json`. It resets inherited ablation/strategy/review/trace settings explicitly. It does not silently raise limits or edit source. The `--review` option activates shared-cause investigation and proposed-diff review for a live full-agent run only. Default controls and replay use review off, because scripted replies do not contain approval actions.
+
+## 3. Setup from a clean machine
+
+### 3.1 Required materials and hardware
+
+Use a **disposable native Linux ARM64 host**, Ubuntu Server 24.04 LTS. The recorded rcran host was an AWS Graviton `m7g.xlarge` (4 vCPU, 16 GiB RAM) with 80 GiB storage. Recommend that capacity for this walkthrough. The runtime uses privileged Docker; do not execute these cases on a shared machine containing unrelated sensitive data. macOS is used for authoring, not for this build walkthrough.
+
+The TA needs repository access and these organizer-provided files, which are **not installed by pip and are not reconstructed from dataset metadata**:
+
+1. `buildbench-local-rcran-v1.tar` for the short walkthrough.
+2. Optional `buildbench-local-development-v1.tar` for the ten-case set.
+
+Place archives in `~/Downloads/` on the Linux host using the course/team transfer location. **Before handoff, the team must supply an accessible location for these archives and repository access.** A missing archive is a setup blocker, not a failed repair. This document does not invent a public download URL.
+
+The agent/harness use the Python standard library, Python >=3.10; Ubuntu 24.04's Python 3.12 is the recommended host runtime. Development tests also ran under Python 3.13 on macOS. Required system packages: `git`, `python3`, `docker.io`, `dpkg-dev`, `xz-utils`, `gzip`, `tar`, `ca-certificates`, `tmux`. No model SDK or third-party Python package is needed for these harness commands. Historical notes recorded Docker 29.1.3 and dpkg-dev 1.22.6; those are observations, not a promise that current apt repositories install those exact versions. The wrapper captures installed versions. We have not established a fully pinned host image, so exact host package-version reproducibility remains a limitation.
+
+The target runtime and dependency snapshots **are pinned** by the supplied bundles:
+
+| Bundle | Runtime image identity |
+| --- | --- |
+| rcran-v1 | `sha256:5d7c27e0ee1e62d90d88e5170f3fa6e6448ad295ef3b87c9f23a15f6393e2967` |
+| development-v1 | `sha256:593013328b8b8bfb1a399da4b1b0b68ad979fd289fe3373575cc578e06c9b641` |
+
+### 3.2 Install and clone — Linux terminal
 
 ```bash
-# every command needed to go from a fresh machine to a runnable system
+sudo apt-get update &&
+sudo apt-get install -y git python3 docker.io dpkg-dev xz-utils gzip tar ca-certificates tmux &&
+sudo systemctl enable --now docker &&
+sudo usermod -aG docker "$USER"
 ```
+
+Log out and reconnect so Docker group membership takes effect, then:
+
+```bash
+uname -m                         # must print aarch64 for this walkthrough
+python3 --version
+docker info --format '{{.Architecture}}'
+dpkg-source --version
+mkdir -p "$HOME/Downloads"
+cd "$HOME" &&
+git clone --branch demo-2 https://github.com/ec528-fall26/build-bench.git build-bench-demo2 &&
+cd "$HOME/build-bench-demo2" &&
+git rev-parse HEAD &&
+git status --short
+```
+
+Authenticate to GitHub if the course repository is private. Record the full commit for the demo; use that same commit for reruns, rather than silently following later branch updates. Do not copy an experimental EC2 checkout with unrecorded budget edits into the TA setup.
+
+### 3.3 Verify and load rcran
+
+```bash
+test -f "$HOME/Downloads/buildbench-local-rcran-v1.tar" &&
+test ! -e "$HOME/buildbench-local-rcran-v1" &&
+tar -xf "$HOME/Downloads/buildbench-local-rcran-v1.tar" -C "$HOME" &&
+cd "$HOME/buildbench-local-rcran-v1" &&
+sha256sum -c SHA256SUMS &&
+docker load -i runtime-image.tar.gz &&
+bash run.sh --check
+```
+
+If already extracted, omit extraction and rerun verification/load/check in that directory. Stop on checksum or preflight errors. The image may appear untagged; the runner uses its digest. `--check` validates material and dependencies, **not compilation**.
+
+### 3.4 Offline code checks
+
+From the repository root, clear experimental switches for tests:
+
+```bash
+cd "$HOME/build-bench-demo2" &&
+env -u BB_MODEL_TRACE -u BB_REPAIR_STRATEGY -u BB_REVIEW_EDITS \
+  -u BB_AGENT_USE_EVIDENCE_MANAGER -u BB_AGENT_USE_TOOLS \
+  -u BB_AGENT_USE_BUILD_FEEDBACK -u BB_AGENT_USE_HISTORY \
+  python3 -m unittest discover -s tests/full-agent -p 'test_*.py' &&
+python3 -m unittest discover -s harness/tests -t . &&
+python3 -m unittest discover -s tests/demo2 -p 'test_*.py' &&
+git diff --check
+```
+
+At `001f3b9`, 320 full-agent and 79 harness tests passed in the author's complete checkout. Counts increase when subsequent patches are installed; `OK` is the acceptance condition. An `edit_rejected ... old_text_not_found` line is an expected negative-test log if the suite ends `OK`. Tests exercise mocked interfaces; they do not substitute for the real builds below.
 
 ## 4. Running the experiments
 
-One entry per claim you make. Someone else runs these; you do not get to
-explain them in person.
+Always use a fresh output directory. The wrapper refuses overwrite. Run long jobs inside `tmux new -s demo2`; reconnect with `tmux attach -t demo2`. Each command below runs from `~/build-bench-demo2`. Logs are saved while work runs; a quiet terminal during compilation is normal.
 
-### Experiment 1: does the full agent repair more cases than the frozen baseline, and how much of that is the repair history? (no result yet)
+### Experiment 1 — completed eleven-case evaluations and optional reproduction
 
-| | |
+**Completed runs:** `demo2-oneshot-retest-20261019T212712Z` and `demo2-full-agent-retest-20261019T225339Z` used the existing harness directly, not the new paired driver. Each processed rcran plus all ten bundle cases. One-shot repaired 0/11; full agent repaired rcran (1/11). Both repaired 0/10 bundle cases. Each bundle arm includes five setup-blocked cases, four source-level failures and one unchanged success. Original records have been imported and checked; see [the diagnostic report](demo2-comparison-diagnostics.md).
+
+**Optional paired rerun:** the commands below schedule fresh evaluations using the source limits in that checkout. They do not automatically reproduce the locally increased full-agent limits of the completed run. No further run is needed merely to document the completed evaluation. Diagnose the reverse-direction environment before interpreting another full schedule as a source-repair comparison. Preserve every outcome rather than repeating only failures or seeking a favorable result.
+
+This is the primary retest, rather than a replay demonstration. It schedules **22 live runs** for one repeat: eleven cases × two agents. Rcran is a calibration case **outside** the frozen development ten. The schedule runs rcran with one-shot and full-agent first, then both agents on each development case. It applies no assisted/reference patch. Use three repeats only for a deliberately scheduled 66-run comparison; do not repeat only the successes.
+
+First finish §3 and the development-bundle extraction/image-loading/case-view commands in Supporting experiment 5. In the EC2 terminal, configure reverse-direction execution and inspect it:
+
+```bash
+sudo apt-get update &&
+sudo apt-get install -y qemu-user-static binfmt-support &&
+sudo update-binfmts --enable qemu-x86_64 &&
+cat /proc/sys/fs/binfmt_misc/qemu-x86_64
+```
+
+The handler must say `enabled` and its `flags:` line must contain `F`. If not, stop and fix the host registration; the driver refuses to start the full schedule. Installing a handler is not itself proof that all target builds work. The organizer bundle uses an ARM64 runtime plus x86_64 emulation for reverse-direction targets.
+
+Start or attach to tmux, then use the **EC2** repository checkout containing the new scripts:
+
+```bash
+cd "$HOME/build-bench-demo2" &&
+git fetch origin --tags &&
+python3 scripts/demo2_retest.py \
+  --rcran "$HOME/buildbench-local-rcran-v1" \
+  --views "$HOME/bb-cases" \
+  --out "$HOME/buildbench-experiments/demo2-retest-01" \
+  --dry-run
+```
+
+Expected dry-run output: 22 scheduled run IDs; no files written, API requests or builds. Then set the key inside the same tmux session and launch:
+
+```bash
+read -r -s -p 'Paste Bedrock API key: ' BB_MODEL_API_KEY
+export BB_MODEL_API_KEY
+printf '\n'
+export BB_MODEL_BASE_URL='https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1'
+python3 scripts/demo2_retest.py \
+  --rcran "$HOME/buildbench-local-rcran-v1" \
+  --views "$HOME/bb-cases" \
+  --out "$HOME/buildbench-experiments/demo2-retest-01"
+```
+
+This uses the actual source budgets recorded in `plan.json`, full-agent history on, default strategy and review off. It does not silently adopt the earlier 1M-token Rust tuning. One-shot has its own fixed single-proposal protocol, not the full-agent loop budget. Keep the final code and settings constant during the schedule; retain the recorded differences in computational opportunity when comparing one-shot to an iterative system.
+
+**Runtime:** rcran should finish early, but the complete schedule can take many hours. Reverse-direction builds in prior notes took 20–82 minutes; two case manifests allow four-hour builds, and a full-agent run can request several builds plus final validation. Do not promise a short completion time or run this interactively during a brief presentation. Each individual build retains its manifest timeout and harness margin; there is no single short schedule deadline.
+
+The driver writes `coverage.json` and `results.md` after each job. It pauses on execution/model errors, rather than letting an expired key produce a misleading batch of repair failures. Completed outcomes, including errors, stay recorded. After resolving an environment/credential problem, use the exact same command with `--resume`. Finished records are skipped; an interrupted job with no final summary receives a new attempt directory, preserving the interrupted evidence. Do not start two copies of the schedule. Source, case, endpoint or Python changes require a fresh output folder. To retry a completed model-error job, explicitly use a new individual-run output and report it as a retry; resume never silently replaces its result.
+
+**Acceptance:** every one of the 22 scheduled rows must have a final record or an explicitly documented interruption/blocker. For each case and agent, report original status, model/agent version, proposed/applied edits, final validation, usage, runtime and stop reason from its `record.json`. A `build_failed` or `no_edit_applied` row is a tested negative result. `case_not_failing` is an already-building case, not an autonomous success. `not_completed` is not a failed repair. Preserve the twelve-run historical comparison separately from this new schedule.
+
+### Supporting demonstrations and historical claims
+
+### Supporting experiment 2 — positive and negative rcran pipeline controls (no API key)
+
+**Supports:** source extraction, actual edit application, repackaging, clean target compilation, artifact verification, and correct reporting of a non-repair. **Does not support:** model intelligence or autonomous repair rate.
+
+```bash
+python3 scripts/demo2_demo.py controls \
+  --bundle "$HOME/buildbench-local-rcran-v1" \
+  --out "$HOME/buildbench-experiments/ta-controls-01"
+```
+
+The positive fixture supplies the known architecture-guard repair to one-shot's harness interface. The negative fixture changes a comment without fixing the fault. Both start from fresh source and reproduce the baseline. Expect positive `repaired: true`, `build_succeeded`; negative `repaired: false`, `build_failed`, with an edit actually applied. The wrapper returns nonzero if either control violates its expected result. A negative control is a successful pipeline test, not a successful package repair.
+
+Historical builds take about 85–100 seconds each on the recorded host; allow roughly 6–10 minutes for four builds plus overhead. These are estimates, not timeouts. The rcran manifest build timeout is 3,600 seconds, with a 600-second harness margin per validator call.
+
+### Supporting experiment 3 — full-agent revise loop (scripted, no API key)
+
+**Supports:** tools → intentionally ineffective edit → failed build → revised edit → successful loop build → separate final clean validation. The decisions are replayed, not generated by a live model.
+
+```bash
+python3 scripts/demo2_demo.py revise-replay \
+  --bundle "$HOME/buildbench-local-rcran-v1" \
+  --out "$HOME/buildbench-experiments/ta-revise-01"
+```
+
+Expect `REPAIRED`, at least one failed and one successful attempt build, and a successful final artifact check. The wrapper checks that both loop outcomes occurred. Allow about 6–10 minutes for a baseline, two loop builds and final build. This is the dependable demonstration of iteration; do not describe it as a model learning from feedback.
+
+### Supporting experiment 4 — live rcran repair, one-shot and full-agent
+
+**Supports:** an actual model-generated repair and real validation when successful. Failure is retained as a result. No known fix is supplied. Historical frozen one-shot runs repaired 1/3; four full-agent runs with different history/excerpt/follow-up settings were documented as successful. Those four are **not** four identical repeats or an estimate of general repair rate. A new model run is not guaranteed to succeed.
+
+Set credentials **inside the running tmux session**, using a valid provider-issued key:
+
+```bash
+read -r -s -p 'Paste Bedrock API key: ' BB_MODEL_API_KEY
+export BB_MODEL_API_KEY
+printf '\n'
+export BB_MODEL_BASE_URL='https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1'
+python3 scripts/demo2_demo.py live-one-shot \
+  --bundle "$HOME/buildbench-local-rcran-v1" \
+  --out "$HOME/buildbench-experiments/ta-rcran-one-shot-01"
+python3 scripts/demo2_demo.py live-full \
+  --bundle "$HOME/buildbench-local-rcran-v1" \
+  --out "$HOME/buildbench-experiments/ta-rcran-full-01"
+```
+
+The configured model is `openai.gpt-oss-120b-1:0`, temperature 0, maximum 8,192 completion tokens per request. Endpoint availability and account access must be established by the team. The wrapper rejects empty/non-ASCII/whitespace-containing keys without printing them; it cannot prove a key is unexpired without a request. If authentication fails, preserve the error and replace the key; do not count that as evidence of poor repair quality.
+
+Allow about 3–5 minutes for one-shot and 5–15 minutes for a typical rcran full-agent run. Worst cases follow the independent model, loop and validator limits. Model calls incur provider charges. Run `live-full ... --review` only as a separately labeled exploratory configuration; it enables shared-cause prompts and model review, and is not the historical rcran setting.
+
+### Supporting experiment 5 — reproduce a harder-case failure or observe a new repair
+
+**Supports:** recorded outcomes beyond the easy calibration case. We do not force failure or assert that a live rerun must fail. Historical results below are versioned observations, not expected answers for every future model call.
+
+One-time optional development-bundle setup:
+
+```bash
+test -f "$HOME/Downloads/buildbench-local-development-v1.tar" &&
+test ! -e "$HOME/buildbench-local-development-v1" &&
+tar -xf "$HOME/Downloads/buildbench-local-development-v1.tar" -C "$HOME" &&
+cd "$HOME/buildbench-local-development-v1" &&
+sha256sum -c SHA256SUMS &&
+docker load -i runtime-image.tar &&
+bash run.sh --list &&
+cd "$HOME/build-bench-demo2" &&
+python3 -m harness.case_views "$HOME/buildbench-local-development-v1" "$HOME/bb-cases"
+```
+
+Preflight and run Rust, natively on ARM64:
+
+```bash
+bash "$HOME/bb-cases/launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2/run.sh" --check &&
+python3 scripts/demo2_demo.py live-full \
+  --bundle "$HOME/bb-cases/launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2" \
+  --out "$HOME/buildbench-experiments/ta-rust-full-01"
+```
+
+Use `live-one-shot` with a separate output directory for the baseline. Rust candidate builds measured about 160–173 seconds, and prior full-agent runs took roughly 1–14 minutes depending on whether they reached builds. A failure run must still have `record.json`; inspect both `termination_reason` and `agent_termination`. No edit, exhausted budget, model failure and failed compilation are different outcomes.
+
+The five reverse-direction cases additionally require an enabled `qemu-x86_64` binfmt registration with the `F` flag. The completed one-shot retest includes all five reverse-direction cases; its aggregate is reported separately from the older four-case archive. The paired retest driver checks the handler before starting. Both completed retests nevertheless encountered QEMU/setup failures on all five reverse-direction cases. Handler registration is insufficient evidence of a working environment. Inspect the unchanged-case log and require setup to reach the intended package failure before interpreting an agent outcome as a source-repair test.
+
+### Supporting experiment 6 — audit saved comparison evidence without running models
+
+**Supports:** the latest paired eleven-case results and the separately labeled historical four-case table. This does not rerun builds.
+
+```bash
+python3 scripts/demo2_evidence_report.py
+```
+
+The checked-in compact evidence was extracted from `demo2-evidence.tar.gz` with source provenance. It contains the 24 run summaries, not the multi-gigabyte build trees. Expected report: one-shot 0/12 and full-history-on 0/12 across the same four cases, three runs per case. Every failure remains in the denominator.
+
+| Case | Frozen one-shot | Earlier full-history-on | Scope |
+| --- | ---: | ---: | --- |
+| ectrans | 0/3 | 0/3 | x86_64 → aarch64 |
+| libmceliece | 0/3 | 0/3 | x86_64 → aarch64 |
+| libunwind | 0/3 | 0/3 | x86_64 → aarch64 |
+| rust-subversion | 0/3 | 0/3 | x86_64 → aarch64 |
+
+The archive records one-shot fingerprint `1.0.0+16e31a424d0d` and full-agent fingerprint `0.1.0+948ce2940473`. Full-agent rows do not themselves record all ablation switches; the arm label comes from the launch folder, a provenance limitation. No history-off arm is present. Later Rust tuning changed code and budgets and must not be pooled with this comparison.
+
+### Evidence to inspect after a new run
+
+| File | What to inspect |
 | --- | --- |
-| Supports | The Demo 3 comparison table ([`full-agent.md`](full-agent.md), "Demo 3 comparison"). **No result yet:** the full agent's loop is not implemented, so today the command measures only `one-shot-v1` and reports the other two configurations as `not run` |
-| Needs | The ARM64 host with Docker and `dpkg-dev`, at least one local validator bundle unpacked as `~/buildbench-local-*` (see [`part5-findings.md`](part5-findings.md) §2–§3), and `BB_MODEL_API_KEY` |
-| Command | `python3 experiments/demo3_comparison.py` (re-run to resume; `--report-only` reprints the table) |
-| Expected runtime | Per case: one unrepaired build, then 3 runs of each configuration. Measured rcran runs of the baseline took about 2 minutes each ([`part5-findings.md`](part5-findings.md) §9). The command prints its upper bound before starting: 125 minutes per run with the rcran manifest's limits |
-| Expected output | Progress lines `[n/N] <configuration> r<k> <case>: REPAIRED / not repaired (<reason>)`, then a Markdown table: runs, verified repairs per repeat and their mean, median tokens, median wall time, mean attempts and infrastructure failures per configuration, followed by per-case and per-direction counts, termination reasons, fix types, gains and regressions. Repair counts vary between runs of the same configuration (the model is not deterministic at temperature 0), so a match is the same table structure with every run recorded, not identical counts. Run records: `~/buildbench-experiments/demo3-comparison/<configuration>/runs.jsonl` |
-| Check without a key | `python3 experiments/demo3_comparison.py --configurations one-shot-v1 --repeats 1 --replay harness/replays/rcran-known-fix.json --out /tmp/demo3-check` uses the harness's stand-in model with the known rcran fix; on the ARM64 host it is expected to end with `REPAIRED (build_succeeded)` and a table marked as a pipeline check |
+| `settings.json` | Commit, source hashes, Python/system tools, case manifest hash, actual source budget defaults and switches. No API key is stored. |
+| `summary.json` | Compact verdict and control-check outcome. |
+| `runs/runs.jsonl` and `runs/<id>/record.json` | Final verified result, baseline, usage, full-agent stop reason, attempts and builds. |
+| `runs/<id>/repair.diff` | Actual changes before Debian repacking. Inspect build-time commands as well as source edits. |
+| `runs/<id>/baseline/build.log` | Original failure reproduced in this run. |
+| `runs/<id>/builds/build-NN/feedback.json` | Per-attempt build and parsed diagnostics for full-agent. |
+| `runs/<id>/result/build-result.json` | Separate final validation status and artifact check. |
+| `<id>.console.log`, `harness.log`, `replies.jsonl` | Execution and model diagnostics; not every mode produces every file. |
 
-Details: [`part-e-prompts-evaluation.md`](part-e-prompts-evaluation.md).
+`summary.json` does not replace raw records. Missing tokens remain unknown. To follow progress from another tmux pane, use `tail -f` on the named console or harness log. A stopped run may lack a final result; do not mark it repaired. Export and checksum evidence before shutting down the host.
 
-### Experiment 2: do the local validator's verdicts agree with the organizers' environment? (not yet performed)
+## 5. Claims, milestones and limitations
 
-| | |
-| --- | --- |
-| Supports | Reporting local repair counts as verified repairs. **Not yet performed** |
-| Needs | Recorded runs from Experiment 1 and the team's Build-Bench account (Development Validation is a web upload, one task per team at a time) |
-| Command | `python3 experiments/validation_bundle.py <runs folder> [<runs folder> ...] --sample 4 --output development-validation.zip`, upload the ZIP, enter the official verdicts in `development-validation.checks.json`, then `python3 experiments/validation_bundle.py --compare development-validation.checks.json` |
-| Expected runtime | Seconds to build the ZIP. The validation run's duration is the website's and has not been measured |
-| Expected output | A ZIP with a root `manifest.json` and `cases/<case_id>/worktree/input/` per case, and after `--compare` one line `k of n checked local verdicts agree with Development Validation`, with any disagreement listed |
+### 5.1 Milestone accountability
 
-Details: [`part-e-prompts-evaluation.md`](part-e-prompts-evaluation.md), "Ground truth".
+| Original commitment | Current evidence/status | Remaining work |
+| --- | --- | --- |
+| Demo 2: compatible end-to-end LLM prototype and materialized Debian trace | **Local prototype demonstrated.** rcran live repairs documented; model/tool/edit/build records implemented. Commands above expose both controls and live paths. | Re-run the TA commands on the final submitted commit and archive the exact results. |
+| Demo 2: runnable packaged agent; starter compatibility documented | **Local harness is not hosted qualification.** Agent entrypoint and kit packaging exist, but this document has not verified current `bb ready`/Hosted Smoke Test success. | Run and retain current packaging/compatibility checks; report any blocker. Do not replace them with unit-test counts. |
+| Demo 2: freeze/evaluate ten public cases, aiming five per direction | **Coverage complete for both agents, one repeat per case.** One-shot bundle: five `build_failed`, four `no_edit_applied`, one `case_not_failing`; zero repairs. Full agent: zero bundle repairs, plus a verified rcran repair. Original records and plans are imported. | Five reverse cases failed during environment setup in both arms; rerun their intended source failures after fixing setup. Keep the unchanged case separate. This is not the future controlled repeated comparison. |
+| Demo 3: history-based revision and ablation | Loop/history implemented early; scripted revision works and live Rust attempts show sequential changes. | Controlled history-on/off comparison with common settings on the frozen set; no measured history benefit claimed yet. |
+| Demo 3: measurable improvement | **Not demonstrated.** Both recorded arms are 0/12 on the four harder cases. | Freeze version/budgets, run planned paired repeats, report gains and regressions. |
+| Final: 40-case evaluation and second targeted improvement | Future work, not completed by this prototype. | Preserve package-group holdout and avoid tuning on held-out cases. |
 
-### Experiment 3: <...>
+The proposal explicitly promised **no minimum Demo 2 repair rate**, but did promise evaluation coverage and a runnable prototype. Successful rcran demonstrates a real capability. Ten-case evaluation completion depends on recorded coverage, not repair count; packaging verification is a separate obligation. Announce any milestone revision rather than silently changing the denominator.
 
-## 5. Claims and limitations
+### 5.2 Claims supported and not supported
 
-What your artifact supports, and an honest account of what does not work or was
-not tested. *An honest narrower result scores better than an impressive result we
-cannot reproduce.*
+Supported: real end-to-end local repair/build machinery; positive and negative replay controls previously verified; documented live rcran successes; detailed negative evidence on harder cases; an assisted Rust build demonstrating source-level feasibility.
+
+Not supported: general superiority over one-shot, a causal benefit from repair history, autonomous Rust success, RISC-V/hidden-case performance, current hosted qualification, or reliable success on every live rerun. Passing builds establish benchmark build/artifact criteria, not exhaustive functional correctness or unchanged behavior on every architecture.
+
+The latest full-agent rcran success is verified from the newly imported paired archive, including its final artifact check. The older raw rcran live records were not included in the supplied 24-run archive. The rcran historical claims above cite `part5-findings.md` §§9a/9c and should be strengthened by checking in the corresponding compact raw records. The four full-agent rcran runs vary in settings, and temperature 0 did not remove variation in one-shot runs. Do not advertise 4/4 as a controlled superiority comparison against 1/3.
+
+The `rust-assisted-cchar-v1` experiment succeeded at packaging with zero diagnostics in 163.0 seconds. The example-assisted completion succeeded in 168.9 seconds. Neither receives autonomous credit. Ground-truth agreement with the separate website Development Validation process has not been demonstrated here.
+
+Known limitations include repeated prompt cost, limited cross-file reasoning, stale/duplicate model edits, limited output budgets, incomplete tool/model-protocol compliance, unknown usage on some calls, and coarse high-level failure classification. A previous Unicode line separator in an API key caused a request-encoding failure mislabeled at the summary level as no edit applied. The new TA wrapper rejects that key format and surfaces model errors, without claiming to repair every upstream classification issue.
+
+### 5.3 Findings from the completed paired retest
+
+The full diagnostic review is [Demo 2 comparison diagnostics](demo2-comparison-diagnostics.md). Both plans record commit `001f3b9dd15f89665794609c8b04b73acfae167e`. The full agent used default strategy, history on and **proposal review off**, with local limits of 1M tokens, 80 turns, 10 loop builds, 12 attempts, 200 tool calls and 7,200 seconds. The TA scripts use recorded source defaults; they do not reproduce these elevated limits automatically. Optional review and shared-cause features were not evaluated by this paired run.
+
+| Latest evidence | One-shot | Full agent |
+| --- | ---: | ---: |
+| Scheduled cases processed | 11 | 11 |
+| Verified repairs across all cases | 0 | 1 (rcran) |
+| Development bundle repairs | 0/10 | 0/10 |
+| Source-evaluable development cases repaired | 0/4 | 0/4 |
+| Reverse-direction cases blocked in setup | 5 | 5 |
+| Already-building cases | 1 | 1 |
+
+The full agent changed `HAVE_MM_PREFETCH` from 1 to 0 in the rcran configuration header; separate final validation produced the expected ARM64 `.deb`. One-shot's failed build-time edit remains in the results. This is one positive local demonstration, not a reliability guarantee or causal proof about history.
+
+Frozen dependencies and a validator runtime did not prevent host/emulation setup crashes. All five x86-target baseline logs contain QEMU crashes and finish in setup/infrastructure failure. Their underlying intended source defects were not evaluated successfully. The high-level harness categories can mislabel such runs as ordinary build failures or no edit; future reporting must retain raw verdicts while exposing stage-based categories.
+
+Immediate work is to qualify the reverse-direction environment, improve stage classification and proposal accounting, and test edit-correction changes against saved failures. Later work is controlled repeats/history ablation, hosted compatibility validation and broader cases. The Rust full-agent run exhausted twelve correction responses before applying a batch; its zero proposed-edit summary does not mean the model never proposed edits. Increasing token limits alone has not established a solution.
+
+### 5.4 Handoff acceptance checklist
+
+Before the team calls the handoff ready:
+
+- Commit this document, driver, driver tests and compact evidence to `demo-2`; record the full commit used by the TA.
+- Provide repository and validator-archive access; verify bundle checksums on the TA host.
+- Run both replay commands on that commit and preserve their real build results. Run at least one live rcran example and preserve its actual outcome, even if it fails.
+- Verify current packaged-agent checks and report hosted/local boundaries honestly.
+- Preserve the imported 22 run records and the paired diagnostic table. Keep setup-blocked cases, the unchanged successful case, genuine source-repair failures and the rcran repair distinct. Re-run the five reverse cases after environment qualification; keep assisted successes separate.
+- Keep credentials, unpacked dependency bundles and build trees out of Git and the submitted agent ZIP.
+
+The accompanying drivers were tested offline during document preparation. No new EC2 build or paid model experiment was performed by preparing these files. A passing clean-machine walkthrough is the remaining acceptance gate, not an assumed result.
+
+### Source map
+
+- `design-proposal.md`, milestones §5: original commitments and no-minimum-rate scope.
+- `part5-findings.md` §§9a–9d: frozen baseline, full-agent rcran and initial development-case observations (historical notes contain some stale planning text).
+- `harness/README.md`, `harness/run_case.py`, `harness/build_feedback.py`, `harness/record.py`: executable build/result contract.
+- `reviewed-repairs.md`: optional replace-all and proposed-review semantics.
+- `evidence/demo2/comparison-records.json`: older compact 24-run archive evidence; not the new ten-case run.
+- `demo2-one-shot-results.md` and `evidence/demo2/one-shot-retest-summary.json`: completed eleven-case one-shot aggregate verified against imported original records. The paired-retest evidence contains both plans, summaries, all 22 records, actual patches and line-numbered log excerpts.
+- Organizer bundle READMEs and manifests: pinned runtime/dependencies and platform requirements. No current external policy/date claims are inferred from older proposal notes.

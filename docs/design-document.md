@@ -384,16 +384,16 @@ Do not commit the prepared checkout's intentional local budget modifications. Re
 
 Complete §3 first. Every row below is a claim made in this document. Live-model rows are nondeterministic: the acceptance criterion is a valid record and, for any claimed repair, a validator `succeeded` status with passed artifact validation. Matching our counts exactly is not required.
 
-All rows run on the §3.0 machine (one `m7g.xlarge`). "Measured" times come from our recorded runs; "estimated" times have not been timed end to end.
+All rows run on the §3.0 machine (one `m7g.xlarge`). "Measured" times come from our recorded runs or the 21 October fresh-instance walkthrough (§5.4).
 
 | Claimed result | Command (section) | Needs | Time | Expected output |
 | --- | --- | --- | --- | --- |
 | Offline tests and recorded counts (§5.3) | Offline checks (§3.3) | Nothing beyond the clone; no Docker or key | Under 1 min (measured) | All three suites `OK`; evidence report prints one-shot 0/11 and full-agent 1/11 |
-| Positive and negative replay controls | `demo2_demo.py controls` (§4.1) | rcran bundle, Docker; no key | About 10–15 min (estimated: four rcran builds) | Two summaries with `check_error: null`; positive `repaired: true`, negative `repaired: false` and `termination_reason: build_failed` |
-| Full-agent failed build → revision → successful build | `demo2_demo.py revise-replay` (§4.1) | rcran bundle, Docker; no key | About 10 min (estimated) | One summary with `repaired: true`, `check_error: null` |
+| Positive and negative replay controls | `demo2_demo.py controls` (§4.1) | rcran bundle, Docker; no key | About 6 min (measured in walkthrough: 190 s + 172 s) | Two summaries with `check_error: null`; positive `repaired: true`, negative `repaired: false` and `termination_reason: build_failed` |
+| Full-agent failed build → revision → successful build | `demo2_demo.py revise-replay` (§4.1) | rcran bundle, Docker; no key | About 6 min (measured in walkthrough: 362 s) | One summary with `repaired: true`, `check_error: null` |
 | Live rcran repair by a model | `demo2_demo.py live-one-shot` / `live-full` (§4.3) | rcran bundle, Docker, Bedrock key | About 3 min one-shot and 5 min full agent (measured: 191 s and 288 s) | One summary per run; `repaired` may be true or false |
 | Paired retest: one-shot 0/11, full agent 1/11 | `demo2_retest.py` (§4.3) | Both bundles, Docker, QEMU, Bedrock key | About 2 h (measured: 35 min one-shot arm and 77 min full-agent arm). Allow 4 h, since per-case build timeouts go up to 4 h. | `results.md` and `coverage.json` with 22 completed jobs |
-| Local `bb ready` passes for both agents (21 Oct) | `./bb ready` with the local model override (§4.5) | Docker, Bedrock key, network to ghcr.io | About 6 min per agent (measured) | `✓ Final validation succeeded`, readiness exit code 0, ZIP written |
+| Local `bb ready` on `hello`: passed for both agents on 21 Oct; **result varies between runs** | `./bb ready` with the local model override (§4.5) | Docker, Bedrock key, network to ghcr.io | About 3–6 min per agent (measured) | Pass: `✓ Final validation succeeded`, exit code 0, ZIP written. A valid failure: `✓ Agent completed`, then `Agent made no allowed textual change` and exit code 5. Both occurred (§4.5). |
 | Assisted Rust build (`rust-assisted-cchar-v1`) | No TA command; evidence only (§2.2, §5.2) | — | — | Not reproducible from this handoff; it receives no autonomous credit |
 | Hosted Smoke qualification | Not yet executed (§4.6) | — | — | No result is claimed |
 
@@ -535,7 +535,20 @@ Expected progress for each agent (also saved to `runs/tests/<agent>/<run>/progre
 [1/1] hello succeeded
 ```
 
-Then each command prints a JSON result with `"status": "succeeded"`, `"exit_code": 0` and `"summary": "Agent passed local readiness checks and was packaged."`, plus an `agent_submission` artifact with its SHA-256. Compare with `one-shot-ready-result.json` and `full-agent-ready-result.json` in the evidence folder. The model's repair is nondeterministic, so the `repair.diff` and ZIP hash may differ from ours. Our one-shot run replaced the injected `exit 1` with `true`. Our full-agent run removed the failing lines but also added unneeded `%global` macro overrides; that patch passed the build but needs review. Without `BB_LOCAL_AGENT_NETWORK=bridge` and a key, the agent cannot reach the model and readiness fails, as on 20 October below.
+When the agent repairs `hello`, each command prints a JSON result with `"status": "succeeded"`, `"exit_code": 0` and `"summary": "Agent passed local readiness checks and was packaged."`, plus an `agent_submission` artifact with its SHA-256. Compare with `one-shot-ready-result.json` and `full-agent-ready-result.json` in the evidence folder. The model's repair is nondeterministic, so the `repair.diff` and ZIP hash may differ from ours. Our one-shot run replaced the injected `exit 1` with `true`. Our full-agent run removed the failing lines but also added unneeded `%global` macro overrides; that patch passed the build but needs review. Without `BB_LOCAL_AGENT_NETWORK=bridge` and a key, the agent cannot reach the model and readiness fails, as on 20 October below. The key must be set in the same shell that runs `./bb ready`: a new `tmux` session or SSH login starts without it, so paste the §4.2 key block again there.
+
+**This check does not pass every time.** In the 21 October fresh-instance walkthrough (§5.4), both agents called the model successfully, but on their first attempts both failed `hello` with zero edits (the full agent passed when run again unchanged): `✓ Agent completed`, then `generate_patch.py: error: Agent made no allowed textual change`, `Passed: 0/1` and exit code 5. The reasons, from each run's `cases/hello/agent-result.json`:
+
+- **One-shot:** its frozen fixed file list (§1.1) covers Debian and common build files, but not `.spec` files, so the model sees `hello`'s failure only through the log. On the 21 October passing run it inferred the edit from the log. In both walkthrough runs it replied that no permitted file could be repaired. Expect one-shot to fail this check more often than it passes.
+- **Full agent:** on its first turn the model assumed a Debian package, reported a missing `debian/rules`, and stopped without using its tools (`termination_reason: model_stop`). On the passing run it listed the directory, read the spec and edited it.
+
+Both are model decisions on an RPM example that our Debian-oriented prompts do not target, not harness errors. The frozen one-shot baseline is not changed to fix this. To tell a valid failure from a broken setup, run this with the run folder printed under `Summary:`:
+
+```bash
+grep -o '"message": *"[^"]*"' runs/tests/<agent>/<run>/cases/hello/agent-result.json
+```
+
+A model explanation (as above) means the model was called and the setup works. `No model API key configured` means the key did not reach the agent.
 
 **20 October: earlier failed attempt (kept for the record).** **Purpose:** distinguish package validation from model integration and repair success. This was an additional check of the committed one-shot package, not a rerun of the 22-case research evaluation.
 
@@ -597,7 +610,7 @@ The supplied guide retains a general local-example checklist alongside its expli
 | Original commitment | Current evidence/status | Remaining work |
 | --- | --- | --- |
 | Demo 2: compatible end-to-end LLM prototype and materialized Debian trace | **Local prototype demonstrated.** rcran live repairs documented; model/tool/edit/build records implemented. Commands above expose both controls and live paths. | No additional implementation required for this local prototype milestone. |
-| Demo 2: runnable packaged agent; starter compatibility documented | **Local readiness passed with a modified runner; hosted qualification open.** On 21 October both agents passed `bb ready` on hello (rc.2 kit, rc.3 images, model settings forwarded and agent network enabled). The 20 October unmodified attempt failed without a model credential (§4.5). | Implement the hosted configuration/error adapter in a separate version; check/package using the current kit and pass Hosted Smoke. Preserve the local failure evidence. |
+| Demo 2: runnable packaged agent; starter compatibility documented | **Local readiness passed with a modified runner; hosted qualification open.** On 21 October both agents passed `bb ready` on hello (rc.2 kit, rc.3 images, model settings forwarded and agent network enabled). The 20 October unmodified attempt failed without a model credential. In the fresh-instance walkthrough, one-shot made no edit in two runs, and the full agent failed once and then passed with an identical package. The hello result therefore varies between runs, and one-shot rarely passes it (§4.5). | Implement the hosted configuration/error adapter in a separate version; check/package using the current kit and pass Hosted Smoke. Preserve the local failure evidence. |
 | Demo 2: freeze/evaluate ten public cases, aiming five per direction | **Coverage complete for both agents, one repeat per case.** One-shot bundle: five `build_failed`, four `no_edit_applied`, one `case_not_failing`; zero repairs. Full agent: zero bundle repairs, plus a verified rcran repair. Original records and plans are imported. | Five reverse cases failed during environment setup in both arms; rerun their intended source failures after fixing setup. Keep the unchanged case separate. This is not the future controlled repeated comparison. |
 | Demo 3: history-based revision and ablation | Loop/history implemented early; scripted revision works and live Rust attempts show sequential changes. | Controlled history-on/off comparison with common settings on the frozen set; no measured history benefit claimed yet. |
 | Demo 3: measurable improvement | **Not demonstrated.** Each arm repaired 0/4 source-evaluable development cases in the latest single-repeat retest. | Freeze version/budgets, run planned paired repeats, report gains and regressions. |
@@ -645,6 +658,19 @@ Before the team calls the handoff ready:
 
 - Create and push the tag named in §3.1 at the commit that contains this document: `git tag demo2-ta-v1 && git push origin demo2-ta-v1`.
 - Have a teammate who did not write these instructions follow §§3–4 word for word on a new `m7g.xlarge` with Ubuntu 24.04 ARM64. Record the date, the commit, `tool-versions.txt`, and each step's actual time and output. Fix any step that does not run as written, then replace the estimated times in §4.0 with the measured ones.
+
+**Fresh-instance walkthrough, 21 October 2026 (partial).** A team member followed the setup on a new `m7g.xlarge` (Ubuntu 24.04 ARM64), then ran these steps as written:
+
+| Step | Result |
+| --- | --- |
+| §4.1 `controls` | Passed as expected: positive `repaired: true` (190.4 s), negative `repaired: false`, `build_failed` (172.4 s), both `check_error: null` |
+| §4.1 `revise-replay` | Passed as expected: `repaired: true`, `check_error: null` (361.8 s) |
+| §4.2 key, §4.3 QEMU check | Key set; `qemu-x86_64` enabled with flags `POF` |
+| §4.3 retest `--dry-run` | Output matched exactly: 22 jobs listed |
+| §4.5 `bb ready`, one-shot | Two runs. The command ran as written and the model was called each time, but it made no edit both times: exit code 5. These are valid model outcomes (§4.5), not setup errors. |
+| §4.5 `bb ready`, full agent | First run: the model stopped without editing, exit code 5. Rerun, unchanged: `Passed: 1/1`, final validation succeeded, exit code 0. The ZIP SHA-256 `153413bed2249a2eeb423beef9c895eb602c36986765669f90d1fa5d13454095` is identical to the 21 October package. |
+
+Not run in the walkthrough, for lack of time: the full 22-job retest and the short `live-one-shot` / `live-full` runs. Their recorded results are in §5.3 and `docs/evidence/demo2/paired-retest/`.
 
 - Commit this document, driver, driver tests and compact evidence to `demo-2`; record the full commit used by the TA.
 - Provide repository and validator-archive access; verify bundle checksums on the TA host.

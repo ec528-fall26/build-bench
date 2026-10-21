@@ -5,6 +5,8 @@
 **Demo 2 evaluation snapshot:** 19 October 2026. **Documentation and readiness update:** 20 October 2026. Due on `demo-2`; update for Demo 3 and the final.
 
 
+> **TA: start here.** To reproduce the results, go to [§3.0](#30-requirements-at-a-glance) and follow §§3–4 in order, starting from launching a new EC2 instance in §3.1. [§4.0](#40-reproduction-index-each-claimed-result-its-command-and-the-expected-output) lists every experiment with its command, run time and expected output. §§1–2 describe the design and are not needed to run anything.
+
 This document describes the implemented local research pipeline through commit `001f3b9`, not only the original proposal. The main Demo 2 deliverable is the frozen one-shot repair pipeline and its public-case evaluation. The iterative full agent is a separate extension. TA entry points are `scripts/demo2_demo.py` for individual demonstrations and `scripts/demo2_retest.py` for the complete retest. The entry point adds reproducibility checks and records; it does not change either repair agent. The handoff files are committed on `demo-2`; record the exact checkout used by the TA. Each run records its actual Git commit, source hashes, settings and outcome. Do not imply that results from earlier versions were produced by the current version.
 
 **What works:** a real package can be unpacked, inspected, edited, repackaged and validated on ARM64. There are recorded live-model rcran repairs and a scripted full-agent failed-build/revision/success demonstration. **What does not yet work reliably:** autonomous repair of the harder development cases, including Rust Subversion. An assisted Rust repair builds successfully, but it is not an autonomous success. **The latest one-shot retest completed all ten development cases:** zero repairs, five failed candidate builds, four runs with no edit applied, and one case that already built unchanged. Rcran was tested separately and also failed in this repeat. See [the completed one-shot results](demo2-one-shot-results.md). The full-agent retest also completed all eleven evaluations and repaired rcran autonomously (1/11 overall, 0/10 bundle). Log review found all five reverse-direction cases blocked during environment setup in both arms. The four source-evaluable development cases remained unrepaired. See [the paired diagnostic review](demo2-comparison-diagnostics.md) for the complete case table, evidence and remaining work.
@@ -203,6 +205,30 @@ You need repository access, permission to download the official bundles, and for
 
 Use Ubuntu Server **24.04 LTS, ARM64**, on a Graviton instance. The recorded host was an `m7g.xlarge` with 4 vCPUs, 16 GiB RAM and 80 GiB storage; use at least that capacity and monitor free disk space. Use a disposable evaluation host with sudo and Docker access. Allow outbound HTTPS for GitHub, package repositories, bundle downloads and Bedrock. SSH access is needed if using the SSH examples; restrict inbound SSH to your own address. No public application port is required. AWS charges are the evaluator's responsibility; stop the instance when finished and retain results first.
 
+**Launch the instance.** In the AWS console, switch the region to **US East (N. Virginia) `us-east-1`**, the same region as the Bedrock model in §4.2. Open **EC2 → Instances → Launch instances** and set:
+
+| Setting | Value |
+| --- | --- |
+| Name | `build-bench-demo2-ta` |
+| Application and OS image | **Ubuntu**, then **Ubuntu Server 24.04 LTS (HVM), SSD Volume Type**, architecture **64-bit (Arm)** |
+| Instance type | `m7g.xlarge` |
+| Key pair | **Create new key pair**: name `build-bench-ta`, type RSA, format `.pem`. The browser downloads `build-bench-ta.pem`. |
+| Network settings | Keep the default VPC and **Auto-assign public IP: Enable**. Create a security group that allows **SSH (port 22)** with source **My IP** only. Add no other inbound rules. The default outbound rule allows all traffic, which this setup needs. |
+| Configure storage | **80 GiB**, volume type **gp3** |
+
+Click **Launch instance**, wait until **Instance state** is *Running* and **Status check** shows *2/2 checks passed*, then copy the **Public IPv4 address**.
+
+In your **laptop terminal** (macOS or Linux; on Windows, use WSL or PowerShell's built-in `ssh`), move the key, restrict its permissions and connect. Replace `YOUR_EC2_PUBLIC_IP`:
+
+```bash
+mkdir -p "$HOME/.ssh" &&
+mv "$HOME/Downloads/build-bench-ta.pem" "$HOME/.ssh/" &&
+chmod 400 "$HOME/.ssh/build-bench-ta.pem" &&
+ssh -i "$HOME/.ssh/build-bench-ta.pem" ubuntu@YOUR_EC2_PUBLIC_IP
+```
+
+Answer `yes` to the host-key prompt. Expected: an `ubuntu@ip-...:~$` prompt. The public IP changes if the instance is stopped and started again. The `scp` command in §3.2 uses the same key.
+
 On the new **EC2 Linux terminal**:
 
 ```bash
@@ -246,10 +272,10 @@ Open [Build-Bench Data & Downloads](https://matrix.cstcloud.cn/build-bench/data-
 
 Use the official page's links rather than guessed URLs. Website authentication and direct-link availability were not independently verified during preparation. The TA must confirm download access before evaluation. The ten-case archive is approximately 2.29 GB. Verify downloaded archives against the published checksums; if filenames or hashes differ, stop and confirm the release rather than substituting another dataset.
 
-If downloading through your laptop's browser, transfer the archives to EC2. In your **laptop terminal**, replace the key path and IP with those of your own instance:
+If downloading through your laptop's browser, transfer the archives to EC2. In your **laptop terminal**, replace the IP with your instance's public IP:
 
 ```bash
-scp -i /path/to/your-ec2-key.pem \
+scp -i "$HOME/.ssh/build-bench-ta.pem" \
   "$HOME/Downloads/buildbench-local-rcran-v1.tar" \
   "$HOME/Downloads/buildbench-local-development-v1.tar" \
   ubuntu@YOUR_EC2_PUBLIC_IP:/home/ubuntu/Downloads/

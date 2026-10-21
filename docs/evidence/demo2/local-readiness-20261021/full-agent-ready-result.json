@@ -1,0 +1,10 @@
+{
+  "schema_version": "0.1",
+  "command": "ready",
+  "status": "succeeded",
+  "exit_code": 0,
+  "summary": "Agent passed local readiness checks and was packaged.",
+  "diagnostics": [],
+  "artifacts": [{"type": "agent_submission", "path": "runs/readiness/full-agent-local-model-20261021T173656Z/full-agent.zip", "sha256": "153413bed2249a2eeb423beef9c895eb602c36986765669f90d1fa5d13454095", "bytes": 69081}],
+  "next_actions": []
+}

@@ -1,0 +1,32 @@
+{
+  "artifact_validation_passed": true,
+  "artifacts": [
+    {
+      "kind": "binary",
+      "path": "artifacts/buildbench-hello-1.0-1.noarch.rpm",
+      "rpm_query_ok": true,
+      "sha256": "18c10b2bbeb0adde255e4e0a08935796b8426090b3b805ee6d9919e41effe790",
+      "size_bytes": 6664
+    },
+    {
+      "kind": "source",
+      "path": "artifacts/buildbench-hello-1.0-1.src.rpm",
+      "rpm_query_ok": true,
+      "sha256": "7a06572fe52089210cf17cfdb8e4a9dc6e0785423264fce580d61f069bb28073",
+      "size_bytes": 7079
+    }
+  ],
+  "build_exit_code": 0,
+  "case_id": "hello-demo",
+  "duration_seconds": 77,
+  "message": "build completed successfully",
+  "patch_applied": true,
+  "schema_version": "1.0",
+  "security": {
+    "mode": "privileged",
+    "safe_for_untrusted_submission": false
+  },
+  "status": "succeeded",
+  "target_arch": "x86_64",
+  "timed_out": false
+}

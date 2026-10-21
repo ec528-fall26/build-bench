@@ -1,0 +1,14 @@
+Agent: full-agent
+Cases: 1
+[1/1] Testing hello
+✓ Agent submission is valid
+✓ Example Case prepared
+✓ Initial build failure reproduced
+✓ Agent completed
+✓ Canonical patch generated
+✓ Final validation succeeded
+
+Result: /home/ubuntu/build-bench-demo2/buildbench-starter-kit-0.1.0-rc.2/runs/tests/full-agent/20261021T173658Z-18023/cases/hello/build-result.json
+Log:    /home/ubuntu/build-bench-demo2/buildbench-starter-kit-0.1.0-rc.2/runs/tests/full-agent/20261021T173658Z-18023/cases/hello/build.log
+Patch:  /home/ubuntu/build-bench-demo2/buildbench-starter-kit-0.1.0-rc.2/runs/tests/full-agent/20261021T173658Z-18023/cases/hello/repair.diff
+[1/1] hello succeeded

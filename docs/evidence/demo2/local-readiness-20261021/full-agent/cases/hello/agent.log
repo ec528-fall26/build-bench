@@ -1,0 +1,11 @@
+INFO src.edit_applier edit_replacements path='input/buildbench-hello.spec' count=1 replace_all=False
+INFO src.edit_applier edit_applied index=0 path='input/buildbench-hello.spec'
+INFO src.edit_applier edit_replacements path='input/buildbench-hello.spec' count=1 replace_all=False
+INFO src.edit_applier edit_applied index=0 path='input/buildbench-hello.spec'
+INFO src.edit_applier edit_replacements path='input/buildbench-hello.spec' count=1 replace_all=False
+INFO src.edit_applier edit_applied index=0 path='input/buildbench-hello.spec'
+INFO src.edit_applier edit_replacements path='input/buildbench-hello.spec' count=1 replace_all=False
+INFO src.edit_applier edit_applied index=0 path='input/buildbench-hello.spec'
+INFO src.edit_applier edit_replacements path='input/buildbench-hello.spec' count=1 replace_all=False
+INFO src.edit_applier edit_applied index=0 path='input/buildbench-hello.spec'
+Dependency %post scriptlets run during build; adding globals to disable pre/post install scriptlets will prevent them.

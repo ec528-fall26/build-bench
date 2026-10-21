@@ -1,0 +1,10 @@
+{
+  "schema_version": "0.1",
+  "command": "ready",
+  "status": "succeeded",
+  "exit_code": 0,
+  "summary": "Agent passed local readiness checks and was packaged.",
+  "diagnostics": [],
+  "artifacts": [{"type": "agent_submission", "path": "runs/readiness/local-model-20261021T173049Z/one-shot.zip", "sha256": "294442a5bc2f6e81a9440291425253a21316223bb20d1260a2f6c022d05bd9b8", "bytes": 15611}],
+  "next_actions": []
+}

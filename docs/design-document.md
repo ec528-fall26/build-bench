@@ -181,6 +181,22 @@ This guide uses only the **rcran-v1** and **development-v1 ten-case validator bu
 
 The recorded evaluation used code commit `001f3b9dd15f89665794609c8b04b73acfae167e`. The helper below restores that source and the saved full-agent limits in a separate directory. It does not promise identical model outputs or an identical host environment. The new TA wrappers have offline tests; this fresh-instance walkthrough still needs a real acceptance run.
 
+### 3.0 Requirements at a glance
+
+| Item | Requirement |
+| --- | --- |
+| Machine | AWS EC2 `m7g.xlarge` (Graviton, ARM64, 4 vCPU, 16 GiB RAM) with 80 GiB of disk. Native ARM64 Linux is required. macOS and x86 hosts are rejected by the scripts. |
+| Operating system | Ubuntu Server 24.04 LTS, ARM64 |
+| Languages and tools | Python 3.12 (Ubuntu 24.04 system Python, standard library only, no pip install). From Ubuntu 24.04 apt: `docker.io`, `dpkg-dev`, `git`, `qemu-user-static`, `binfmt-support`, `xz-utils`, `tmux`. Step 3.1 prints the installed versions; save that output with your results. |
+| This repository | `https://github.com/ec528-fall26/build-bench`, tag `demo2-ta-v1` (§3.1). The tag must exist and point at the commit that contains this document. |
+| Starter Kit | `buildbench-starter-kit-0.1.0-rc.2/` is committed inside this repository; there is no separate download. |
+| Historical agent code | Commit `001f3b9dd15f89665794609c8b04b73acfae167e`, restored by `scripts/demo2_prepare_recorded.py` (§3.3). Only the saved budget diff is applied, and the script checks every source hash. |
+| Validator bundles | `buildbench-local-rcran-v1.tar`, SHA-256 `e4a074d7cd3b2aadb5972de1525af9419bd8411529079d913ff01f6d2cfe0bc8`. `buildbench-local-development-v1.tar`, checked case by case against `docs/evidence/demo2/development-cases.json` (§3.2). Both contain their own runtime images. |
+| Container images (§4.5 only) | Validator and example-assets images pinned by digest in §4.5. The agent image is the kit default `python:3.11.9-slim-bookworm`. |
+| Model | Amazon Bedrock, region `us-east-1`, model `openai.gpt-oss-120b-1:0`, OpenAI-compatible endpoint. Needed only for live runs and §4.5. |
+| Accounts | GitHub read access to the repository, access to the Build-Bench downloads page, and an AWS account that can run EC2 and invoke the Bedrock model. |
+| Time | Setup, including about 2.7 GB of downloads: about 45 min. Run times are listed per experiment in §4.0. |
+
 ### 3.1 Access and instance
 
 You need repository access, permission to download the official bundles, and for live runs an AWS identity permitted to invoke the recorded Bedrock model. Neither bundle nor model credential is stored in Git. Replay controls need no model credential but still perform real local builds.
@@ -205,16 +221,19 @@ python3 --version
 dpkg-source --version
 df -h "$HOME"
 mkdir -p "$HOME/Downloads"
-git clone --branch demo-2 https://github.com/ec528-fall26/build-bench.git "$HOME/build-bench-demo2"
+git clone --branch demo2-ta-v1 https://github.com/ec528-fall26/build-bench.git "$HOME/build-bench-demo2"
 cd "$HOME/build-bench-demo2" &&
 git fetch origin --tags &&
 git rev-parse HEAD &&
 git status --short
+tool_versions="$HOME/tool-versions.txt"
+{ lsb_release -ds; uname -r; docker --version; git --version; python3 --version
+  dpkg-source --version | head -1; dpkg -s qemu-user-static | grep '^Version'; } | tee "$tool_versions"
 ```
 
 Expected: `uname -m` prints `aarch64`, Docker prints `aarch64`, Python prints `Python 3.12.x`, `dpkg-source` prints its version banner, and `git status --short` prints nothing.
 
-`uname -m` must report `aarch64`. Python 3.12 on Ubuntu 24.04 is suitable; the harness uses the standard library, so no pip install is required. Record the handoff commit printed above. If the repository is private, authenticate using your approved GitHub access; do not embed tokens in a saved clone URL. Host package versions are not fully pinned by this guide.
+`uname -m` must report `aarch64`. Python 3.12 on Ubuntu 24.04 is suitable; the harness uses the standard library, so no pip install is required. Record the handoff commit printed above. If the repository is private, authenticate using your approved GitHub access; do not embed tokens in a saved clone URL. Apt cannot pin exact package versions on a fresh 24.04 image, so `tool-versions.txt` records the versions you actually got; keep it with your results.
 
 ### 3.2 Download exactly two official bundles
 
@@ -254,6 +273,32 @@ cd "$HOME/buildbench-local-development-v1" &&
 sha256sum -c SHA256SUMS &&
 docker load -i runtime-image.tar &&
 bash run.sh --list
+```
+
+Before extracting, check the rcran archive against the hash it had when we ran the experiments. The command must print `OK`:
+
+```bash
+echo 'e4a074d7cd3b2aadb5972de1525af9419bd8411529079d913ff01f6d2cfe0bc8  /home/ubuntu/Downloads/buildbench-local-rcran-v1.tar' | sha256sum -c
+```
+
+We did not record the ten-case archive's own hash, but we did record each case manifest's hash. After extraction, check that the ten cases are the ones we evaluated. Expected: ten `OK` lines and `10/10 case manifests match`.
+
+```bash
+cd "$HOME/build-bench-demo2" &&
+python3 - "$HOME/buildbench-local-development-v1" <<'EOF'
+import hashlib, json, sys
+from pathlib import Path
+bundle = Path(sys.argv[1])
+cases = json.load(open('docs/evidence/demo2/development-cases.json'))['cases']
+ok = 0
+for case in cases:
+    path = bundle / 'cases' / case['case_id'] / 'manifest.json'
+    good = path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == case['manifest_sha256']
+    ok += good
+    print('OK ' if good else 'BAD', case['case_id'])
+print(f'{ok}/{len(cases)} case manifests match')
+sys.exit(ok != len(cases))
+EOF
 ```
 
 These are the recorded bundle layouts. Stop on any missing file, checksum error or failed preflight. `--check` does not prove a real build works. Keep the archives outside Git.
@@ -307,16 +352,18 @@ Do not commit the prepared checkout's intentional local budget modifications. Re
 
 Complete §3 first. Every row below is a claim made in this document. Live-model rows are nondeterministic: the acceptance criterion is a valid record and, for any claimed repair, a validator `succeeded` status with passed artifact validation. Matching our counts exactly is not required.
 
-| Claimed result | Command (section) | Needs | Expected output |
-| --- | --- | --- | --- |
-| Offline tests and recorded counts (§5.3) | Offline checks (§3.3) | Nothing beyond the clone | All three suites `OK`; evidence report prints one-shot 0/11 and full-agent 1/11 |
-| Positive and negative replay controls | `demo2_demo.py controls` (§4.1) | rcran bundle, Docker | Two summaries with `check_error: null`; positive `repaired: true`, negative `repaired: false` and `termination_reason: build_failed` |
-| Full-agent failed build → revision → successful build | `demo2_demo.py revise-replay` (§4.1) | rcran bundle, Docker | One summary with `repaired: true`, `check_error: null` |
-| Live rcran repair by a model | `demo2_demo.py live-one-shot` / `live-full` (§4.3) | Bedrock key | One summary per run; `repaired` may be true or false |
-| Paired retest: one-shot 0/11, full agent 1/11 | `demo2_retest.py` (§4.3) | Both bundles, Bedrock key, several hours | `results.md` and `coverage.json` with 22 completed jobs |
-| Local `bb ready` passes for both agents (21 Oct) | `./bb ready` with the local model override (§4.5) | Bedrock key, Docker | `✓ Final validation succeeded`, readiness exit code 0, ZIP written |
-| Assisted Rust build (`rust-assisted-cchar-v1`) | No TA command; evidence only (§2.2, §5.2) | — | Not reproducible from this handoff; it receives no autonomous credit |
-| Hosted Smoke qualification | Not yet executed (§4.6) | — | No result is claimed |
+All rows run on the §3.0 machine (one `m7g.xlarge`). "Measured" times come from our recorded runs; "estimated" times have not been timed end to end.
+
+| Claimed result | Command (section) | Needs | Time | Expected output |
+| --- | --- | --- | --- | --- |
+| Offline tests and recorded counts (§5.3) | Offline checks (§3.3) | Nothing beyond the clone; no Docker or key | Under 1 min (measured) | All three suites `OK`; evidence report prints one-shot 0/11 and full-agent 1/11 |
+| Positive and negative replay controls | `demo2_demo.py controls` (§4.1) | rcran bundle, Docker; no key | About 10–15 min (estimated: four rcran builds) | Two summaries with `check_error: null`; positive `repaired: true`, negative `repaired: false` and `termination_reason: build_failed` |
+| Full-agent failed build → revision → successful build | `demo2_demo.py revise-replay` (§4.1) | rcran bundle, Docker; no key | About 10 min (estimated) | One summary with `repaired: true`, `check_error: null` |
+| Live rcran repair by a model | `demo2_demo.py live-one-shot` / `live-full` (§4.3) | rcran bundle, Docker, Bedrock key | About 3 min one-shot and 5 min full agent (measured: 191 s and 288 s) | One summary per run; `repaired` may be true or false |
+| Paired retest: one-shot 0/11, full agent 1/11 | `demo2_retest.py` (§4.3) | Both bundles, Docker, QEMU, Bedrock key | About 2 h (measured: 35 min one-shot arm and 77 min full-agent arm). Allow 4 h, since per-case build timeouts go up to 4 h. | `results.md` and `coverage.json` with 22 completed jobs |
+| Local `bb ready` passes for both agents (21 Oct) | `./bb ready` with the local model override (§4.5) | Docker, Bedrock key, network to ghcr.io | About 6 min per agent (measured) | `✓ Final validation succeeded`, readiness exit code 0, ZIP written |
+| Assisted Rust build (`rust-assisted-cchar-v1`) | No TA command; evidence only (§2.2, §5.2) | — | — | Not reproducible from this handoff; it receives no autonomous credit |
+| Hosted Smoke qualification | Not yet executed (§4.6) | — | — | No result is claimed |
 
 ### 4.1 Prove the rcran pipeline without a model key
 
@@ -563,6 +610,9 @@ Immediate work is to qualify the reverse-direction environment, improve stage cl
 ### 5.4 Handoff acceptance checklist
 
 Before the team calls the handoff ready:
+
+- Create and push the tag named in §3.1 at the commit that contains this document: `git tag demo2-ta-v1 && git push origin demo2-ta-v1`.
+- Have a teammate who did not write these instructions follow §§3–4 word for word on a new `m7g.xlarge` with Ubuntu 24.04 ARM64. Record the date, the commit, `tool-versions.txt`, and each step's actual time and output. Fix any step that does not run as written, then replace the estimated times in §4.0 with the measured ones.
 
 - Commit this document, driver, driver tests and compact evidence to `demo-2`; record the full commit used by the TA.
 - Provide repository and validator-archive access; verify bundle checksums on the TA host.

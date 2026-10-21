@@ -193,7 +193,7 @@ The recorded evaluation used code commit `001f3b9dd15f89665794609c8b04b73acfae16
 | This repository | `https://github.com/ec528-fall26/build-bench`, tag `demo2-ta-v1` (§3.1). The tag must exist and point at the commit that contains this document. |
 | Starter Kit | `buildbench-starter-kit-0.1.0-rc.2/` is committed inside this repository; there is no separate download. |
 | Historical agent code | Commit `001f3b9dd15f89665794609c8b04b73acfae167e`, restored by `scripts/demo2_prepare_recorded.py` (§3.3). Only the saved budget diff is applied, and the script checks every source hash. |
-| Validator bundles | `buildbench-local-rcran-v1.tar`, SHA-256 `e4a074d7cd3b2aadb5972de1525af9419bd8411529079d913ff01f6d2cfe0bc8`. `buildbench-local-development-v1.tar`, checked case by case against `docs/evidence/demo2/development-cases.json` (§3.2). Both contain their own runtime images. |
+| Validator bundles | `buildbench-local-rcran-v1.tar.gz`, SHA-256 `894e6a5d57acce17b8743d562a4e027c28dd81e549b08b94c3d29d360cac4538`. `buildbench-local-development-v1.tar.gz`, SHA-256 `542145b03b79cdf6deb4fdf960acaa1e21a9d24fbf52a19b1cf3be6707981d94`. Both hashes are from the official release, both files are downloaded directly in §3.2, and both contain their own runtime images. |
 | Container images (§4.5 only) | Validator and example-assets images pinned by digest in §4.5. The agent image is the kit default `python:3.11.9-slim-bookworm`. |
 | Model | Amazon Bedrock, region `us-east-1`, model `openai.gpt-oss-120b-1:0`, OpenAI-compatible endpoint. Needed only for live runs and §4.5. |
 | Accounts | GitHub read access to the repository, access to the Build-Bench downloads page, and an AWS account that can run EC2 and invoke the Bedrock model. |
@@ -270,22 +270,34 @@ Open [Build-Bench Data & Downloads](https://matrix.cstcloud.cn/build-bench/data-
 | Local Validator Example | rcran-v1 | Download local example; also Checksums and Local validation guide |
 | Local Validator Bundle: 10 Cases | development-v1 | Download bundle; also SHA-256 and Guide |
 
-Use the official page's links rather than guessed URLs. Website authentication and direct-link availability were not independently verified during preparation. The TA must confirm download access before evaluation. The ten-case archive is approximately 2.29 GB. Verify downloaded archives against the published checksums; if filenames or hashes differ, stop and confirm the release rather than substituting another dataset.
+Those rows link to the files below. They download without logging in (checked 21 October 2026), so download them **directly on EC2**; there is no need to go through your laptop. The rcran archive is 387 MB and the ten-case archive is 2.29 GB. From our network the server sent about 0.6 MB/s, so allow up to an hour for both. Run the downloads inside `tmux` so a dropped SSH connection doesn't stop them.
 
-If downloading through your laptop's browser, transfer the archives to EC2. In your **laptop terminal**, replace the IP with your instance's public IP:
+On **EC2**:
 
 ```bash
-scp -i "$HOME/.ssh/build-bench-ta.pem" \
-  "$HOME/Downloads/buildbench-local-rcran-v1.tar" \
-  "$HOME/Downloads/buildbench-local-development-v1.tar" \
-  ubuntu@YOUR_EC2_PUBLIC_IP:/home/ubuntu/Downloads/
+base=https://matrix.cstcloud.cn/build-bench/releases/local-validation
+cd "$HOME/Downloads" &&
+curl -fL -C - -O "$base/rcran-v1/buildbench-local-rcran-v1.tar.gz" &&
+curl -fL -C - -O "$base/development-v1/buildbench-local-development-v1.tar.gz"
 ```
 
-The following commands assume those archive filenames. If the official download uses a different extension, inspect it and follow its accompanying guide; do not merely rename compressed formats. On **EC2**, extract into new directories, verify the internal checksums and load the bundled images:
+If a download is interrupted, run the same command again; `-C -` resumes where it stopped. Then check both archives against the hashes that the release publishes in its `SHA256SUMS` files. Expected: two lines ending in `OK`.
+
+```bash
+cd "$HOME/Downloads" &&
+sha256sum -c <<'EOF'
+894e6a5d57acce17b8743d562a4e027c28dd81e549b08b94c3d29d360cac4538  buildbench-local-rcran-v1.tar.gz
+542145b03b79cdf6deb4fdf960acaa1e21a9d24fbf52a19b1cf3be6707981d94  buildbench-local-development-v1.tar.gz
+EOF
+```
+
+These are the published release hashes. The rcran archive was also checked against the copy used in our experiments: its decompressed contents have SHA-256 `e4a074d7cd3b2aadb5972de1525af9419bd8411529079d913ff01f6d2cfe0bc8`, the same as our copy. If a hash differs, stop and confirm the release with the organizers rather than substituting another dataset.
+
+On **EC2**, extract into new directories, verify the internal checksums and load the bundled images:
 
 ```bash
 test ! -e "$HOME/buildbench-local-rcran-v1" &&
-tar -xf "$HOME/Downloads/buildbench-local-rcran-v1.tar" -C "$HOME" &&
+tar -xzf "$HOME/Downloads/buildbench-local-rcran-v1.tar.gz" -C "$HOME" &&
 cd "$HOME/buildbench-local-rcran-v1" &&
 sha256sum -c SHA256SUMS &&
 docker load -i runtime-image.tar.gz &&
@@ -294,20 +306,14 @@ bash run.sh --check
 
 ```bash
 test ! -e "$HOME/buildbench-local-development-v1" &&
-tar -xf "$HOME/Downloads/buildbench-local-development-v1.tar" -C "$HOME" &&
+tar -xzf "$HOME/Downloads/buildbench-local-development-v1.tar.gz" -C "$HOME" &&
 cd "$HOME/buildbench-local-development-v1" &&
 sha256sum -c SHA256SUMS &&
 docker load -i runtime-image.tar &&
 bash run.sh --list
 ```
 
-Before extracting, check the rcran archive against the hash it had when we ran the experiments. The command must print `OK`:
-
-```bash
-echo 'e4a074d7cd3b2aadb5972de1525af9419bd8411529079d913ff01f6d2cfe0bc8  /home/ubuntu/Downloads/buildbench-local-rcran-v1.tar' | sha256sum -c
-```
-
-We did not record the ten-case archive's own hash, but we did record each case manifest's hash. After extraction, check that the ten cases are the ones we evaluated. Expected: ten `OK` lines and `10/10 case manifests match`.
+We also recorded each evaluated case manifest's hash. After extraction, check that the ten cases are the ones we evaluated. Expected: ten `OK` lines and `10/10 case manifests match`.
 
 ```bash
 cd "$HOME/build-bench-demo2" &&

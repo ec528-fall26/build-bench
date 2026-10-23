@@ -1,0 +1,49 @@
+{
+  "agent_version": "1.0.0+16e31a424d0d",
+  "baseline": {
+    "artifact_validation_passed": false,
+    "binary_artifacts": [],
+    "build_exit_code": 1,
+    "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+    "duration_seconds": 161.0,
+    "message": "build failed; expected binary artifact pattern 'librust-subversion-dev_*_arm64.deb' was not matched",
+    "repaired": false,
+    "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/08-launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2/baseline",
+    "status": "failed",
+    "timed_out": false
+  },
+  "build_commands": [],
+  "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+  "changed_files": [],
+  "diff_path": null,
+  "edit_warnings": [
+    "edit_rejected index=0 path='src/uri.rs' reason=path_outside_allowed_prefix",
+    "edit_rejected index=1 path='src/uri.rs' reason=path_outside_allowed_prefix",
+    "edit_rejected index=2 path='src/uri.rs' reason=path_outside_allowed_prefix",
+    "edit_rejected index=3 path='src/io.rs' reason=path_outside_allowed_prefix",
+    "edit_rejected index=4 path='src/io.rs' reason=path_outside_allowed_prefix",
+    "edit_rejected index=5 path='src/io.rs' reason=path_outside_allowed_prefix",
+    "edit_rejected index=6 path='src/io.rs' reason=path_outside_allowed_prefix",
+    "edit_rejected index=7 path='src/repos.rs' reason=path_outside_allowed_prefix",
+    "edit_rejected index=8 path='src/string.rs' reason=path_outside_allowed_prefix"
+  ],
+  "edits_applied": 0,
+  "edits_proposed": 9,
+  "error": "nothing to build: the source is unchanged",
+  "fix_type": "none",
+  "mode": "one-shot",
+  "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+  "needs_review": false,
+  "rationale": "The Subversion C API bindings generated for aarch64 expect raw pointers of type `*const u8`/`*mut u8`, but the Rust code was casting buffers and strings to `*const i8`/`*mut i8`. This caused a large number of type\u2011mismatch errors during compilation. The fixes replace the incorrect `i8` casts with `u8` casts and adjust the `Uri` struct to store `*const u8` instead of `*const i8`. The function pointer signature for the write callback is also updated to use `*const u8`. These changes align the Rust code with the expected C types, allowing the crate to compile for the aarch64 target.",
+  "repaired": false,
+  "result": null,
+  "run_id": "08-launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+  "served_model": "openai.gpt-oss-120b-1:0",
+  "started_at": "2026-10-19T21:47:49+00:00",
+  "termination_reason": "no_edit_applied",
+  "usage": {
+    "input_tokens": 12393,
+    "output_tokens": 1764
+  },
+  "wall_seconds": 175.3
+}

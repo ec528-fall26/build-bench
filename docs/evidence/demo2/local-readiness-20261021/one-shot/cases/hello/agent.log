@@ -1,0 +1,2 @@
+INFO src.edit_applier edit_applied index=0 path='input/buildbench-hello.spec'
+The spec file deliberately fails the build by executing `exit 1` in the %build section, causing the RPM build to abort. Replacing this with a harmless command (`true`) allows the build to complete successfully while preserving the rest of the build steps.

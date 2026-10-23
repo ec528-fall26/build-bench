@@ -1,0 +1,23 @@
+--- a/input/debian/rules
++++ b/input/debian/rules
+@@ -1,10 +1,10 @@
+ #!/usr/bin/make -f
+ 
+ %:
+-	dh $@ --with python3,sphinxdoc --buildsystem=pybuild
++	dh $@ --with python3 --buildsystem=pybuild
+ 
+ override_dh_auto_build-indep:
+-	python3 setup.py build_sphinx
++	:
+ 
+ execute_before_dh_auto_build:
+ 	# Rebuild intbitset.c for both arch:all/arch:any build
+--- a/input/docs/conf.py
++++ b/input/docs/conf.py
+@@ -1,4 +1,5 @@
+ # -*- coding: utf-8 -*-
++autodoc_mock_imports = ['intbitset']
+ #
+ # intbitset documentation build configuration file, created by
+ # sphinx-quickstart on Fri Dec  6 06:12:33 2013.

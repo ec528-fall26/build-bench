@@ -15,6 +15,7 @@ class Edit:
     path: str
     old_text: str
     new_text: str
+    replace_all: bool = False  # Explicit literal, left-to-right non-overlapping replacement.
 
 
 @dataclass

@@ -1,0 +1,32 @@
+diff --git a/input/buildbench-hello.spec b/input/buildbench-hello.spec
+--- a/input/buildbench-hello.spec
++++ b/input/buildbench-hello.spec
+@@ -1,6 +1,10 @@
+ Name:           buildbench-hello
+ Version:        1.0
+ Release:        1
++%global __spec_install_post /bin/true
++%global __spec_post_trans /bin/true
++%global __spec_pre_trans /bin/true
++%global __spec_post_trans /bin/true
+ Summary:        Minimal package for the Build-Bench Starter Kit
+ License:        MIT
+ BuildArch:      noarch
+@@ -11,14 +15,14 @@
+ %prep
+ 
+ %build
+-# BUILD-BENCH-DEMO-BROKEN
+-echo "intentional Build-Bench demo failure" >&2
+-exit 1
++# Build step intentionally empty
+ 
+ %install
+ mkdir -p %{buildroot}%{_datadir}/buildbench-hello
+ echo "Hello from Build-Bench" > %{buildroot}%{_datadir}/buildbench-hello/hello.txt
+ 
++%global __spec_pre_install /bin/true
++%global __spec_post_install /bin/true
+ %files
+ %dir %{_datadir}/buildbench-hello
+ %{_datadir}/buildbench-hello/hello.txt

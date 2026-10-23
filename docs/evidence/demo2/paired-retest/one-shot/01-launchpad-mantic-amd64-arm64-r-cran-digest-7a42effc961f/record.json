@@ -1,0 +1,54 @@
+{
+  "agent_version": "1.0.0+16e31a424d0d",
+  "baseline": {
+    "artifact_validation_passed": false,
+    "binary_artifacts": [],
+    "build_exit_code": 1,
+    "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+    "duration_seconds": 88.0,
+    "message": "build failed; expected binary artifact pattern 'r-cran-digest_*_arm64.deb' was not matched",
+    "repaired": false,
+    "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/01-launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f/baseline",
+    "status": "failed",
+    "timed_out": false
+  },
+  "build_commands": [
+    "input/debian/rules: sed -i 's/#include <xmmintrin.h>/\\/\\/#include <xmmintrin.h>/g' src/crc32c_portable.cpp"
+  ],
+  "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+  "changed_files": [
+    "input/debian/rules"
+  ],
+  "diff_path": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/01-launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f/repair.diff",
+  "edit_warnings": [],
+  "edits_applied": 1,
+  "edits_proposed": 1,
+  "error": null,
+  "fix_type": "build_commands",
+  "mode": "one-shot",
+  "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+  "needs_review": true,
+  "rationale": "The build fails on aarch64 because crc32c_portable.cpp includes <xmmintrin.h>, which provides SSE intrinsics unavailable on ARM, leading to a fatal error. By patching the source file during the build to comment out that include, the code compiles without requiring SSE headers. Adding an override_dh_auto_build target in debian/rules applies this sed substitution before the compilation step, fixing the architecture\u2011specific issue while preserving the package functionality.",
+  "repaired": false,
+  "result": {
+    "artifact_validation_passed": false,
+    "binary_artifacts": [],
+    "build_exit_code": 1,
+    "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+    "duration_seconds": 88.0,
+    "message": "build failed; expected binary artifact pattern 'r-cran-digest_*_arm64.deb' was not matched",
+    "repaired": false,
+    "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/01-launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f/result",
+    "status": "failed",
+    "timed_out": false
+  },
+  "run_id": "01-launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+  "served_model": "openai.gpt-oss-120b-1:0",
+  "started_at": "2026-10-19T21:27:12+00:00",
+  "termination_reason": "build_failed",
+  "usage": {
+    "input_tokens": 11095,
+    "output_tokens": 1046
+  },
+  "wall_seconds": 191.1
+}

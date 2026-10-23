@@ -28,20 +28,49 @@ _LINKER = re.compile(r"^(?:\S*/)?ld(?:\.\w+)?: (?!warning:)")
 # CMake prints "CMake Error ...:" and the reason on the indented lines below it.
 _CMAKE_HEADER = re.compile(r"^CMake Error\b.*:$")
 CMAKE_DETAIL_LINES = 3
+_RUST_ERROR = re.compile(r"^error(?:\[E\d+\])?:\s*.*$")
+_RUST_LOCATION = re.compile(r"^\s*-->\s+(?P<path>.+?):(?P<line>\d+):\d+\s*$")
 _GENERAL = re.compile(
     r"^(?:.*?:\s*(?:fatal )?error:|CMake Error|configure: error:|"
     r"(?:dh_\w+|dpkg-\w+): error:|ERROR:|Error:|FAILED:|FAIL:|E: Build killed)", re.IGNORECASE
 )
 
 
+RUST_DETAIL_CHARS = 8000
+_RUST_DETAIL_CUT = "\n[Compiler details truncated.]"
+
+
+def _append_rust_detail(item: Diagnostic, text: str) -> None:
+    """Preserve compiler continuation lines, with an explicit size safeguard."""
+    if item.compiler_details.endswith(_RUST_DETAIL_CUT):
+        return
+    line = text.rstrip()
+    if not line.strip():
+        return
+    combined = (
+        item.compiler_details + "\n" + line
+        if item.compiler_details else line
+    )
+    if len(combined) > RUST_DETAIL_CHARS:
+        combined = (
+            combined[:RUST_DETAIL_CHARS - len(_RUST_DETAIL_CUT)]
+            + _RUST_DETAIL_CUT
+        )
+    item.compiler_details = combined
+
+
 def _file_index(worktree: Path) -> dict[str, list[str]]:
-    """Index real files under input only; never traverse symlinks."""
+    """Index source files under input, excluding root quilt backups and symlinks."""
     root = Path(worktree) / "input"
     if root.is_symlink() or not root.is_dir():
         return {}
     index: dict[str, list[str]] = {}
     for directory, dirs, files in os.walk(root, followlinks=False):
-        dirs[:] = sorted(d for d in dirs if not (Path(directory) / d).is_symlink())
+        dirs[:] = sorted(
+            d for d in dirs
+            if not (Path(directory) / d).is_symlink()
+            and not (Path(directory) == root and d == ".pc")
+        )
         for name in sorted(files):
             path = Path(directory) / name
             if path.is_symlink() or not path.is_file():
@@ -76,6 +105,7 @@ def diagnose(log_path: Path, worktree: Path) -> list[Diagnostic]:
     index: dict[str, list[str]] | None = None
     stage = "unknown"
     pending: Diagnostic | None = None
+    rust_detail: Diagnostic | None = None
     candidate: str | None = None
     quote_remaining = 0
     cmake: Diagnostic | None = None
@@ -86,10 +116,39 @@ def diagnose(log_path: Path, worktree: Path) -> list[Diagnostic]:
             for raw in stream:
                 start = offset
                 offset += len(raw)
-                if pending is None and cmake is None and not _RELEVANT.search(raw):
+                if (pending is None and cmake is None and rust_detail is None
+                        and not _RELEVANT.search(raw)):
                     continue
                 text = _ANSI.sub("", raw.decode("utf-8", errors="replace").rstrip("\r\n"))
                 text = _ELAPSED.sub("", text)
+                if rust_detail is not None:
+                    continuation = (
+                        not text.strip()
+                        or text[:1].isspace()
+                        or _QUOTE.match(text) is not None
+                        or text.startswith(("note:", "help:"))
+                    )
+                    if continuation:
+                        _append_rust_detail(rust_detail, text)
+                        location = _RUST_LOCATION.match(text)
+                        if location and rust_detail.line is None:
+                            printed = location.group("path")
+                            if index is None:
+                                index = _file_index(worktree)
+                            rust_detail.log_path = printed
+                            rust_detail.line = int(location.group("line"))
+                            rust_detail.resolved = _resolve(printed, index)
+                        quote = _QUOTE.match(text)
+                        if (
+                            quote
+                            and rust_detail.source_line is None
+                            and int(quote.group(1)) == rust_detail.line
+                        ):
+                            rust_detail.source_line = quote.group(2)
+                        # Compiler quotes and notes are evidence, not new
+                        # diagnostics or build-stage markers.
+                        continue
+                    rust_detail = None
                 if cmake is not None:
                     # Indented lines and blank lines belong to the CMake error.
                     if not text.strip() or text[:1].isspace():
@@ -100,13 +159,43 @@ def diagnose(log_path: Path, worktree: Path) -> list[Diagnostic]:
                             cmake = None
                         continue
                     cmake = None
+                # Source excerpts are evidence, never new diagnostics or stage markers.
+                quote = _QUOTE.match(text)
+                if quote:
+                    if pending is not None:
+                        if int(quote.group(1)) == pending.line:
+                            pending.source_line = quote.group(2)
+                            pending = None
+                        else:
+                            quote_remaining -= 1
+                            if quote_remaining <= 0:
+                                pending = None
+                    continue
+                # Rust prints the file location after its error header.
+                location = _RUST_LOCATION.match(text) if pending is not None and pending.line is None else None
+                if location:
+                    printed = location.group("path")
+                    if index is None:
+                        index = _file_index(worktree)
+                    pending.log_path = printed
+                    pending.line = int(location.group("line"))
+                    pending.resolved = _resolve(printed, index)
+                    quote_remaining = 4
+                    continue
                 marker = _STAGE.search(text)
                 if marker:
                     stage = marker.group(1)
                 elif re.match(r"^\s*(?:dpkg-(?:source|gencontrol|genchanges|gensymbols|deb)\b|dh_builddeb\b)", text):
                     stage = "packaging"
+                # Rust warnings may contain names such as winnow::error::ErrorKind.
+                # Those names do not make the warning an error.
+                if text.lstrip().startswith("warning:"):
+                    pending = None
+                    candidate = None
+                    continue
                 match = _COMPILER.match(text.strip())
-                message = match.group("message") if match else None
+                rust = _RUST_ERROR.match(text.strip())
+                message = match.group("message") if match else (rust.group(0) if rust else None)
                 if message is None and ("undefined reference" in text or _MAKE.match(text.strip())
                                         or _GENERAL.match(text.strip())
                                         or _LINKER.match(text.strip())):
@@ -114,9 +203,11 @@ def diagnose(log_path: Path, worktree: Path) -> list[Diagnostic]:
                 if message is not None:
                     pending = None
                     candidate = None
-                    if message in seen:
-                        continue
-                    seen.add(message)
+                    coded_rust = bool(re.match(r"^error\[E\d+\]:", message))
+                    if not coded_rust:
+                        if message in seen:
+                            continue
+                        seen.add(message)
                     printed = match.group("path") if match else None
                     if printed is not None and index is None:
                         index = _file_index(worktree)
@@ -127,6 +218,10 @@ def diagnose(log_path: Path, worktree: Path) -> list[Diagnostic]:
                     result.append(item)
                     if match and message != "Failure":
                         pending, quote_remaining = item, 3
+                    elif coded_rust:
+                        rust_detail = item
+                    elif rust:
+                        pending, quote_remaining = item, 6
                     elif _CMAKE_HEADER.match(message):
                         cmake, cmake_lines = item, 0
                 elif pending is not None:
@@ -145,4 +240,16 @@ def diagnose(log_path: Path, worktree: Path) -> list[Diagnostic]:
     except OSError:
         # Preserve evidence already read if a stream becomes unavailable.
         pass
-    return result
+    # Rust locations follow their headline. Deduplicate after collecting
+    # the locations, preserving identical headlines at different locations.
+    unique = []
+    keys = set()
+    for item in result:
+        if re.match(r"^error\[E\d+\]:", item.message):
+            key = (item.message, item.log_path, item.line)
+        else:
+            key = ("offset", item.log_offset)
+        if key not in keys:
+            keys.add(key)
+            unique.append(item)
+    return unique

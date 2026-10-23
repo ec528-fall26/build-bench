@@ -1,0 +1,21 @@
+--- a/input/scripts-build/compile
++++ b/input/scripts-build/compile
+@@ -17,7 +17,7 @@
+ 
+ if $compiler \
+   -I ../../../../include-build \
+-  -fvisibility=hidden \
++  -fvisibility=hidden -fPIC \
+   -D"CRYPTO_NAMESPACE(name)=${namespace}_##name" \
+   -D"_CRYPTO_NAMESPACE(name)=_${namespace}_##name" \
+   -D"CRYPTO_SHARED_NAMESPACE(name)=${shared_namespace}_##name" \
+--- a/input/scripts-build/compiledefault
++++ b/input/scripts-build/compiledefault
+@@ -5,6 +5,6 @@
+ ext="$1"; shift
+ 
+ scripts/cdcompile "$dir" \
+-  -fvisibility=hidden \
++  -fvisibility=hidden -fPIC \
+   "$@" \
+   -c "$base.$ext"

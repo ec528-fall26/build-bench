@@ -116,7 +116,10 @@ EOF
 
 set +e
 docker run --rm \
-  --network none \
+  --network "${BB_LOCAL_AGENT_NETWORK:-none}" \
+  -e BB_MODEL_API_KEY \
+  -e BB_MODEL_BASE_URL \
+  -e BB_MODEL_NAME \
   --read-only \
   --cap-drop ALL \
   --security-opt no-new-privileges \

@@ -173,10 +173,18 @@ class OpeningMessage(Worktree):
         self.assertIn(f"1. [install] crc32c/crc32c_prefetch.h:18: {ERROR}\n"
                       "   real file: input/src/crc32c/crc32c_prefetch.h\n"
                       "   line quoted by the compiler: #include <xmmintrin.h>\n", text)
-        self.assertIn("=== input/src/crc32c/crc32c_prefetch.h, lines 1-38; error 1 is at line 18 "
-                      "===\n// line 1\n", text)
+        self.assertIn(
+            "=== Complete current source file: input/src/crc32c/crc32c_prefetch.h ===",
+            text,
+        )
+        self.assertIn("// line 1\n", text)
         self.assertIn("// line 17\n#include <xmmintrin.h>\n// line 19\n", text)
-        self.assertNotIn("// line 39", text)
+        self.assertIn("// line 39\n", text)
+        self.assertIn("// line 60\n", text)
+        self.assertIn(
+            "=== End of complete source file: input/src/crc32c/crc32c_prefetch.h ===",
+            text,
+        )
         self.assertTrue(text.endswith(prompts._NEXT + "\n"))
 
     def test_it_is_much_smaller_than_the_baseline_message(self):
@@ -215,10 +223,38 @@ class OpeningMessage(Worktree):
                 self.assertIn("=== Build log: last lines ===\nstep 561\n", text)
                 self.assertIn("step 600\n=== End of build log ===", text)
 
-    def test_with_no_recognised_error_the_whole_tail_is_the_evidence(self):
-        text = prompts.opening_message(self.context, diagnostics=[], log_path=self.log)
-        self.assertIn("=== Build log: last lines ===\nstep 101\n", text)
+    def test_without_recognised_errors_the_tail_is_bounded(self):
+        text = prompts.opening_message(
+            self.context, diagnostics=[], log_path=self.log
+        )
+        self.assertIn("Build-log excerpt truncated:", text)
+        self.assertIn("=== Build log: last lines ===\nstep 561\n", text)
+        self.assertIn("step 600\n=== End of build log ===", text)
+        self.assertNotIn("\nstep 101\n", text)
         self.assertNotIn("=== Errors", text)
+
+    def test_without_recognised_errors_a_long_line_is_bounded(self):
+        self.context.log_tail = (
+            "OMITTED_START" + "x" * 20_000 + "FINAL_DETAIL"
+        )
+        text = prompts.opening_message(self.context, diagnostics=[])
+        body = text.split("=== Build log: last lines ===\n", 1)[1]
+        body = body.split("\n=== End of build log ===", 1)[0]
+        self.assertLessEqual(len(body), prompts.TAIL_CHARS)
+        self.assertTrue(body.endswith("FINAL_DETAIL"))
+        self.assertNotIn("OMITTED_START", body)
+        self.assertIn("Build-log excerpt truncated:", text)
+
+    def test_short_fallback_log_is_preserved_without_truncation_notice(self):
+        self.context.log_tail = "unrecognised failure detail\n"
+        text = prompts.opening_message(self.context, diagnostics=[])
+        self.assertIn(
+            "=== Build log: last lines ===\n"
+            "unrecognised failure detail\n"
+            "=== End of build log ===",
+            text,
+        )
+        self.assertNotIn("Build-log excerpt truncated:", text)
 
     def test_only_diagnostics_as_after_an_in_run_build(self):
         self.context.log_tail = ""
@@ -284,9 +320,11 @@ class SourceExcerpts(Worktree):
             diagnostic("error: gone", "c.c", 5, ("input/src/missing.c",)),
             diagnostic("error: b", "b.c", 4, ("input/src/b.c",)),
         ], self.root)
-        self.assertEqual(re.findall(r"(?m)^=== (.*) ===$", text), [
-            "input/src/crc32c/crc32c_prefetch.h, lines 1-38; error 1 is at line 18",
-            "input/src/b.c, lines 1-10; error 7 is at line 4"])
+        self.assertEqual(
+            re.findall(r"(?m)^=== Complete current source file: (.*) ===$", text),
+            ["input/src/crc32c/crc32c_prefetch.h", "input/src/b.c"],
+        )
+        self.assertNotIn("int x;", text)
 
     def test_at_most_three_files(self):
         errors = []

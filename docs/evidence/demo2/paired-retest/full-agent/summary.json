@@ -1,0 +1,153 @@
+[
+  {
+    "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+    "repaired": true,
+    "termination_reason": "build_succeeded",
+    "agent_termination": "build_succeeded",
+    "agent_message": "The build-feedback adapter reported success.",
+    "edits_proposed": 1,
+    "edits_applied": 1,
+    "usage": {
+      "input_tokens": 7422,
+      "output_tokens": 930
+    },
+    "wall_seconds": 288.1
+  },
+  {
+    "case_id": "launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280",
+    "repaired": false,
+    "termination_reason": "no_edit_applied",
+    "agent_termination": "model_stop",
+    "agent_message": "The build fails during the installation of build\u2011dependency packages (e.g., passwd) with QEMU segfaults occurring before any of the package's own source files are compiled or installed. These failures happen in the build\u2011setup stage, outside the control of the package's source tree, and cannot be remedied by editing files under input/.",
+    "edits_proposed": 0,
+    "edits_applied": 0,
+    "usage": {
+      "input_tokens": 2804,
+      "output_tokens": 1836
+    },
+    "wall_seconds": 134.5
+  },
+  {
+    "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+    "repaired": false,
+    "termination_reason": "build_failed",
+    "agent_termination": "repeated_diagnostic",
+    "agent_message": "Two consecutive changed attempts reported the same leading diagnostic without improvement in the build-ranking heuristic.",
+    "edits_proposed": 9,
+    "edits_applied": 7,
+    "usage": {
+      "input_tokens": 283517,
+      "output_tokens": 39644
+    },
+    "wall_seconds": 1192.4
+  },
+  {
+    "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+    "repaired": false,
+    "termination_reason": "build_failed",
+    "agent_termination": "repeated_diagnostic",
+    "agent_message": "Two consecutive changed attempts reported the same leading diagnostic without improvement in the build-ranking heuristic.",
+    "edits_proposed": 2,
+    "edits_applied": 2,
+    "usage": {
+      "input_tokens": 64190,
+      "output_tokens": 10832
+    },
+    "wall_seconds": 453.3
+  },
+  {
+    "case_id": "launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f",
+    "repaired": false,
+    "termination_reason": "no_edit_applied",
+    "agent_termination": "model_stop",
+    "agent_message": "The build fails during the debootstrap stage with QEMU segmentation faults, before any package source is compiled. This is an infrastructure issue unrelated to the package's own files, and cannot be repaired by editing files under input/.",
+    "edits_proposed": 0,
+    "edits_applied": 0,
+    "usage": {
+      "input_tokens": 28441,
+      "output_tokens": 4782
+    },
+    "wall_seconds": 211.1
+  },
+  {
+    "case_id": "launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446",
+    "repaired": false,
+    "termination_reason": "build_failed",
+    "agent_termination": "repeated_diagnostic",
+    "agent_message": "Two consecutive changed attempts reported the same leading diagnostic without improvement in the build-ranking heuristic.",
+    "edits_proposed": 3,
+    "edits_applied": 3,
+    "usage": {
+      "input_tokens": 84813,
+      "output_tokens": 17208
+    },
+    "wall_seconds": 809.9
+  },
+  {
+    "case_id": "launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91",
+    "repaired": false,
+    "termination_reason": "build_failed",
+    "agent_termination": "repeated_diagnostic",
+    "agent_message": "Two consecutive changed attempts reported the same leading diagnostic without improvement in the build-ranking heuristic.",
+    "edits_proposed": 4,
+    "edits_applied": 4,
+    "usage": {
+      "input_tokens": 157542,
+      "output_tokens": 13674
+    },
+    "wall_seconds": 742.9
+  },
+  {
+    "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+    "repaired": false,
+    "termination_reason": "no_edit_applied",
+    "agent_termination": "edit_correction_budget",
+    "agent_message": "Twelve correction responses did not produce a valid batch; the pending batch was not applied.",
+    "edits_proposed": 0,
+    "edits_applied": 0,
+    "usage": {
+      "input_tokens": 173645,
+      "output_tokens": 30575
+    },
+    "wall_seconds": 384.2
+  },
+  {
+    "case_id": "launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e",
+    "repaired": false,
+    "termination_reason": "no_edit_applied",
+    "agent_termination": "model_stop",
+    "agent_message": "The build fails during the debootstrap stage with QEMU segmentation faults, before any package source files are used. This infrastructure failure cannot be repaired by editing files under input/.",
+    "edits_proposed": 0,
+    "edits_applied": 0,
+    "usage": {
+      "input_tokens": 2868,
+      "output_tokens": 650
+    },
+    "wall_seconds": 173.4
+  },
+  {
+    "case_id": "launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84",
+    "repaired": false,
+    "termination_reason": "case_not_failing",
+    "agent_termination": null,
+    "agent_message": null,
+    "edits_proposed": 0,
+    "edits_applied": 0,
+    "usage": {},
+    "wall_seconds": 107.6
+  },
+  {
+    "case_id": "launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce",
+    "repaired": false,
+    "termination_reason": "no_edit_applied",
+    "agent_termination": "model_stop",
+    "agent_message": "The build fails during the debootstrap setup phase with QEMU internal segmentation faults and a passwd postinst error unrelated to the package's source files. These errors stem from the emulated environment and cannot be fixed by editing files under input/.",
+    "edits_proposed": 0,
+    "edits_applied": 0,
+    "usage": {
+      "input_tokens": 2789,
+      "output_tokens": 1493
+    },
+    "wall_seconds": 106.8
+  }
+]

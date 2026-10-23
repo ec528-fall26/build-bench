@@ -19,8 +19,11 @@ from .contracts import (
 )
 from .diff_tracker import DiffTracker
 from .edit_applier import apply_edits
+from .edit_preflight import focused_feedback
+from .path_feedback import missing_prefix_feedback
 from .tools import run_tool
 from .types import CaseContext
+from .proposal_review import render_review, signature
 
 
 @dataclass
@@ -34,6 +37,8 @@ class LoopRequest:
     # The most recent attempt, given even with history off: what the last edit
     # did is current feedback, not history.
     latest_attempt: Attempt | None = None
+    edit_validation_feedback: str = ""
+    proposal_review: str = ""
 
 @dataclass
 class LoopResult:
@@ -45,6 +50,7 @@ class LoopResult:
     known_usage: dict[str, int] = field(default_factory=dict)
     current_build: BuildResult | None = None
     kept_attempts: list[int] = field(default_factory=list)
+    review_events: list[dict] = field(default_factory=list)
 
 
 def _normalize_usage(usage: dict) -> dict[str, int | None]:
@@ -122,11 +128,15 @@ def run_loop(
     budget: Budget | None = None,
     build_feedback: BuildFeedback | None = None,
     patch_policy: Mapping[str, list[str] | tuple[str, ...]] | None = None,
+    review_edits: bool = False,
+    initial_diagnostics=None,
     max_turns: int = 20,
     max_tool_calls: int = 30,
     clock: Callable[[], float] = monotonic,
 ) -> LoopResult:
     # Provisional local safeguards, not official competition limits.
+    if type(review_edits) is not bool:
+        raise ValueError("review_edits must be a boolean")
     if type(max_turns) is not int or max_turns < 1:
         raise ValueError("max_turns must be a positive integer.")
     if type(max_tool_calls) is not int or max_tool_calls < 0:
@@ -163,6 +173,15 @@ def run_loop(
     known_usage = {"input_tokens": 0, "output_tokens": 0}
     feedback = ""
     latest_attempt_feedback = ""
+    edit_validation_feedback = ""
+    pending_turn = None
+    pending_index = None
+    review_turn = None
+    review_key = None
+    proposal_review = ""
+    review_events = []
+    correction_responses = 0
+    max_correction_responses = 12
     malformed_count = 0
     empty_edit_streak = 0
     attempts: list[Attempt] = []
@@ -180,9 +199,16 @@ def run_loop(
             known_usage=dict(known_usage),
             current_build=deepcopy(best_build),
             kept_attempts=list(kept_attempts),
+            review_events=deepcopy(review_events),
         )
 
     for _ in range(max_turns):
+        if pending_turn is not None and correction_responses >= max_correction_responses:
+            return finish(
+                "edit_correction_budget",
+                "Twelve correction responses did not produce a valid batch; "
+                "the pending batch was not applied.",
+            )
         if clock() >= work_deadline:
             return finish(
                 "time_budget",
@@ -223,6 +249,8 @@ def run_loop(
             current_build=deepcopy(best_build),
             kept_attempts=list(kept_attempts) if config.use_history else [],
             latest_attempt=deepcopy(attempts[-1]) if attempts else None,
+            edit_validation_feedback=edit_validation_feedback,
+            proposal_review=proposal_review,
         )
 
 
@@ -238,6 +266,9 @@ def run_loop(
                 "model_error",
                 f"Model request failed: {type(exc).__name__}: {exc}",
             )
+
+        if pending_turn is not None:
+            correction_responses += 1
 
         reported_usage = _normalize_usage(reported_usage)
 
@@ -267,6 +298,9 @@ def run_loop(
             )
 
         if turn.action == "tool":
+            if pending_turn is not None:
+                edit_validation_feedback += "\nReturn one correction edit, an empty edit list to remove it, or stop."
+                continue
             if not config.use_tools:
                 feedback = (
                     "Investigation tools are disabled for this run. "
@@ -298,7 +332,36 @@ def run_loop(
 
             continue
 
+        approved_key = None
+        if turn.action == "approve":
+            if review_turn is None:
+                feedback = "No pending diff is available to approve. Propose an edit or stop."
+                continue
+            approved_key = review_key
+            review_events.append({"event": "approved", "signature": review_key, "reason": turn.reason})
+            turn = deepcopy(review_turn)
+            review_turn = None
+            proposal_review = ""
+        elif turn.action == "edit" and review_turn is not None:
+            review_events.append({"event": "revised", "signature": review_key})
+            review_turn = None
+            proposal_review = ""
+
         if turn.action == "edit":
+            if pending_turn is not None:
+                if len(turn.edits) > 1:
+                    edit_validation_feedback += "\nYour correction contained multiple edits. Return at most ONE."
+                    continue
+                merged = deepcopy(pending_turn)
+                merged.edits[pending_index:pending_index + 1] = deepcopy(turn.edits)
+                turn = merged
+                if not turn.edits:
+                    pending_turn = None
+                    pending_index = None
+                    correction_responses = 0
+                    edit_validation_feedback = ""
+                    feedback = "The pending batch was explicitly emptied; no files changed."
+                    continue
             if not turn.edits:
                 empty_edit_streak += 1
                 attempts.append(
@@ -332,11 +395,39 @@ def run_loop(
             build_error = None
 
             try:
+                pending_index, edit_validation_feedback = missing_prefix_feedback(
+                    context.worktree, turn.edits, patch_policy=patch_policy
+                )
+                if edit_validation_feedback:
+                    pending_turn = deepcopy(turn)
+                    continue
                 snapshot = CandidateSnapshot.capture(
                     context.worktree,
                     [edit.path for edit in turn.edits],
                     patch_policy=patch_policy,
                 )
+                pending_index, edit_validation_feedback = focused_feedback(
+                    snapshot, turn.edits, turn.hypothesis
+                )
+                if edit_validation_feedback:
+                    pending_turn = deepcopy(turn)
+                    continue
+                pending_turn = None
+                correction_responses = 0
+                if review_edits:
+                    current_key = signature(snapshot, turn)
+                    if approved_key != current_key:
+                        proposal_review, counts = render_review(
+                            snapshot, turn,
+                            best_build.diagnostics if best_build is not None else (initial_diagnostics or []),
+                            patch_policy=patch_policy,
+                            historical=bool(attempts) and best_build is None,
+                        )
+                        review_turn = deepcopy(turn)
+                        review_key = current_key
+                        review_events.append({"event": "proposed", "signature": current_key,
+                                              "counts": counts, "feedback": proposal_review})
+                        continue
                 # Capture every affected file before applying any edits.
                 for edit in turn.edits:
                     tracker.capture_before_edit(edit.path)
@@ -345,6 +436,15 @@ def run_loop(
                     f"The edit batch was not applied because its files "
                     f"could not be captured: {exc}"
                 )
+                pending_turn = None
+                pending_index = None
+                correction_responses = 0
+                edit_validation_feedback = (
+                    "=== Edit batch validation failed ===\n"
+                    "NO edits were written and NO build was requested.\n"
+                    + feedback
+                )
+                continue
             else:
                 if clock() >= work_deadline:
                     return finish(
@@ -357,6 +457,13 @@ def run_loop(
                     turn.edits,
                     patch_policy=patch_policy,
                 )
+                if review_edits and applied != len(turn.edits):
+                    try:
+                        snapshot.restore()
+                    except (OSError, ValueError, RuntimeError) as exc:
+                        return finish("restoration_error", f"Review batch restore failed: {exc}")
+                    return finish("edit_application_error",
+                                  "Reviewed batch was not fully applied; restored files and skipped build.")
                 feedback = (
                     f"Accepted {applied} of {len(turn.edits)} proposed "
                     "edit operations."
@@ -489,11 +596,15 @@ def run_loop(
                         previous_error.line,
                     )
 
-                    if current_key == previous_key:
+                    if (
+                        current_key == previous_key
+                        and _build_rank(build) <= _build_rank(previous_build)
+                    ):
                         return finish(
                             "repeated_diagnostic",
                             "Two consecutive changed attempts reported "
-                            "the same leading diagnostic.",
+                            "the same leading diagnostic without improvement "
+                            "in the build-ranking heuristic.",
                         )
 
             latest_attempt_feedback = feedback

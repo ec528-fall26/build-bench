@@ -163,6 +163,52 @@ class Adapter(unittest.TestCase):
         self.assertEqual(adapter.turns[0]["follow_up"], True)
         self.assertEqual(adapter.turns[0]["usage"], {"input_tokens": 200, "output_tokens": 20})
         self.assertEqual(len(adapter.replies), 2)
+    def test_follow_up_skipped_at_token_limit(self):
+        script = Script("Reasoning without JSON.", usage=(100, 10))
+        result, adapter = self.run_with(
+            script, budget=Budget(max_tokens=110)
+        )
+        self.assertEqual(len(script.sent), 1)
+        self.assertFalse(adapter.turns[0]["follow_up"])
+        self.assertEqual(result.termination_reason, "token_budget")
+        self.assertEqual(
+            result.usage,
+            {"input_tokens": 100, "output_tokens": 10},
+        )
+
+    def test_follow_up_budget_includes_previous_turns(self):
+        script = Script(
+            reply(
+                action="tool",
+                requests=[{
+                    "tool": "list_dir",
+                    "args": {"path": "input"},
+                }],
+            ),
+            "Reasoning without JSON.",
+            usage=(100, 10),
+        )
+        result, adapter = self.run_with(
+            script, budget=Budget(max_tokens=220)
+        )
+        self.assertEqual(len(script.sent), 2)
+        self.assertFalse(adapter.turns[-1]["follow_up"])
+        self.assertEqual(result.termination_reason, "token_budget")
+        self.assertEqual(
+            result.usage,
+            {"input_tokens": 200, "output_tokens": 20},
+        )
+
+    def test_follow_up_uses_known_counts_when_usage_is_partial(self):
+        script = Script("Reasoning without JSON.", usage=(None, 110))
+        result, adapter = self.run_with(
+            script, budget=Budget(max_tokens=110)
+        )
+        self.assertEqual(len(script.sent), 1)
+        self.assertFalse(adapter.turns[0]["follow_up"])
+        self.assertEqual(result.termination_reason, "token_budget")
+        self.assertIsNone(result.usage["input_tokens"])
+        self.assertEqual(result.usage["output_tokens"], 110)
 
     def test_follow_up_happens_once_per_turn(self):
         script = Script("<reasoning>a</reasoning>", "<reasoning>b</reasoning>",
@@ -243,11 +289,131 @@ class Adapter(unittest.TestCase):
         self.assertNotIn("switched off", script.user(8))
         self.assertEqual((result.termination_reason, result.malformed_count), ("model_stop", 0))
 
+    def test_ambiguous_edit_feedback_shows_matching_locations(self):
+        target = self.worktree / CONFIG
+        original = "first repeat\nsecond repeat\n"
+        target.write_text(original)
+        script = Script(
+            edit("repeat", "replacement"),
+            reply(action="stop", reason="done"),
+        )
+
+        result, _ = self.run_with(script)
+
+        self.assertEqual(result.attempts, [])
+        self.assertEqual(target.read_text(), original)
+        feedback = script.user(1)
+        self.assertIn("old_text_ambiguous", feedback)
+        self.assertIn("NO edits from this batch were written", feedback)
+        self.assertIn("NO build was requested", feedback)
+        self.assertIn("unique surrounding context", feedback)
+        self.assertIn(CONFIG, feedback)
+        self.assertIn("1: first repeat", feedback)
+        self.assertIn("2: second repeat", feedback)
+
+    def test_rejection_help_does_not_search_with_tools_disabled(self):
+        target = self.worktree / CONFIG
+        target.write_text("first repeat\nsecond repeat\n")
+        script = Script(
+            edit("repeat", "replacement"),
+            reply(action="stop", reason="done"),
+        )
+
+        with patch("src.model_adapter.run_tool") as automatic_search:
+            self.run_with(script, config=AgentConfig(use_tools=False))
+
+        automatic_search.assert_not_called()
+        self.assertIn("unique surrounding context", script.user(1))
+        self.assertNotIn("Automatic search", script.user(1))
+
+    def test_missing_edit_text_gets_guidance_without_search(self):
+        original = (self.worktree / CONFIG).read_text()
+        script = Script(
+            edit("text that is absent", "replacement"),
+            reply(action="stop", reason="done"),
+        )
+
+        with patch("src.model_adapter.run_tool") as automatic_search:
+            result, _ = self.run_with(script)
+
+        automatic_search.assert_not_called()
+        self.assertEqual(result.attempts, [])
+        self.assertEqual((self.worktree / CONFIG).read_text(), original)
+        self.assertIn("old_text_not_found", script.user(1))
+        self.assertIn("preserve whitespace exactly", script.user(1))
+
+    def test_preflight_reports_matches_without_automatic_searches(self):
+        target = self.worktree / CONFIG
+        original = "alpha beta gamma\nalpha beta gamma\n"
+        target.write_text(original)
+        script = Script(
+            reply(
+                action="edit",
+                hypothesis="test rejection feedback",
+                evidence=["test fixture"],
+                edits=[
+                    {"path": CONFIG, "old_text": word, "new_text": "changed"}
+                    for word in ("alpha", "beta", "gamma")
+                ],
+            ),
+            reply(action="stop", reason="done"),
+        )
+
+        from src.model_adapter import run_tool as actual_run_tool
+        with patch(
+            "src.model_adapter.run_tool", wraps=actual_run_tool
+        ) as automatic_search:
+            result, _ = self.run_with(script)
+
+        automatic_search.assert_not_called()
+        self.assertEqual(result.attempts, [])
+        feedback = script.user(1)
+        self.assertIn("FOCUSED INDEX: 0", feedback)
+        self.assertIn("INDEX 0:", feedback)
+        self.assertNotIn("INDEX 1:", feedback)
+        self.assertNotIn("INDEX 2:", feedback)
+        self.assertIn("original batch has 3 edits", feedback)
+        self.assertIn("Matching source locations", feedback)
+        self.assertIn("1: alpha beta gamma", feedback)
+        self.assertIn("2: alpha beta gamma", feedback)
+        self.assertEqual(target.read_text(), original)
+
+    def test_ambiguous_edit_can_be_corrected_after_feedback(self):
+        target = self.worktree / CONFIG
+        original = "first repeat\nsecond repeat\n"
+        target.write_text(original)
+
+        script = Script(
+            edit("repeat", "replacement"),
+            edit("first repeat\n", "first replacement\n"),
+            reply(action="stop", reason="done"),
+        )
+
+        result, _ = self.run_with(script)
+
+        feedback = script.user(1)
+        self.assertIn("old_text_ambiguous", feedback)
+        self.assertIn("unique surrounding context", feedback)
+        self.assertIn(CONFIG, feedback)
+        self.assertIn("1: first repeat", feedback)
+        self.assertIn("2: second repeat", feedback)
+
+        self.assertEqual(
+            [attempt.applied for attempt in result.attempts],
+            [1],
+        )
+        self.assertEqual(
+            target.read_text(),
+            "first replacement\nsecond repeat\n",
+        )
+        self.assertEqual(result.termination_reason, "model_stop")
+
     def test_rejected_edit_reason_is_passed_on(self):
         script = Script(edit("text that is not in the file\n", "x\n"),
                         reply(action="stop", reason="done"))
         self.run_with(script)
-        self.assertIn("Rejected:", script.user(1))
+        self.assertIn("Edit batch validation failed", script.user(1))
+        self.assertIn("NO build was requested", script.user(1))
         self.assertIn("old_text_not_found", script.user(1))
 
     def test_unknown_token_use_is_never_zero(self):

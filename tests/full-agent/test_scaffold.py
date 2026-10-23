@@ -38,7 +38,7 @@ class Contracts(unittest.TestCase):
     def test_field_names_match_the_plan(self):
         expected = {
             Diagnostic: ["message", "stage", "log_path", "line", "resolved",
-                         "source_line", "log_offset"],
+                        "source_line", "log_offset", "compiler_details"],
             ToolRequest: ["tool", "args"],
             ToolResult: ["request", "text", "truncated"],
             ModelTurn: ["action", "tool_requests", "hypothesis", "evidence",

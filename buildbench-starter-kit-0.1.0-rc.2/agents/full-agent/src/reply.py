@@ -124,7 +124,10 @@ def _edits(data: dict) -> list[Edit]:
                 raise _Malformed(f'edit {number}: "{field}" must be a string')
         if not item["path"].strip() or not item["old_text"]:
             raise _Malformed(f'edit {number}: "path" and "old_text" must not be empty')
-        edits.append(Edit(item["path"].strip(), item["old_text"], item["new_text"]))
+        replace_all = item.get("replace_all", False)
+        if type(replace_all) is not bool:
+            raise _Malformed(f'edit {number}: "replace_all" must be a JSON boolean')
+        edits.append(Edit(item["path"].strip(), item["old_text"], item["new_text"], replace_all))
     return edits
 
 
@@ -147,7 +150,7 @@ def _edit_turn(data: dict, hypothesis: str) -> ModelTurn:
                  edits=edits)
 
 
-def _parse(data: dict, allow_tools: bool) -> ModelTurn:
+def _parse(data: dict, allow_tools: bool, allow_review: bool = False) -> ModelTurn:
     if "action" not in data:
         # The baseline's {"edits": [...], "rationale": "..."}; an empty list meant
         # "no supported repair".
@@ -157,9 +160,19 @@ def _parse(data: dict, allow_tools: bool) -> ModelTurn:
         return _edit_turn(data, _text(data.get("hypothesis")) or rationale)
 
     action = data["action"].strip().lower() if isinstance(data["action"], str) else None
-    offered = ACTIONS if allow_tools else ACTIONS[1:]
+    offered = (ACTIONS if allow_tools else ACTIONS[1:]) + (("approve",) if allow_review else ())
+    if action == "approve":
+        if not allow_review:
+            raise _Malformed('approve is only available while reviewing a pending diff')
+        if data.get("edits") or data.get("requests"):
+            raise _Malformed('approve cannot include edits or tool requests')
+        reason = _text(data.get("reason"))
+        if not reason:
+            raise _Malformed('approve needs a reason explaining the review')
+        return _turn("approve", reason=reason)
     if action == "tool" and not allow_tools:
-        raise _Malformed('tools are not available in this run; reply with "edit" or "stop"')
+        choices = '"edit", "approve", or "stop"' if allow_review else '"edit" or "stop"'
+        raise _Malformed('tools are not available in this run; reply with ' + choices)
     if action == "tool":
         # reason carries the model's "why" for the run record.
         return _turn("tool", requests=_requests(data), reason=_text(data.get("why")))
@@ -170,7 +183,7 @@ def _parse(data: dict, allow_tools: bool) -> ModelTurn:
     raise _Malformed(f'"action" must be one of {", ".join(offered)}; got {data["action"]!r}')
 
 
-def parse_turn(text, *, finish_reason: str | None = None, allow_tools: bool = True) -> ModelTurn:
+def parse_turn(text, *, finish_reason: str | None = None, allow_tools: bool = True, allow_review: bool = False) -> ModelTurn:
     """Parse one reply. ``finish_reason`` is the endpoint's, when it gave one.
 
     Pass ``allow_tools=False`` when AgentConfig.use_tools is off, so a tool
@@ -186,6 +199,6 @@ def parse_turn(text, *, finish_reason: str | None = None, allow_tools: bool = Tr
                          "before its JSON object was complete; write less before the JSON")
         return _turn("malformed", reason=str(error))
     try:
-        return _parse(data, allow_tools)
+        return _parse(data, allow_tools, allow_review)
     except _Malformed as error:
         return _turn("malformed", reason=str(error))

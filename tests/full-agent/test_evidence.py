@@ -29,12 +29,68 @@ class Evidence(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("source must never replace the compiler quote")
 
+    def test_rust_error_after_warning_quote(self):
+        self.source("src/client.rs")
+        prefix = ("é\n[ 120s] dh_auto_build\n"
+                  "[ 120s] warning: use of deprecated trait\n"
+                  "[ 120s] 1236 | impl std::error::Error for ErrorKind {}\n")
+        result = self.parse(prefix +
+            "[ 164s] error[E0308]: mismatched types\n"
+            "[ 164s]   --> src/client.rs:32:72\n"
+            "[ 164s]    |\n"
+            "[ 164s] 32 | CStr::from_ptr(local_abspath)\n"
+            "[ 164s]    | expected `*const u8`, found `*const i8`\n")
+        self.assertEqual(len(result), 1)
+        self.assertEqual({k: v for k, v in dataclasses.asdict(result[0]).items()
+                          if k != "compiler_details"}, {
+            "message": "error[E0308]: mismatched types", "stage": "build",
+            "log_path": "src/client.rs", "line": 32,
+            "resolved": ["input/src/client.rs"],
+            "source_line": "CStr::from_ptr(local_abspath)",
+            "log_offset": len(prefix.encode("utf-8"))})
+
+    def test_rust_warning_with_error_namespace_is_not_an_error(self):
+        result = self.parse(
+            "[ 120s] warning: use of deprecated unit variant "
+            "`winnow::error::ErrorKind::Verify`\n"
+            "[ 120s] warning: use of deprecated unit variant "
+            "`winnow::error::ErrorKind::Eof`\n"
+            "[ 164s] error[E0308]: mismatched types\n"
+            "[ 164s]   --> src/client.rs:32:72\n"
+        )
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].message, "error[E0308]: mismatched types")
+        self.assertEqual(result[0].log_path, "src/client.rs")
+        self.assertEqual(result[0].line, 32)
+
+    def test_source_quotes_are_not_errors_or_stage_markers(self):
+        self.assertEqual(self.parse(
+            "1236 | impl std::error::Error for ErrorKind {}\n"
+            "12 | // undefined reference; dh_auto_install\n"), [])
+
+    def test_compiler_quote_containing_error_is_preserved(self):
+        result = self.parse("dh_auto_build\nx.cc:7: error: bad type\n"
+                            "7 | std::error::Error; // dh_auto_install\n"
+                            "y.cc:8: error: another type\n")
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0].source_line,
+                         "std::error::Error; // dh_auto_install")
+        self.assertEqual([d.stage for d in result], ["build", "build"])
+
+    def test_rust_headers_without_location_and_plain_errors(self):
+        result = self.parse("error[E0277]: trait bound not satisfied\n"
+                            "error: could not compile crate\n")
+        self.assertEqual([d.message for d in result], [
+            "error[E0277]: trait bound not satisfied", "error: could not compile crate"])
+        self.assertTrue(all(d.log_path is None for d in result))
+
     def test_rcran_and_byte_provenance(self):
         self.source("src/crc32c/crc32c_prefetch.h")
         prefix = "é\r\n   dh_auto_build\r\n"
         result = self.parse(prefix + "crc32c/crc32c_prefetch.h:18:10: fatal error: xmmintrin.h: No such file or directory\r\n"
                             "   18 | #include <xmmintrin.h>\r\n      |          ^~~~~~~~~~~~~\r\n")
-        self.assertEqual(dataclasses.asdict(result[0]), {
+        self.assertEqual({k: v for k, v in dataclasses.asdict(result[0]).items()
+                          if k != "compiler_details"}, {
             "message": "fatal error: xmmintrin.h: No such file or directory",
             "stage": "build", "log_path": "crc32c/crc32c_prefetch.h", "line": 18,
             "resolved": ["input/src/crc32c/crc32c_prefetch.h"],
@@ -103,6 +159,31 @@ class Evidence(unittest.TestCase):
     def test_no_invented_quote(self):
         result = self.parse("x.c:7: error: bad\nunrelated output\nmore output\nend\n")
         self.assertIsNone(result[0].source_line)
+
+
+    def test_quilt_backup_does_not_make_source_path_ambiguous(self):
+        self.source("src/client.rs")
+        self.source(".pc/fix-unsoundness.patch/src/client.rs")
+
+        result = self.parse(
+            "error[E0308]: mismatched types\n"
+            "  --> src/client.rs:55:72\n"
+        )
+
+        self.assertEqual(
+            result[0].resolved,
+            ["input/src/client.rs"],
+        )
+
+    def test_quilt_backup_is_not_used_when_live_source_is_missing(self):
+        self.source(".pc/fix-unsoundness.patch/src/client.rs")
+
+        result = self.parse(
+            "error[E0308]: mismatched types\n"
+            "  --> src/client.rs:55:72\n"
+        )
+
+        self.assertEqual(result[0].resolved, [])
 
     def test_paths_ambiguous_missing_and_escape(self):
         self.source("a/x.h")

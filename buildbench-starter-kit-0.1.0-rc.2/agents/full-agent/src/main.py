@@ -48,6 +48,11 @@ def run_agent(
     """Diagnose the failure log, then run the repair loop until it stops."""
     config = config if config is not None else config_from_env()
     budget = budget or Budget()
+    if os.environ.get("BB_REPAIR_STRATEGY") == "small-group" and build_feedback is None:
+        raise ValueError("small-group requires an actual build-feedback adapter")
+    review_setting = os.environ.get("BB_REVIEW_EDITS", "0")
+    if review_setting not in {"0", "1"}:
+        raise ValueError("BB_REVIEW_EDITS must be 0 or 1")
     context.log_tail = extract_tail(Path(log_path), TAIL_LINES)
     diagnostics = diagnose(Path(log_path), context.worktree)
     adapter = ModelAdapter(complete, context, config=config, budget=budget,
@@ -56,7 +61,8 @@ def run_agent(
     try:
         result = run_loop(context, next_turn=adapter, config=config, budget=budget,
                           build_feedback=build_feedback, patch_policy=patch_policy,
-                          clock=clock)
+                          clock=clock, review_edits=review_setting == "1",
+                          initial_diagnostics=diagnostics)
     finally:
         adapter.close()
     return result, adapter
@@ -78,6 +84,7 @@ def result_record(result: LoopResult, adapter: ModelAdapter, config: AgentConfig
         "termination_reason": result.termination_reason,
         "termination_message": result.message,
         "config": config_record(config),
+        "repair_strategy": adapter.repair_strategy,
         "usage": result.usage,
         "known_usage": result.known_usage,
         "malformed_count": result.malformed_count,
@@ -88,6 +95,7 @@ def result_record(result: LoopResult, adapter: ModelAdapter, config: AgentConfig
             "build": _build_summary(a.build), "tokens": a.tokens,
         } for a in result.attempts],
         "turns": adapter.turns,
+        "review_events": result.review_events,
     }
 
 

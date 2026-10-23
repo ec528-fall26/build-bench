@@ -387,6 +387,23 @@ def _write_file(parent_fd: int, filename: str, content: bytes, original: os.stat
             pass
 
 
+def replacement(before: str, edit: Edit) -> tuple[str, int]:
+    """One shared implementation for preflight, review and application."""
+    mode = getattr(edit, "replace_all", False)
+    if type(mode) is not bool:
+        raise EditRejected("invalid_replace_all")
+    if not edit.old_text:
+        raise EditRejected("empty_old_text")
+    first = before.find(edit.old_text)
+    if first < 0:
+        raise EditRejected("old_text_not_found")
+    if not mode and before.find(edit.old_text, first + 1) >= 0:
+        raise EditRejected("old_text_ambiguous")
+    if mode:
+        return before.replace(edit.old_text, edit.new_text), before.count(edit.old_text)
+    return before[:first] + edit.new_text + before[first + len(edit.old_text):], 1
+
+
 def _apply_one(root_fd: int, edit: Edit, allowed_prefix: str, patch_policy: Mapping | None) -> None:
     if not all(isinstance(getattr(edit, field, None), str) for field in ("path", "old_text", "new_text")):
         raise EditRejected("invalid_edit: path, old_text and new_text must be strings")
@@ -403,12 +420,7 @@ def _apply_one(root_fd: int, edit: Edit, allowed_prefix: str, patch_policy: Mapp
     edit.new_text.encode("utf-8")
     with _parent_directory(root_fd, parts) as parent_fd:
         before, info = _read_file(parent_fd, parts[-1])
-        first = before.find(edit.old_text)
-        if first < 0:
-            raise EditRejected("old_text_not_found")
-        if before.find(edit.old_text, first + 1) >= 0:
-            raise EditRejected("old_text_ambiguous")
-        after = before[:first] + edit.new_text + before[first + len(edit.old_text):]
+        after, count = replacement(before, edit)
         reason = _policy_reason(edit.path, before, after)
         if reason:
             raise EditRejected(reason)
@@ -421,6 +433,8 @@ def _apply_one(root_fd: int, edit: Edit, allowed_prefix: str, patch_policy: Mapp
                 "harness must check canonical patch application", edit.path,
             )
         _write_file(parent_fd, parts[-1], encoded, info)
+        LOGGER.info("edit_replacements path=%r count=%d replace_all=%s",
+                    edit.path, count, getattr(edit, "replace_all", False))
 
 
 def apply_edits(

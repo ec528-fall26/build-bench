@@ -23,6 +23,7 @@ class Diagnostic:                 # Part A produces, everyone reads
     resolved: list[str]           # matching real files: ["input/src/crc32c/crc32c_prefetch.h"]
     source_line: str | None       # the line the compiler quoted, if any
     log_offset: int               # where in the log it came from (provenance)
+    compiler_details: str = ""    # bounded continuation of a compiler error
 
 
 @dataclass
@@ -40,7 +41,7 @@ class ToolResult:                 # Part B -> model
 
 @dataclass
 class ModelTurn:                  # one model reply, parsed (see "Model reply format")
-    action: str                   # tool | edit | stop | malformed
+    action: str                   # tool | edit | approve (pending review only) | stop | malformed
     tool_requests: list[ToolRequest]   # action == "tool"; several allowed per turn
     hypothesis: str               # action == "edit"
     evidence: list[str]           # action == "edit": log lines / file:line it rests on

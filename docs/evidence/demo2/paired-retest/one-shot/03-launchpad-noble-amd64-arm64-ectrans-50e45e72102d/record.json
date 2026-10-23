@@ -1,0 +1,52 @@
+{
+  "agent_version": "1.0.0+16e31a424d0d",
+  "baseline": {
+    "artifact_validation_passed": false,
+    "binary_artifacts": [],
+    "build_exit_code": 1,
+    "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+    "duration_seconds": 90.0,
+    "message": "build failed; expected binary artifact pattern 'libectrans-0_*_arm64.deb' was not matched",
+    "repaired": false,
+    "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/baseline",
+    "status": "failed",
+    "timed_out": false
+  },
+  "build_commands": [],
+  "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+  "changed_files": [
+    "input/debian/rules"
+  ],
+  "diff_path": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/repair.diff",
+  "edit_warnings": [],
+  "edits_applied": 1,
+  "edits_proposed": 1,
+  "error": null,
+  "fix_type": "packaging",
+  "mode": "one-shot",
+  "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+  "needs_review": false,
+  "rationale": "The build fails on the aarch64 architecture during the CMake configuration step. OpenMP support on aarch64 can be problematic in this package, leading to configuration errors. The debian/rules file already disables OpenMP for architectures known to have issues (riscv64, sparc64) via the ARCH_NO_OMP list. Adding `aarch64` to this list ensures that `ENABLE_OMP` is set to `Off` for the target architecture, preventing the problematic OpenMP detection and allowing the package to configure and build successfully on aarch64.",
+  "repaired": false,
+  "result": {
+    "artifact_validation_passed": false,
+    "binary_artifacts": [],
+    "build_exit_code": 1,
+    "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+    "duration_seconds": 89.0,
+    "message": "build failed; expected binary artifact pattern 'libectrans-0_*_arm64.deb' was not matched",
+    "repaired": false,
+    "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d/result",
+    "status": "failed",
+    "timed_out": false
+  },
+  "run_id": "03-launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+  "served_model": "openai.gpt-oss-120b-1:0",
+  "started_at": "2026-10-19T21:32:35+00:00",
+  "termination_reason": "build_failed",
+  "usage": {
+    "input_tokens": 15985,
+    "output_tokens": 1335
+  },
+  "wall_seconds": 195.4
+}

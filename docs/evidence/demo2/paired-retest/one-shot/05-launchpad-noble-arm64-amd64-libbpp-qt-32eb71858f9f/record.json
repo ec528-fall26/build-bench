@@ -1,0 +1,52 @@
+{
+  "agent_version": "1.0.0+16e31a424d0d",
+  "baseline": {
+    "artifact_validation_passed": false,
+    "binary_artifacts": [],
+    "build_exit_code": 1,
+    "case_id": "launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f",
+    "duration_seconds": 163.0,
+    "message": "infrastructure error: evaluation could not run",
+    "repaired": false,
+    "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/05-launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f/baseline",
+    "status": "infrastructure_error",
+    "timed_out": false
+  },
+  "build_commands": [],
+  "case_id": "launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f",
+  "changed_files": [
+    "input/debian/control"
+  ],
+  "diff_path": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/05-launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f/repair.diff",
+  "edit_warnings": [],
+  "edits_applied": 1,
+  "edits_proposed": 1,
+  "error": null,
+  "fix_type": "packaging",
+  "mode": "one-shot",
+  "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+  "needs_review": false,
+  "rationale": "The build fails during the debootstrap stage with QEMU segmentation faults and missing essential utilities (e.g., adduser) inside the chroot. Adding `qemu-user-static` to the Build-Depends ensures that the static QEMU user emulator for foreign architectures is installed in the build environment, allowing proper emulation of any required non\u2011native binaries during debootstrap and preventing the SIGSEGV crashes.",
+  "repaired": false,
+  "result": {
+    "artifact_validation_passed": false,
+    "binary_artifacts": [],
+    "build_exit_code": 1,
+    "case_id": "launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f",
+    "duration_seconds": 1.0,
+    "message": "build dependencies are unresolvable",
+    "repaired": false,
+    "result_dir": "/home/ubuntu/buildbench-experiments/demo2-oneshot-retest-20261019T212712Z/runs/05-launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f/result",
+    "status": "unresolvable",
+    "timed_out": false
+  },
+  "run_id": "05-launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f",
+  "served_model": "openai.gpt-oss-120b-1:0",
+  "started_at": "2026-10-19T21:38:51+00:00",
+  "termination_reason": "build_failed",
+  "usage": {
+    "input_tokens": 12370,
+    "output_tokens": 1674
+  },
+  "wall_seconds": 181.9
+}

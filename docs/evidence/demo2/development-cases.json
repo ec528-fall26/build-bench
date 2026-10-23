@@ -1,0 +1,87 @@
+{
+  "source": "buildbench-local-development-v1.tar",
+  "case_count": 10,
+  "rcran_is_additional_calibration_case": true,
+  "cases": [
+    {
+      "case_id": "launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280",
+      "manifest_sha256": "a235609a3c7b1a1e271a1fdc6db34123354d6c4e9d13be5be74eae8707478a15",
+      "target_architecture": "x86_64",
+      "timeout_seconds": 14400,
+      "evidence_status": "not_evaluated_in_supplied_records",
+      "latest_one_shot_retest": "processed in demo2-oneshot-retest-20261019T212712Z; raw per-case evidence import pending"
+    },
+    {
+      "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+      "manifest_sha256": "96aebdf8770024d6f5040a4cebd6f03f3b38910c6573bc9422b7c25167db78ad",
+      "target_architecture": "aarch64",
+      "timeout_seconds": 3600,
+      "evidence_status": "three_runs_per_agent_in_comparison_archive",
+      "latest_one_shot_retest": "processed in demo2-oneshot-retest-20261019T212712Z; raw per-case evidence import pending"
+    },
+    {
+      "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+      "manifest_sha256": "32a19728437ade8bbf2b834d5544857cc271b6bb344821a0fb7e589d8e22ea22",
+      "target_architecture": "aarch64",
+      "timeout_seconds": 3600,
+      "evidence_status": "three_runs_per_agent_in_comparison_archive",
+      "latest_one_shot_retest": "processed in demo2-oneshot-retest-20261019T212712Z; raw per-case evidence import pending"
+    },
+    {
+      "case_id": "launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f",
+      "manifest_sha256": "c791f6074ba67b9ee1e482611f399dec9fcff0412f6453cf762a08d74eed57be",
+      "target_architecture": "x86_64",
+      "timeout_seconds": 3600,
+      "evidence_status": "not_evaluated_in_supplied_records",
+      "latest_one_shot_retest": "processed in demo2-oneshot-retest-20261019T212712Z; raw per-case evidence import pending"
+    },
+    {
+      "case_id": "launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446",
+      "manifest_sha256": "a146e41b0db54ff155761a5b420d24e63b6b2ba393f4ac7aee5892e7a5d4d77f",
+      "target_architecture": "x86_64",
+      "timeout_seconds": 3600,
+      "evidence_status": "not_evaluated_in_supplied_records",
+      "latest_one_shot_retest": "processed in demo2-oneshot-retest-20261019T212712Z; raw per-case evidence import pending"
+    },
+    {
+      "case_id": "launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91",
+      "manifest_sha256": "58dbde97de6f56fdac7fba39b92ff63ae244922767b99615f25905a745677abb",
+      "target_architecture": "aarch64",
+      "timeout_seconds": 3600,
+      "evidence_status": "three_runs_per_agent_in_comparison_archive",
+      "latest_one_shot_retest": "processed in demo2-oneshot-retest-20261019T212712Z; raw per-case evidence import pending"
+    },
+    {
+      "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+      "manifest_sha256": "556ddb4921e4de8b8e4769d26600cd8821c9ae6bf562e457fe52e4566a6050b5",
+      "target_architecture": "aarch64",
+      "timeout_seconds": 3600,
+      "evidence_status": "three_runs_per_agent_in_comparison_archive",
+      "latest_one_shot_retest": "processed in demo2-oneshot-retest-20261019T212712Z; raw per-case evidence import pending"
+    },
+    {
+      "case_id": "launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e",
+      "manifest_sha256": "a7b6a021a5d8b2b22497f71a64454c59663b412fac317609c5789ed1af61bb27",
+      "target_architecture": "x86_64",
+      "timeout_seconds": 14400,
+      "evidence_status": "not_evaluated_in_supplied_records",
+      "latest_one_shot_retest": "processed in demo2-oneshot-retest-20261019T212712Z; raw per-case evidence import pending"
+    },
+    {
+      "case_id": "launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84",
+      "manifest_sha256": "1223913f05d99ace30dfbf845219819670e600297a6d5c9622e3d6926ac37ef1",
+      "target_architecture": "aarch64",
+      "timeout_seconds": 3600,
+      "evidence_status": "documented_as_building_unchanged_excluded_from_repair_denominator",
+      "latest_one_shot_retest": "processed in demo2-oneshot-retest-20261019T212712Z; raw per-case evidence import pending"
+    },
+    {
+      "case_id": "launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce",
+      "manifest_sha256": "2bf1ab6527a276660a19ac0f0dd9a9e7dfc6e25c7ddc1cca055ca49735c1e5fe",
+      "target_architecture": "x86_64",
+      "timeout_seconds": 3600,
+      "evidence_status": "not_evaluated_in_supplied_records",
+      "latest_one_shot_retest": "processed in demo2-oneshot-retest-20261019T212712Z; raw per-case evidence import pending"
+    }
+  ]
+}

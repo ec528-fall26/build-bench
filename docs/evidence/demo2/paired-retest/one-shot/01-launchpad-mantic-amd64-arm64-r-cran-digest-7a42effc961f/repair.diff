@@ -1,0 +1,10 @@
+--- a/input/debian/rules
++++ b/input/debian/rules
+@@ -9,3 +9,7 @@
+ override_dh_auto_install:
+ 	dh_auto_install -- prefix=/usr
+ 	rm debian/r-cran-digest/usr/lib/R/site-library/digest/doc/sha1.html
++
++override_dh_auto_build:
++	dh_auto_build
++	sed -i 's/#include <xmmintrin.h>/\/\/#include <xmmintrin.h>/g' src/crc32c_portable.cpp

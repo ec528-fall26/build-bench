@@ -67,8 +67,9 @@ change does not replace `main.py` or implement Parts B–E.
 - Printed paths match complete suffixes of real files under `worktree/input/`.
   Every match is returned in sorted order; nonexistent paths return `[]`.
   Leading `./` and `../` from out-of-tree builds are stripped. Interior `..`
-  paths and symlink files/directories are not resolved. Absolute build-host
-  prefixes are not guessed away.
+  paths and symlink files/directories are not resolved. Absolute paths are
+  resolved only under known build roots (see "Diagnostic context" below);
+  other absolute paths, such as `/usr/include/...`, are not.
 - Input logs and source files are never modified. Source quotes come from the
   log rather than a potentially edited worktree file.
 
@@ -124,6 +125,101 @@ removed, from its files, and that `main()` records the format.
 **Not done here (handoff).** Prompts still say "You repair Debian source
 packages" and point at `input/debian/rules` (Part E). Using
 `case.package_format.name` there, instead of assuming Debian, is the next step.
+
+## Failure stage and diagnostic context — 1 November 2026
+
+The Demo 2 sprint tasks 2–4 for Part A. Case analysis behind them:
+[`part-a-case-analysis.md`](part-a-case-analysis.md).
+
+**Failure stage (`src/failure.py`).** `classify_failure(log_path)` returns a
+`FailureStage` with these fields:
+
+- `stage`: one of setup, dependencies, configure, compile, link, test,
+  install, packaging, none (the build succeeded) or unknown.
+- `source`: what decided the stage.
+- `validator_stage`: the validator's own stage event, when the log has one.
+- `build_step`: for example `dh_auto_test` or `%build`.
+- `repairable_in_package`: `false` for setup failures.
+- `evidence`: at most 8 log lines, each at most 300 characters.
+
+The validator's structured event (`[build-case] [event] {...}`) is preferred.
+Inside the package build, the earliest specific message decides the stage. When
+there is none, the running build step decides, and the evidence says it was
+inferred. Setup evidence is reported, not explained: segmentation faults are
+counted, not attributed to QEMU. `agent-result.json` records the stage as
+`failure_stage`. On the Demo 2 audit's excerpts the classifier agrees with the
+manual review on all 11 cases. For the five setup cases this mostly reflects
+the validator's own event, which the review also used; the log-only rules have
+their own tests.
+
+Other validator stages before the package build (`backend_preflight`,
+`manifest_validation`, `workspace`) count as setup. `dependency_preflight` and
+`dependency_resolution` count as dependencies. Without a validator event, setup
+is inferred only when the package build never visibly started, so a segfault in
+a test is not setup. rpmbuild's "RPM build errors:" does not mark packaging,
+because it follows a failure in any section. `main()` never fails because of
+classification: an exception is recorded as `unknown`.
+
+Speed: one pass with a byte prefilter. Logs over 32 MB are read from their last
+32 MB, and the evidence says so. The classifier therefore adds at most about
+1.5 s at startup, before the repair loop's budget clock starts.
+
+**Diagnostic context (`src/evidence.py`).**
+
+- gfortran's two-line errors (location line, quote, then `Fatal Error:` or
+  `Error:`) become diagnostics with file, line, quote and resolved path. Before
+  this, they were dropped, and on ectrans the model saw only `make` wrappers.
+- Compiler, Fortran and linker diagnostics carry, in `compiler_details`, the
+  last compile or link step printed before them: a compiler or libtool command,
+  or a CMake/automake progress line, clipped to 600 characters.
+- A missing Fortran module or header is checked against the package.
+  - If found, the detail names the file.
+  - If not, it says how many files were searched and that the module or header
+    is expected from a dependency, the compiler or the system, or is generated
+    during the build.
+  - If the search stopped at its limit (400 Fortran files, 256 KB each), it says
+    only that the module was not found in the files searched.
+  - Searches are cached within one `diagnose()` call. The pattern stays on one
+    line, so it cannot become slow on long runs of blank lines.
+- Absolute paths under known build roots resolve to `input/`. The roots are:
+  - `/usr/src/packages/BUILD/` (OBS),
+  - `/<<PKGBUILDDIR>>/` and `/<<BUILDDIR>>/<dir>/` (the dataset's sbuild logs),
+  - `/build/<dir>/` and `/build/<dir>/<dir>/` (sbuild),
+  - `/home/abuild/rpmbuild/BUILD/<dir>/` and `.../<dir>/<dir>/` (rpm 4.20+).
+
+  A stripped path is used only if it resolves; other absolute paths still do not.
+- Diagnostics stay in the order printed. The prompt titles them that way, and
+  the loop compares the first one. Generic errors were not moved after the
+  specific ones: in the cases examined, the specific error is printed first
+  once it is recognized.
+- Errors printed before the package build starts (`dpkg-buildpackage: info:
+  source package`, or rpmbuild's `Executing(%prep)`) are dropped once that
+  start is seen. A repeat of the same message inside the build is kept. The
+  successful RPM `hello` log no longer reports "ERROR: not all operations were
+  successful." An excerpt without the start marker keeps everything.
+- Line numbers in the log are read as at most 9 digits, so an absurd number is
+  ignored rather than crashing the agent.
+
+The `Diagnostic` contract is unchanged. The new context is carried in the
+existing `compiler_details` field, which the prompts already show. Speed: about
+1.4 times the previous time on a compile-heavy synthetic log (3.3 s against
+2.4 s for 72 MB). The extra time is command tracking.
+
+**Known gaps.**
+
+- gfortran output from before GCC 10 (no `NN |` quotes), two-locus errors and
+  parallel jobs interleaved between the location line and `Error:` are still
+  reported, but without a location.
+- Ninja prints `FAILED: target` before the compiler error, so that line comes
+  first.
+
+**Handoff.**
+
+- Part C: `failure_stage.repairable_in_package == false` means a setup failure,
+  which edits cannot fix.
+- Part E: show `package_format` and `failure_stage` in the opening message.
+- Part B or D: a way to list an installed dependency's files. This is what
+  ectrans still lacks.
 
 ## Checks
 

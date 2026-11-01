@@ -126,7 +126,9 @@ def main() -> int:
         policy = case.task_metadata.get("patch_policy")
         model = ModelClient.from_env()
         result = {"schema_version": "0.1", "status": "completed", "model": model.name,
-                  "served_model": None}
+                  "served_model": None,
+                  # Part A: Debian, RPM or unknown, with the evidence for it.
+                  "package_format": asdict(case.package_format)}
 
         if not model.api_key:
             # Like the baseline: finish without a request and without edits.

@@ -83,6 +83,48 @@ Stage detection and error extraction are heuristics. A reported diagnostic may
 be a downstream symptom or an expected configure probe. Only a verified build
 establishes whether a repair succeeded.
 
+## Package format — 1 November 2026
+
+`load_case()` now also returns `case.package_format`: `name` is `"debian"`,
+`"rpm"` or `"unknown"`, `basis` says what decided (`"metadata"`, `"files"` or
+`"none"`), and `evidence` lists every observation, including disagreeing ones.
+`agent-result.json` records it as `package_format`. The function is
+`detect_package_format(task, manifest, worktree)` in `case.py`.
+
+**Order of evidence.**
+
+1. Case metadata: `package_type`, the build recipe (`.dsc` or `.spec`), the
+   build backend and the expected artifacts (`.deb`/`.dsc` or `.rpm`), from
+   task.json and then the case manifest. If these disagree, the result is
+   `unknown` with both sides listed.
+2. Only when metadata says nothing: packaging files at the top of `input/`.
+   A `.dsc` means Debian. Otherwise `debian/control` means Debian and a
+   `.spec` means RPM. If both are present without a `.dsc`, the result is
+   `unknown`.
+
+**Why not "any .spec means RPM".** 18 of the 200 public Debian cases ship an
+upstream `.spec` file (for example `bpp-core.spec`, `libevtx.spec`,
+`rpm/dnscap.spec`), and upstream projects can also ship a `debian/` directory.
+Only the top level of `input/` is examined, and a lone file of the other kind
+is never treated as proof.
+
+**Worktree manifest.** Without an explicit `manifest_path`, `load_case()` now
+reads the case's own `manifest.json` from the worktree when present; the
+platform places it there (`/workspace/work/repo/manifest.json`). As a result,
+`package` and `target_arch` are also filled from it when task.json lacks them;
+task.json values still take precedence. An unreadable worktree manifest is
+ignored and noted in the evidence; an explicitly requested one still raises.
+
+**Regression fixture.** `tests/full-agent/fixtures/hello-rpm/` is the starter
+kit's RPM `hello` case, copied unchanged. The agent had treated it as Debian
+(see the design document's local readiness notes). `test_package_format.py`
+checks that it is reported as RPM, from its metadata and, with the manifest
+removed, from its files, and that `main()` records the format.
+
+**Not done here (handoff).** Prompts still say "You repair Debian source
+packages" and point at `input/debian/rules` (Part E). Using
+`case.package_format.name` there, instead of assuming Debian, is the next step.
+
 ## Checks
 
 ### Results — 11 October 2026

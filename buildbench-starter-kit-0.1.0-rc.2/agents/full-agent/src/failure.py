@@ -84,7 +84,7 @@ _SIGNALS = (
     ("packaging", re.compile(
         r"dh_(?:install|missing): .*(?:missing files|not installed|missing from)|"
         r"Installed \(but unpackaged\) file\(s\) found|^\s*File not found(?: by glob)?:|"
-        r"dpkg-(?:deb|gencontrol|shlibdeps): error|dh_builddeb: error")),
+        r"dpkg-(?:deb|gencontrol|shlibdeps|gensymbols): error|dh_(?:builddeb|makeshlibs): error")),
 )
 _COMPILE_ERROR = re.compile(r"^.+?:\d+(?::\d+)?:\s*(?:fatal )?error:|^ERROR: compilation failed for package")
 # Coded Rust errors only: a bare "error: ..." line can come from any tool.

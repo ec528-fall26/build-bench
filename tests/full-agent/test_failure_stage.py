@@ -256,3 +256,41 @@ class Wiring(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+QEMU_FIX = ROOT / "docs/evidence/qemu-fix-20261102"
+
+
+class QemuFixLogs(unittest.TestCase):
+    """Real full logs from 2 November: the five x86_64-target cases after the
+    emulator update, and python-intbitset before it. Stages agree with
+    five-case-results.md, which was written by hand from the same logs."""
+
+    def classify(self, relative):
+        return classify_failure(QEMU_FIX / relative / "build.log")
+
+    def test_before_the_update_it_is_setup(self):
+        result = self.classify("before-qemu8")
+        self.assertEqual((result.stage, result.validator_stage), ("setup", "build_infrastructure"))
+        self.assertIs(result.repairable_in_package, False)
+
+    def test_after_the_update_each_case_reaches_its_package_stage(self):
+        expected = {
+            "x86-original-qemu10-20261102T022142Z/launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f":
+                ("packaging", "dpkg-gensymbols: error"),
+            "x86-remaining-qemu10-20261102T030236Z/launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280":
+                ("packaging", "dpkg-gensymbols: error"),
+            "x86-original-qemu10-20261102T022142Z/launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce":
+                ("link", "recompile with -fPIC"),
+            "x86-remaining-qemu10-20261102T030236Z/launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e":
+                ("test", "FAIL: test_tools.sh"),
+            # A documentation build ("invalid command 'build_sphinx'") inside
+            # dh_auto_build: no specific message, so only the step is reported.
+            "after-qemu10": ("compile", "inferred from the build step dh_auto_build"),
+        }
+        for relative, (stage, evidence) in expected.items():
+            with self.subTest(case=relative.rsplit("/", 1)[-1]):
+                result = self.classify(relative)
+                self.assertEqual((result.stage, result.validator_stage), (stage, "package_build"))
+                self.assertIs(result.repairable_in_package, True)
+                self.assertIn(evidence, " ".join(result.evidence))

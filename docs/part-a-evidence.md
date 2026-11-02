@@ -199,6 +199,25 @@ Speed: one pass with a byte prefilter. Logs over 32 MB are read from their last
   successful." An excerpt without the start marker keeps everything.
 - Line numbers in the log are read as at most 9 digits, so an absurd number is
   ignored rather than crashing the agent.
+- Linkers named with their target (`/usr/bin/x86_64-linux-gnu-ld.bfd:`) are
+  recognized, and linker warnings that name an object first (`ld: x.o:
+  warning: ...`) are skipped. On pybigwig after the QEMU fix, the relocation
+  error ("recompile with -fPIC") had been missed and `collect2` came first.
+
+**Checked on unseen logs (2 November).** The six full logs in
+`docs/evidence/qemu-fix-20261102/` were committed after this code was written.
+The classifier gives:
+
+- python-intbitset before the emulator update: setup, not repairable.
+- libbpp-qt and libbpp-core: packaging (`dpkg-gensymbols: error`).
+- pybigwig: link.
+- libevtx: test (`FAIL: test_tools.sh`).
+- python-intbitset after the update: compile, inferred from `dh_auto_build`.
+  Its failure is a documentation command (`invalid command 'build_sphinx'`)
+  with no specific message.
+
+These agree with `five-case-results.md`, which was written by hand from the
+same logs. The tests use these logs.
 
 The `Diagnostic` contract is unchanged. The new context is carried in the
 existing `compiler_details` field, which the prompts already show. Speed: about

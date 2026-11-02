@@ -74,7 +74,7 @@ module directory that fiat's CMake configuration names on arm64 and where its
   paths now resolve).
 - For "Cannot open module file 'X.mod'", Part A checks whether any Fortran
   source under `input/` defines `module X`. If none does, it says the module
-  must come from a build dependency. The same check applies to missing headers
+  is expected from a build dependency or generated during the build. The same check applies to missing headers
   (`fatal error: X.h: No such file or directory`).
 - The gfortran error is printed before the `make` and `dh_auto_build` errors.
   Once it is recognized, it is the first diagnostic, which the prompt's log
@@ -116,7 +116,9 @@ referenced by a shared object (DSO) involved in that link.
 **General change.** Linker errors (`ld:` messages, `undefined reference`,
 `collect2`) now carry the last compile or link step printed before them, for
 example `libtool: link: gcc ... -o .libs/Lperf-simple ...`. With parallel make
-this can belong to another job, and the detail says so.
+this can belong to another job, and the detail says so. Linkers named with
+their target, such as `/usr/bin/x86_64-linux-gnu-ld.bfd:`, are recognized as
+well (found on pybigwig in the 2 November QEMU-fix logs).
 
 ## libmceliece (launchpad-noble-amd64-arm64-libmceliece-5020df9683fc)
 

@@ -229,3 +229,27 @@ class SetupNoise(Context):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CrossLinker(unittest.TestCase):
+    """pybigwig after the QEMU fix (docs/evidence/qemu-fix-20261102): the linker
+    is x86_64-linux-gnu-ld.bfd, and its specific error had been missed."""
+
+    LOG = (ROOT / "docs/evidence/qemu-fix-20261102/x86-original-qemu10-20261102T022142Z/"
+           "launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce/build.log")
+
+    def test_the_relocation_error_is_the_first_diagnostic(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = diagnose(self.LOG, Path(tmp))
+        self.assertTrue(result[0].message.startswith("/usr/bin/x86_64-linux-gnu-ld.bfd: "))
+        self.assertIn("recompile with -fPIC", result[0].message)
+        # Its warning on the line before is not an error.
+        self.assertFalse(any("warning: relocation" in d.message for d in result))
+
+    def test_linker_warnings_naming_an_object_are_skipped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "build.log"
+            log.write_text("/usr/bin/ld: x.o: warning: missing .note.GNU-stack section\n"
+                           "/usr/bin/aarch64-linux-gnu-ld: cannot find -lfoo\n")
+            self.assertEqual([d.message for d in diagnose(log, Path(tmp))],
+                             ["/usr/bin/aarch64-linux-gnu-ld: cannot find -lfoo"])

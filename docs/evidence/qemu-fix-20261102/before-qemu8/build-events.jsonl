@@ -1,0 +1,15 @@
+{"event":"stage","stage":"manifest_validation","state":"started","timestamp":"2026-11-02T01:27:07.615616Z"}
+{"event":"stage","stage":"manifest_validation","state":"completed","timestamp":"2026-11-02T01:27:07.616591Z"}
+{"event":"stage","stage":"backend_preflight","state":"started","timestamp":"2026-11-02T01:27:07.616665Z"}
+{"event":"stage","stage":"backend_preflight","state":"completed","timestamp":"2026-11-02T01:27:07.618662Z"}
+{"event":"stage","stage":"dependency_preflight","state":"started","timestamp":"2026-11-02T01:27:07.618731Z"}
+{"event":"stage","stage":"dependency_preflight","state":"completed","timestamp":"2026-11-02T01:27:07.789514Z"}
+{"event":"stage","stage":"workspace","state":"started","timestamp":"2026-11-02T01:27:07.789641Z"}
+{"event":"stage","stage":"workspace","state":"completed","timestamp":"2026-11-02T01:27:07.794514Z"}
+{"event":"stage","stage":"build","state":"started","timestamp":"2026-11-02T01:27:07.794605Z"}
+{"elapsed_seconds":30,"event":"heartbeat","stage":"build","timestamp":"2026-11-02T01:27:37.797640Z"}
+{"elapsed_seconds":60,"event":"heartbeat","stage":"build","timestamp":"2026-11-02T01:28:07.797911Z"}
+{"elapsed_seconds":90,"event":"heartbeat","stage":"build","timestamp":"2026-11-02T01:28:37.798157Z"}
+{"elapsed_seconds":120,"event":"heartbeat","stage":"build","timestamp":"2026-11-02T01:29:07.798384Z"}
+{"elapsed_seconds":150,"event":"heartbeat","stage":"build","timestamp":"2026-11-02T01:29:37.798646Z"}
+{"event":"stage","stage":"build_infrastructure","state":"failed","timestamp":"2026-11-02T01:30:03.183166Z"}

@@ -1,0 +1,22 @@
+Mon Nov  2 02:20:16 UTC 2026
+Linux ip-172-31-68-209 7.0.0-1014-aws #14~24.04.1-Ubuntu SMP PREEMPT Fri Sep 18 21:50:22 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+PRETTY_NAME="Ubuntu 24.04.4 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.4 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+OS=linux Architecture=arm64 ID=sha256:593013328b8b8bfb1a399da4b1b0b68ad979fd289fe3373575cc578e06c9b641
+enabled
+interpreter /usr/bin/qemu-x86_64
+flags: POCF
+offset 0
+magic 7f454c4602010100000000000000000002003e00
+mask fffffffffffefe00fffffffffffffffffeffffff

@@ -1,0 +1,39 @@
+{
+  "artifact_validation_passed": false,
+  "artifacts": [
+    {
+      "kind": "source",
+      "path": "artifacts/python-intbitset_2.3.0-3.2build3.debian.tar.xz",
+      "rpm_query_ok": true,
+      "sha256": "6a0d27b07415e99f1848cbf0477ab3b7e76783567a5ff04ed4cfdb1d499798a6",
+      "size_bytes": 4276
+    },
+    {
+      "kind": "source",
+      "path": "artifacts/python-intbitset_2.3.0-3.2build3.dsc",
+      "rpm_query_ok": true,
+      "sha256": "13b813c8ccb5831c296eb3edac74f9725af5ac1af7e1eb0d4717580518df95ae",
+      "size_bytes": 2159
+    },
+    {
+      "kind": "source",
+      "path": "artifacts/python-intbitset_2.3.0.orig.tar.gz",
+      "rpm_query_ok": true,
+      "sha256": "08db3d12b3213c307ae4b87e8276bf78a05fae7e04bbd0e21373a2afdcee874a",
+      "size_bytes": 140672
+    }
+  ],
+  "build_exit_code": 1,
+  "case_id": "launchpad-noble-arm64-amd64-python-intbitset-0ede6db7f446",
+  "duration_seconds": 643,
+  "message": "build failed; expected binary artifact pattern 'python3-intbitset_*_amd64.deb' was not matched",
+  "patch_applied": false,
+  "schema_version": "1.0",
+  "security": {
+    "mode": "privileged",
+    "safe_for_untrusted_submission": false
+  },
+  "status": "failed",
+  "target_arch": "x86_64",
+  "timed_out": false
+}

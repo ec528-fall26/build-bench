@@ -1,0 +1,39 @@
+{
+  "artifact_validation_passed": false,
+  "artifacts": [
+    {
+      "kind": "source",
+      "path": "artifacts/libbpp-core_2.4.1-6.debian.tar.xz",
+      "rpm_query_ok": true,
+      "sha256": "dd38be550f3949bd338d1857bf48531faac6d43b520a7db1c3c6241bc938398d",
+      "size_bytes": 32856
+    },
+    {
+      "kind": "source",
+      "path": "artifacts/libbpp-core_2.4.1-6.dsc",
+      "rpm_query_ok": true,
+      "sha256": "da821a02d131172c57a9831333a07bcffa1ad3636b4cf8ed65857d22dc979926",
+      "size_bytes": 2119
+    },
+    {
+      "kind": "source",
+      "path": "artifacts/libbpp-core_2.4.1.orig.tar.gz",
+      "rpm_query_ok": true,
+      "sha256": "1150b8ced22cff23dd4770d7c23fad11239070b44007740e77407f0d746c0af6",
+      "size_bytes": 361311
+    }
+  ],
+  "build_exit_code": 1,
+  "case_id": "launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280",
+  "duration_seconds": 2130,
+  "message": "build failed; expected binary artifact pattern 'libbpp-core-dev_*_amd64.deb' was not matched",
+  "patch_applied": false,
+  "schema_version": "1.0",
+  "security": {
+    "mode": "privileged",
+    "safe_for_untrusted_submission": false
+  },
+  "status": "failed",
+  "target_arch": "x86_64",
+  "timed_out": false
+}

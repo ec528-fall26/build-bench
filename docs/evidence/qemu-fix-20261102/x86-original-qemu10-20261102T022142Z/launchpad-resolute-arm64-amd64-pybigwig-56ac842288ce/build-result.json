@@ -1,0 +1,39 @@
+{
+  "artifact_validation_passed": false,
+  "artifacts": [
+    {
+      "kind": "source",
+      "path": "artifacts/pybigwig_0.3.23+dfsg-1build6.debian.tar.xz",
+      "rpm_query_ok": true,
+      "sha256": "0dc90a5677d96dadadab46e4e15b8afc1bc3a2a55f15c41ad12d4d85a97b00d3",
+      "size_bytes": 5132
+    },
+    {
+      "kind": "source",
+      "path": "artifacts/pybigwig_0.3.23+dfsg-1build6.dsc",
+      "rpm_query_ok": true,
+      "sha256": "186f855a217d57a8b4a68eeced5262a13c4e5e92e765ee21aad06b6e42c8dd33",
+      "size_bytes": 2203
+    },
+    {
+      "kind": "source",
+      "path": "artifacts/pybigwig_0.3.23+dfsg.orig.tar.gz",
+      "rpm_query_ok": true,
+      "sha256": "986bfbe97d12f7539611ec4226a900b276bb30ad6087d69e3eb8cba55d0859bf",
+      "size_bytes": 31810
+    }
+  ],
+  "build_exit_code": 1,
+  "case_id": "launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce",
+  "duration_seconds": 516,
+  "message": "build failed; expected binary artifact pattern '*.deb' was not matched",
+  "patch_applied": false,
+  "schema_version": "1.0",
+  "security": {
+    "mode": "privileged",
+    "safe_for_untrusted_submission": false
+  },
+  "status": "failed",
+  "target_arch": "x86_64",
+  "timed_out": false
+}

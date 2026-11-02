@@ -1,0 +1,39 @@
+{
+  "artifact_validation_passed": false,
+  "artifacts": [
+    {
+      "kind": "source",
+      "path": "artifacts/libevtx_20240504-1build1.debian.tar.xz",
+      "rpm_query_ok": true,
+      "sha256": "9ccb5d713bca5b3ad91c6a45d4c3f59b3c8ba2fb066b9420e64ab4032d1ad0ce",
+      "size_bytes": 7100
+    },
+    {
+      "kind": "source",
+      "path": "artifacts/libevtx_20240504-1build1.dsc",
+      "rpm_query_ok": true,
+      "sha256": "138a18aaf9986bed543005d31b85ed97f6d3bfc9b625b48f5eeeefd3a7bbb4a5",
+      "size_bytes": 2215
+    },
+    {
+      "kind": "source",
+      "path": "artifacts/libevtx_20240504.orig.tar.gz",
+      "rpm_query_ok": true,
+      "sha256": "6a4ee9950e3c9bc24db5fcac6446a5fa8b7da24b398865db9624aebd9f2f905a",
+      "size_bytes": 2048418
+    }
+  ],
+  "build_exit_code": 1,
+  "case_id": "launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e",
+  "duration_seconds": 2445,
+  "message": "build failed; expected binary artifact pattern 'libevtx-dev_*_amd64.deb' was not matched",
+  "patch_applied": false,
+  "schema_version": "1.0",
+  "security": {
+    "mode": "privileged",
+    "safe_for_untrusted_submission": false
+  },
+  "status": "failed",
+  "target_arch": "x86_64",
+  "timed_out": false
+}

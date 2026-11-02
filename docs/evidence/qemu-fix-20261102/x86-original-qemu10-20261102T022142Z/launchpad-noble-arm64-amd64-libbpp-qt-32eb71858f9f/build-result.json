@@ -1,0 +1,39 @@
+{
+  "artifact_validation_passed": false,
+  "artifacts": [
+    {
+      "kind": "source",
+      "path": "artifacts/libbpp-qt_2.4.1-9.1.debian.tar.xz",
+      "rpm_query_ok": true,
+      "sha256": "4ba90a15dc5b37f1ecb63685190335133ec442932fc87c2792baf98f533eb36d",
+      "size_bytes": 14700
+    },
+    {
+      "kind": "source",
+      "path": "artifacts/libbpp-qt_2.4.1-9.1.dsc",
+      "rpm_query_ok": true,
+      "sha256": "5d97e51fb8316166f364765547f44216140af63c628bcfcbe4c7705bc234a988",
+      "size_bytes": 2186
+    },
+    {
+      "kind": "source",
+      "path": "artifacts/libbpp-qt_2.4.1.orig.tar.gz",
+      "rpm_query_ok": true,
+      "sha256": "4423b35223415c6dc6b483df3cf3276dafabd93c04dfc4716ce0b8e5b3ea219b",
+      "size_bytes": 50443
+    }
+  ],
+  "build_exit_code": 1,
+  "case_id": "launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f",
+  "duration_seconds": 756,
+  "message": "build failed; expected binary artifact pattern 'libbpp-qt-dev_*_amd64.deb' was not matched",
+  "patch_applied": false,
+  "schema_version": "1.0",
+  "security": {
+    "mode": "privileged",
+    "safe_for_untrusted_submission": false
+  },
+  "status": "failed",
+  "target_arch": "x86_64",
+  "timed_out": false
+}

@@ -1,0 +1,20 @@
+{
+  "case_id": "launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f",
+  "target_arch": "x86_64",
+  "preflight": {
+    "lock_declared": true,
+    "lock_path": "config/dependency-lock.json",
+    "passed": true,
+    "expected_count": 400,
+    "actual_count": 400,
+    "missing_count": 0,
+    "unexpected_count": 0,
+    "checksum_mismatch_count": 0,
+    "architecture_mismatch_count": 0,
+    "transition_conflict_count": 0,
+    "bootstrap_missing_count": 0,
+    "problems": []
+  }
+}
+build-case: runtime image buildbench-validator-runtime:local-development-v1
+build-case: isolated-chroot is privileged and is not safe for untrusted input

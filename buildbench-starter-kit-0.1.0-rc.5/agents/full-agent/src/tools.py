@@ -17,15 +17,23 @@ from functools import lru_cache
 import stat
 from .tool_timeout import tool_time_limit
 
-TOOLS = ("list_dir", "find_files", "search", "read_file", "current_diff", "patch_series")
+TOOLS = ("list_dir", "find_files", "search", "read_file", "current_diff", "patch_series",
+         "read_log", "search_log")
 
-MAX_OUTPUT_CHARS = 4000
+MAX_OUTPUT_CHARS = 8000
 MAX_FILE_BYTES = 1024 * 1024
 MAX_SEARCH_FILES = 100
 MAX_TREE_ENTRIES = 5000
 MAX_TOOL_SECONDS = 2.0
+# The failure log is read-only evidence outside the worktree. A log can be
+# megabytes, so its tools get longer and output lines are shortened.
+MAX_LOG_BYTES = 64 * 1024 * 1024
+MAX_LOG_SECONDS = 5.0
+LOG_LINE_CHARS = 500
+_ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
-def run_tool(request: ToolRequest, worktree: Path, *, diff_tracker : DiffTracker | None = None) -> ToolResult:
+def run_tool(request: ToolRequest, worktree: Path, *, diff_tracker : DiffTracker | None = None,
+             log_path: Path | None = None) -> ToolResult:
     if not isinstance(request.args, dict):
         return ToolResult(
             request = request,
@@ -34,6 +42,9 @@ def run_tool(request: ToolRequest, worktree: Path, *, diff_tracker : DiffTracker
         )
 
     try: 
+        if request.tool in ("read_log", "search_log"):
+            with tool_time_limit(MAX_LOG_SECONDS):
+                return _run_log_tool(request, log_path)
         with tool_time_limit(MAX_TOOL_SECONDS):
             return _run_tool(request, worktree, diff_tracker= diff_tracker)
     except (OSError, ValueError, TypeError, RuntimeError) as error:
@@ -42,6 +53,74 @@ def run_tool(request: ToolRequest, worktree: Path, *, diff_tracker : DiffTracker
             text = f"=== tool: unavailable ({error}) ===",
             truncated = False,
         ) 
+
+
+def _log_line(line: bytes) -> str:
+    """One log line as shown: decoded, without colour codes, long lines shortened."""
+    text = _ANSI.sub("", line.decode("utf-8", errors="replace").rstrip("\r\n"))
+    if len(text) > LOG_LINE_CHARS:
+        half = LOG_LINE_CHARS // 2
+        text = f"{text[:half]} ... [cut] ... {text[-half:]}"
+    return text
+
+
+def _run_log_tool(request: ToolRequest, log_path: Path | None) -> ToolResult:
+    """read_log and search_log: numbered lines of the original failure log."""
+    def unavailable(reason: str) -> ToolResult:
+        return ToolResult(request=request, text=f"=== {request.tool}: unavailable ({reason}) ===",
+                          truncated=False)
+
+    if log_path is None:
+        return unavailable("no build log for this run")
+    args = request.args
+    if request.tool == "read_log":
+        start, end = args.get("start_line"), args.get("end_line")
+        if type(start) is not int or type(end) is not int:
+            return unavailable("start_line and end_line must be integers")
+        if start < 1 or end < start:
+            return unavailable("invalid line range")
+        expression = None
+    else:
+        regex = args.get("regex")
+        if not isinstance(regex, str) or not regex:
+            return unavailable("regex must be a nonempty string")
+        try:
+            expression = re.compile(regex)
+        except re.error:
+            return unavailable("invalid regular expression")
+        start, end = 1, None
+
+    shown, used, truncated, total = [], 0, False, 0
+    with Path(log_path).open("rb") as log:
+        for number, raw in enumerate(log, start=1):
+            total = number
+            if log.tell() > MAX_LOG_BYTES:
+                truncated = True
+                break
+            if number < start or truncated:
+                continue
+            if end is not None and number > end:
+                break
+            text = _log_line(raw)
+            if expression is not None and expression.search(text) is None:
+                continue
+            entry = f"{number}: {text}"
+            if used + len(entry) + 1 > MAX_OUTPUT_CHARS:
+                truncated = True
+                if end is not None:
+                    break
+                continue  # keep counting lines for the total
+            shown.append(entry)
+            used += len(entry) + 1
+
+    if request.tool == "read_log":
+        label = f"=== build log, lines {start}-{min(end, total)} ==="
+        if start > total:
+            label = f"=== build log: only {total} lines ==="
+    else:
+        label = f"=== search_log: {args['regex']}; the log has {total} lines ==="
+    content = "\n".join(shown) if shown else "(no lines)"
+    return ToolResult(request=request, text=f"{label}\n{content}", truncated=truncated)
 
 
 def collect_files(root: Path) -> tuple[list[Path], bool]:

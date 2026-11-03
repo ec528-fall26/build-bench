@@ -52,7 +52,7 @@ class Contracts(unittest.TestCase):
 
     def test_budget_defaults_are_the_research_settings(self):
         self.assertEqual(dataclasses.asdict(Budget()), {
-            "max_attempts": 5, "max_builds": 3, "max_tokens": 100_000,
+            "max_attempts": 5, "max_builds": 3, "max_tokens": 3_000_000,
             "max_seconds": 1_800, "reserve_seconds": 120})
 
     def test_every_component_is_on_by_default(self):
@@ -103,7 +103,7 @@ class PartBStandIn(unittest.TestCase):
 
     def test_tool_names_match_the_plan(self):
         self.assertEqual(set(TOOLS), {"list_dir", "find_files", "search", "read_file",
-                                      "current_diff", "patch_series"})
+                                      "current_diff", "patch_series", "read_log", "search_log"})
 
 
 class PartDStandIn(unittest.TestCase):

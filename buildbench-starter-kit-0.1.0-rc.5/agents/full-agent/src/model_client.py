@@ -29,7 +29,7 @@ from .types import CaseContext, Edit, EditPlan
 
 MODEL_ID = "openai.gpt-oss-120b-1:0"
 DEFAULT_BASE_URL = "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1"
-MAX_COMPLETION_TOKENS = 8192  # includes the model's reasoning; hosted ceiling is 32,768
+MAX_COMPLETION_TOKENS = 16384  # includes the model's reasoning; hosted ceiling is 32,768
 TEMPERATURE = 0
 HOSTED_TIMEOUT = 600  # Hosted Smoke allows 10 minutes per request
 TOKEN_FILE_LIMIT = 4096

@@ -60,7 +60,8 @@ EDIT_TEXT_CHARS = 600       # one side of an edit shown in the history
 CONTEXT_FILES = ("input/debian/rules",)
 
 _ROLE = """\
-You repair Debian source packages whose build fails on a target CPU architecture.
+You repair Debian or RPM source packages whose build fails on a target CPU
+architecture.
 
 The package builds on another architecture and fails on the target. Find the
 cause and change the package's files so that it builds on the target and still
@@ -142,6 +143,13 @@ them, so the build output is the only evidence about them.
 - patch_series {{}}: the package's existing debian/patches and the order they
   are applied in.
 - current_diff {{}}: what your edits have changed so far.
+- read_log {{"start_line": 1, "end_line": 200}}: those lines of the original
+  failing build's log, numbered. The log excerpt you are shown gives the line
+  numbers of the first error, so you can read what came before or after it.
+- search_log {{"regex": "<pattern>"}}: the numbered log lines that match, for
+  example to find every error, warning or the failing command.
+  The log is the full output of the failing build, so a symbol-file diff, a
+  test's output or the command that failed can be read in full.
 A result longer than about {limit:,} characters is cut and marked truncated:
 narrow the request to see the rest. A search that returns no matches may have
 skipped files it could not read.
@@ -167,16 +175,78 @@ object, which must be one of:
  "evidence": ["<the build-output line or file:line you saw that supports it>"],
  "edits": [{{"path": "input/<file>", "old_text": "<exact text to replace>", "new_text": "<replacement>"}}]}}
 
-{{"action": "stop", "reason": "<why no edit under input/ can repair this build>"}}
-
+{stop}
 - State the hypothesis so that a build could prove it wrong, and list only
   evidence you have actually seen.
+{stop_rule}"""
+
+# With build feedback the model stops only when no edit can work; without it,
+# stopping is also how it says the repair is complete.
+_STOP_BUILDS = """\
+{"action": "stop", "reason": "<why no edit under input/ can repair this build>"}
+"""
+_STOP_RULE_BUILDS = """\
 - Choose "stop" only when you have reason to believe that no edit under input/
   can repair the build, for example because it needs a dependency that does not
   exist for the target architecture. Not having been shown a file is never a
   reason to stop, and neither is a dependency that is installed but wrong for
   the target: work around it in the package's own files under input/, for
   example its build configuration, and check the next build's errors.
+"""
+_STOP_NO_BUILDS = """\
+{"action": "stop", "reason": "<why your edits are a complete repair, or why no edit can repair it>"}
+"""
+_STOP_RULE_NO_BUILDS = """\
+- Reply "stop" once your edits form a complete repair: they are submitted as
+  they stand when you stop.
+- Otherwise choose "stop" only when you have reason to believe that no edit
+  under input/ can repair the build, for example because it needs a dependency
+  that does not exist for the target architecture. Not having been shown a file
+  is never a reason to stop, and neither is a dependency that is installed but
+  wrong for the target: work around it in the package's own files under input/,
+  for example its build configuration.
+"""
+
+_PLAYBOOK = """\
+Common causes of cross-architecture build failures
+These are frequent patterns, not answers: confirm one against the evidence
+before you use it, and prefer the narrowest change that fixes the cause.
+- CPU-specific code: x86-only vector headers, cpuid.h, __builtin_ia32_*
+  builtins or inline x86 assembly compiled on ARM, or NEON (arm_neon.h) on
+  x86. Guard the code with the compiler's architecture macros (__x86_64__,
+  __i386__, __aarch64__, __arm__) and keep or add a portable fallback path.
+- CPU-specific compiler flags: -msse*, -mavx*, -mfpmath=sse, -march=... or
+  -mcpu=... hard-coded in a build file. Add them only on the architectures
+  that accept them (for example a DEB_HOST_ARCH or uname -m check, or %ifarch
+  in an RPM spec), not unconditionally.
+- char signedness: plain char is unsigned on ARM and signed on x86. In C,
+  comparisons such as c < 0 or c == EOF on a char behave differently. In Rust,
+  C strings are *const c_char (std::ffi::c_char or std::os::raw::c_char),
+  which is u8 on ARM and i8 on x86: replace hard-coded *const i8 or *const u8
+  in FFI code with c_char so the code compiles on both.
+- Undefined references to __aarch64_ldadd*, __aarch64_cas* and similar are
+  ARM outline-atomics helpers from libgcc; undefined __atomic_* functions need
+  libatomic (-latomic). Link the missing library for the target, or build with
+  -mno-outline-atomics on aarch64.
+- "recompile with -fPIC" or relocation errors when linking a shared object: a
+  static library or object built without position-independent code is linked
+  into a shared one. Add -fPIC (or the build system's position-independent
+  setting) where that library is compiled.
+- Debian symbols files (dpkg-gensymbols reports symbols missing or new): C++
+  symbols differ between architectures. Read the whole symbols diff in the log,
+  then mark the architecture-dependent entries in debian/*.symbols, for
+  example with (arch=...) or (optional) tags, instead of deleting the file.
+- Hard-coded architecture names or paths: x86_64-linux-gnu, lib64, amd64,
+  aarch64 or arm64 written into debian/rules, *.install files, a spec file or
+  a configure script. Use the multiarch variables (DEB_HOST_MULTIARCH,
+  %{_libdir}) or patterns that match every architecture.
+- Architecture lists: Architecture fields in debian/control, ExclusiveArch or
+  ExcludeArch in a spec, or a configure or CMake check that only knows some
+  CPUs. Add the target where the code supports it.
+- Tests that only fail on the target: find the assertion or crash in the log
+  and fix the architecture assumption in the code or the test's expectation,
+  for example page size, long double precision, alignment or endianness. Do
+  not skip or delete the test.
 """
 
 _NEXT = "Decide what to do next and end your reply with one JSON object."
@@ -214,10 +284,13 @@ def system_prompt(config: AgentConfig | None = None, budget: Budget | None = Non
     else:
         run.append("Your edits are not test-built during this run: they are submitted as "
                    "they stand, so make the repair complete.")
-    if config.use_history:
+    if config.use_history and config.use_build_feedback:
         run.append("You are shown each earlier attempt: its hypothesis, its edits and what "
                    "the build said. Do not repeat an attempt that failed; say in your "
                    "hypothesis what is different this time.")
+    elif config.use_history:
+        run.append("You are shown each earlier attempt: its hypothesis and its edits, which "
+                   "are still in the files unless you were told they were undone.")
     builds = f", {budget.max_builds} builds" if config.use_build_feedback else ""
     run.append(f"Limits for this case: {budget.max_attempts} edit attempts{builds}, about "
                f"{budget.max_tokens:,} tokens and {budget.max_seconds // 60} minutes in total. "
@@ -226,10 +299,14 @@ def system_prompt(config: AgentConfig | None = None, budget: Budget | None = Non
     run = "How the run proceeds\n" + "".join(_bullet(text) for text in run)
 
     sections = [_ROLE, _CHANGES.format(unseen=unseen),
-                _READING.format(confirm=_bullet(confirm).rstrip("\n")), _EDITS]
+                _READING.format(confirm=_bullet(confirm).rstrip("\n")), _EDITS, _PLAYBOOK]
     if config.use_tools:
         sections.append(_TOOLS.format(limit=MAX_OUTPUT_CHARS))
-    sections.append(_REPLY.format(tool_format=_TOOL_FORMAT if config.use_tools else ""))
+    builds = config.use_build_feedback
+    sections.append(_REPLY.format(
+        tool_format=_TOOL_FORMAT if config.use_tools else "",
+        stop=_STOP_BUILDS if builds else _STOP_NO_BUILDS,
+        stop_rule=_STOP_RULE_BUILDS if builds else _STOP_RULE_NO_BUILDS))
     sections.append(run)
     return "\n".join(sections)
 
@@ -406,15 +483,25 @@ def render_log_window(log_path: Path, diagnostic: Diagnostic, number: int = 1) -
     try:
         with Path(log_path).open("rb") as log:
             start = max(0, diagnostic.log_offset - _LOG_READ)
+            # The error's line number, so read_log can page from it.
+            error_line = 1
+            while log.tell() < start:
+                chunk = log.read(min(1 << 20, start - log.tell()))
+                if not chunk:
+                    break
+                error_line += chunk.count(b"\n")
             log.seek(start)
             before = log.read(diagnostic.log_offset - start)
             after = log.read(_LOG_READ)
     except (OSError, ValueError):
         return ""
+    error_line += before.count(b"\n")
     head = before.decode("utf-8", errors="replace").split("\n")[:-1]
     if start > 0:
         head = head[1:]  # the read began mid-line
-    lines = head[-LOG_BEFORE:] + after.decode("utf-8", errors="replace").split("\n")[:LOG_AFTER + 1]
+    head = head[-LOG_BEFORE:]
+    lines = head + after.decode("utf-8", errors="replace").split("\n")[:LOG_AFTER + 1]
+    first = error_line - len(head)
     shown = []
     for line in lines:
         line = _ANSI.sub("", line.rstrip("\r"))
@@ -424,7 +511,8 @@ def render_log_window(log_path: Path, diagnostic: Diagnostic, number: int = 1) -
         shown.append(line)
     if not any(line.strip() for line in shown):
         return ""
-    return (f"=== Build log around error {number} ===\n" + "\n".join(shown)
+    return (f"=== Build log around error {number} (log lines {first}-{first + len(shown) - 1};"
+            f" the error is on line {error_line}) ===\n" + "\n".join(shown)
             + "\n=== End of build log ===\n")
 
 
@@ -503,7 +591,8 @@ def history_block(attempts: Sequence[Attempt], *, kept: Collection[int] | None =
 
 
 def budget_note(budget: Budget, *, attempts_used: int = 0, builds_used: int = 0,
-                tokens_used: int | None = None, seconds_used: float | None = None) -> str:
+                tokens_used: int | None = None, seconds_used: float | None = None,
+                builds: bool = True) -> str:
     """One line on the budget, as used and left: "5 of 5" alone was read as all
     used (full-ectrans-3 stopped on its first turn). Unknown token use is said
     to be unknown, never 0."""
@@ -511,8 +600,9 @@ def budget_note(budget: Budget, *, attempts_used: int = 0, builds_used: int = 0,
         used = min(max(used, 0), limit)
         return f"{about}{used:,} of {limit:,} {name} used ({limit - used:,} left)"
 
-    parts = [item(attempts_used, budget.max_attempts, "edit attempts"),
-             item(builds_used, budget.max_builds, "builds")]
+    parts = [item(attempts_used, budget.max_attempts, "edit attempts")]
+    if builds:
+        parts.append(item(builds_used, budget.max_builds, "builds"))
     if tokens_used is None:
         parts.append(f"token use unknown (limit {budget.max_tokens:,})")
     else:

@@ -140,7 +140,7 @@ class FocusedCorrectionTests(unittest.TestCase):
         self.assertEqual(result.termination_reason, "build_succeeded")
         self.assertEqual(builds, ["gamma\nfirst replacement\nsecond repeat\n"])
 
-    def test_correction_prompt_omits_full_source_and_disables_tools(self):
+    def test_correction_prompt_omits_full_source_and_allows_reading(self):
         sent = []
 
         def complete(messages):
@@ -162,9 +162,31 @@ class FocusedCorrectionTests(unittest.TestCase):
         with patch("src.model_adapter.prompts.opening_message") as opening:
             result, usage = adapter(request)
         opening.assert_not_called()
-        self.assertEqual(result.action, "malformed")
+        # Reading the file is how a correction finds the text to copy.
+        self.assertEqual(result.action, "tool")
+        self.assertIn("read_file", sent[0][0]["content"])
         self.assertEqual(len(sent), 1)
         self.assertFalse(adapter.turns[0]["follow_up"])
+        self.assertEqual(adapter._investigating, 0)
+
+    def test_correction_tools_are_refused_when_tools_are_off(self):
+        def complete(messages):
+            return (
+                '{"action":"tool","requests":[{"tool":"list_dir","args":{}}]}',
+                "stop", {"input_tokens": 1, "output_tokens": 1},
+            )
+
+        adapter = ModelAdapter(
+            complete, self.context, config=AgentConfig(use_tools=False), budget=Budget(),
+            diagnostics=[], log_path=None,
+        )
+        self.addCleanup(adapter.close)
+        request = LoopRequest(
+            context=self.context,
+            edit_validation_feedback=FOCUSED_PREFIX + "\ncorrect INDEX 0",
+        )
+        result, _ = adapter(request)
+        self.assertEqual(result.action, "malformed")
 
 
 if __name__ == "__main__":

@@ -13,11 +13,22 @@ it has no build feedback, so edits are investigated and revised but submitted
 untested. Locally, `harness/run_case.py --agent full-agent` runs the same loop
 with real builds (Part D). Results: `docs/part5-findings.md` §9c.
 
+Version 0.3.0 (2 November), for submitted runs with no build feedback:
+- the model can read and search the whole failure log (`read_log`, `search_log`);
+  the log excerpt it is shown carries line numbers;
+- an edit correction shows the whole file (up to 24,000 characters) and may use
+  tools before correcting;
+- the system prompt lists common cross-architecture causes, and with no build
+  adapter it says edits are not test-built and that `stop` submits them;
+- `Budget.max_tokens` is 3,000,000 (was 100,000, which ended runs after about
+  six turns; the website sets no token limit), `max_completion_tokens` is
+  16,384, and the loop allows 30 turns and 60 tool calls.
+
 | File | Part | Status |
 | --- | --- | --- |
 | `contracts.py` | shared | Agreed 7 October. Change only by team agreement |
 | `evidence.py`, `case.py` | A | Streaming diagnostics, source-path resolution, and read-only case metadata loading. See `docs/part-a-evidence.md` |
-| `tools.py`, `path_checks.py`, `diff_tracker.py`, `tool_timeout.py` | B | Six read-only tools; called by the loop, which caps tool calls per case (`max_tool_calls`) |
+| `tools.py`, `path_checks.py`, `diff_tracker.py`, `tool_timeout.py` | B | Eight read-only tools, including `read_log` and `search_log` over the original failure log; called by the loop, which caps tool calls per case (`max_tool_calls`) |
 | `build_feedback.py` | D | `NoBuildFeedback`: returns `None` until the organizers publish the protocol. The local build callback lives in the harness, never here |
 | `loop.py`, `candidates.py` | C (Juliette Jacques) | The repair loop and candidate retention. See `docs/part-c-loop.md` |
 | `model_adapter.py`, `main.py` | C (wiring) | The loop's `next_turn`: rebuilds each request from the loop's snapshot with Part E's text, one model call per turn. `main.py` is the entry point; `run_agent()` is shared with the harness |

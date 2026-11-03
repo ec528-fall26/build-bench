@@ -52,7 +52,7 @@ from .tools import run_tool
 Completion = tuple[str, "str | None", dict]
 Complete = Callable[[list[dict]], Completion]
 
-MAX_TOOL_RESULTS = 8  # most recent results shown; older ones are counted
+MAX_TOOL_RESULTS = 12  # most recent results shown; older ones are counted
 MIN_REQUEST_SECONDS = 30  # do not start a request that could not finish in time
 NUDGE_AFTER = 4  # tool turns in a row without an edit before the model is asked to act
 TOOL_TURN_LIMIT = 6  # ... and before tools are switched off until its next edit
@@ -63,6 +63,17 @@ NUDGE = ("You have spent {n} turns investigating since your last edit. If you ha
          "plausible fix, propose it now rather than investigating further: each edit's "
          "result is reported back to you. Investigate further only for something specific "
          "that you still need.")
+# No build checks an edit in a submitted run, so the nudge cannot promise one.
+NUDGE_NO_BUILD = ("You have spent {n} turns investigating since your last edit. If you "
+                  "have enough evidence for a complete fix, propose it now. Edits are not "
+                  "test-built during this run, so investigate further only for something "
+                  "specific the fix depends on.")
+CORRECTION_TOOLS = (
+    " Before correcting you may read the file with a tool action, for example "
+    '{"action": "tool", "requests": [{"tool": "read_file", "args": {"path": "input/<file>", '
+    '"start_line": 1, "end_line": 200}}]}; search {"regex", "path_glob"}, read_log '
+    '{"start_line", "end_line"} and search_log {"regex"} work the same way. The batch '
+    "stays pending while you read.")
 FOLLOW_UP = ("Your reply ended without the JSON object. "
              "Reply now with only the JSON object for the action you decided on.")
 TOOLS_OFF_FOLLOW_UP = ("Tools are switched off until your next edit. Reply now with only "
@@ -300,11 +311,8 @@ class ModelAdapter:
         text, finish, usage = self.complete(messages)
         self._record_known_usage(usage)
         correcting = request.edit_validation_feedback.startswith(FOCUSED_PREFIX)
-        allow_tools = (
-            self.config.use_tools
-            and self._investigating < self._tool_turn_limit()
-            and not correcting
-        )
+        allow_tools = self.config.use_tools and (
+            correcting or self._investigating < self._tool_turn_limit())
         turn = parse_turn(text, finish_reason=finish, allow_tools=allow_tools,
                               allow_review=bool(request.proposal_review))
         # One same-turn follow-up for a reply with no JSON action, or for a tool
@@ -333,7 +341,7 @@ class ModelAdapter:
             turn = parse_turn(text, finish_reason=finish, allow_tools=allow_tools,
                               allow_review=bool(request.proposal_review))
         self._last_turn = turn
-        if turn.action == "tool":
+        if turn.action == "tool" and not correcting:
             self._investigating += 1
         elif turn.action == "edit":
             self._investigating = 0
@@ -371,12 +379,14 @@ class ModelAdapter:
                         "Return only a JSON action object: edit with hypothesis, evidence, "
                         "and edits containing zero or one {path, old_text, new_text, replace_all} object; "
                         "replace_all is an optional boolean, false by default. "
-                        "or stop with a reason. Do not request tools."
+                        "or stop with a reason."
+                        + (CORRECTION_TOOLS if config.use_tools else " Do not request tools.")
                     ),
                 },
                 {
                     "role": "user",
-                    "content": request.edit_validation_feedback,
+                    "content": request.edit_validation_feedback
+                    + self._tool_results_block(request),
                 },
             ]
         small_group = self.repair_strategy in {"small-group", "shared-cause"}
@@ -417,31 +427,20 @@ class ModelAdapter:
             )
         if self._last_turn is not None and self._last_turn.action == "malformed":
             parts.append(_body(prompts.malformed_message(self._last_turn, config)))
-        if request.tool_results:
-            distinct, repeats = _distinct(request.tool_results)
-            shown = distinct[-MAX_TOOL_RESULTS:]
-            hidden = len(distinct) - len(shown)
-            notes = []
-            if repeats:
-                notes.append(f"{repeats} of your requests repeated an earlier one and "
-                             f"{'are' if repeats != 1 else 'is'} shown once. A repeated request "
-                             "returns the same result: try something different instead.")
-            if hidden:
-                notes.append(f"{hidden} earlier tool result{'s' * (hidden != 1)} not shown again.")
-            note = " ".join(notes)
-            parts.append("=== Results of your tool requests ===\n"
-                         + _body(prompts.tool_results_message(shown, note=note)))
+        parts.append(self._tool_results_block(request).strip("\n"))
         if self._investigating >= self._tool_turn_limit():
             # The nudge alone was ignored: libmceliece read for 11 more turns.
             parts.append(TOOLS_OFF.format(n=self._investigating))
         elif self._investigating >= NUDGE_AFTER:
             # On ectrans the model read for 11 and 17 turns before (or instead of)
             # an edit, while one build taught it more than the reading.
-            parts.append(NUDGE.format(n=self._investigating))
+            nudge = NUDGE if config.use_build_feedback else NUDGE_NO_BUILD
+            parts.append(nudge.format(n=self._investigating))
         parts.append(prompts.budget_note(
             self.budget, attempts_used=latest.number if latest else 0,
             builds_used=self._builds, tokens_used=self._tokens,
-            seconds_used=self.clock() - self.started))
+            seconds_used=self.clock() - self.started,
+            builds=config.use_build_feedback))
         parts.append(prompts._NEXT)
         if request.proposal_review:
             parts.append(request.proposal_review)
@@ -452,6 +451,24 @@ class ModelAdapter:
              + ("\n" + REVIEW_INSTRUCTIONS if request.proposal_review else "")},
             {"role": "user", "content": "\n\n".join(p for p in parts if p.strip()) + "\n"},
         ]
+
+    def _tool_results_block(self, request: LoopRequest) -> str:
+        """The results of tool requests still valid, most recent last; "" if none."""
+        if not request.tool_results:
+            return ""
+        distinct, repeats = _distinct(request.tool_results)
+        shown = distinct[-MAX_TOOL_RESULTS:]
+        hidden = len(distinct) - len(shown)
+        notes = []
+        if repeats:
+            notes.append(f"{repeats} of your requests repeated an earlier one and "
+                         f"{'are' if repeats != 1 else 'is'} shown once. A repeated request "
+                         "returns the same result: try something different instead.")
+        if hidden:
+            notes.append(f"{hidden} earlier tool result{'s' * (hidden != 1)} not shown again.")
+        note = " ".join(notes)
+        return ("\n\n=== Results of your tool requests ===\n"
+                + _body(prompts.tool_results_message(shown, note=note)) + "\n")
 
     def _rejection_help(self, attempt, rejections: list[str]) -> str:
         """Give bounded guidance for literal-match failures."""

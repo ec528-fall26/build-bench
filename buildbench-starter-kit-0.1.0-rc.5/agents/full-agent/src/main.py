@@ -13,7 +13,7 @@ repair: the platform's clean build decides whether anything was fixed.
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import json
 import logging
 import os
@@ -68,14 +68,18 @@ def run_agent(
         raise ValueError("BB_REVIEW_EDITS must be 0 or 1")
     context.log_tail = extract_tail(Path(log_path), TAIL_LINES)
     diagnostics = diagnose(Path(log_path), context.worktree)
-    adapter = ModelAdapter(complete, context, config=config, budget=budget,
+    # With no adapter nothing is rebuilt, whatever the switch says (a submitted
+    # run has none): the model must not be told its edits will be built.
+    prompt_config = (config if build_feedback is not None
+                     else replace(config, use_build_feedback=False))
+    adapter = ModelAdapter(complete, context, config=prompt_config, budget=budget,
                            diagnostics=diagnostics, log_path=Path(log_path),
                            package=package, clock=clock)
     try:
         result = run_loop(context, next_turn=adapter, config=config, budget=budget,
                           build_feedback=build_feedback, patch_policy=patch_policy,
                           clock=clock, review_edits=review_setting == "1",
-                          initial_diagnostics=diagnostics)
+                          initial_diagnostics=diagnostics, log_path=Path(log_path))
     finally:
         adapter.close()
     return result, adapter

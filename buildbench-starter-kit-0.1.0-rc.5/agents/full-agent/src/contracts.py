@@ -28,7 +28,7 @@ class Diagnostic:                 # Part A produces, everyone reads
 
 @dataclass
 class ToolRequest:                # model -> Part B
-    tool: str                     # list_dir | find_files | search | read_file | current_diff | patch_series
+    tool: str                     # list_dir | find_files | search | read_file | current_diff | patch_series | read_log | search_log
     args: dict
 
 
@@ -71,7 +71,10 @@ class Attempt:                    # Part C keeps these: the repair history
 class Budget:                     # research settings, calibrated on rcran; not competition limits
     max_attempts: int = 5
     max_builds: int = 3
-    max_tokens: int = 100_000
+    # Prompt and completion tokens summed over every call. The website sets no
+    # token limit for Hosted Smoke (time is the limit), and each turn resends
+    # the conversation, so 100_000 ended runs after about six turns.
+    max_tokens: int = 3_000_000
     max_seconds: int = 1_800
     reserve_seconds: int = 120    # kept back for a graceful stop
 

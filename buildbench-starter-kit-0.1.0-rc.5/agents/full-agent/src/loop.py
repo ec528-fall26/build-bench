@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
+from pathlib import Path
 from time import monotonic
 
 from .candidates import CandidateSnapshot
@@ -95,8 +96,9 @@ def _build_rank(build: BuildResult) -> tuple[int, int, int]:
     )
 
 # Tools whose output an edit cannot change: edits never create, delete or
-# rename files, so listings and name searches stay true.
-_EDIT_PROOF = {"list_dir", "find_files", "patch_series"}
+# rename files, so listings and name searches stay true, and the failure log
+# is never edited.
+_EDIT_PROOF = {"list_dir", "find_files", "patch_series", "read_log", "search_log"}
 
 
 def _still_valid(results: list[ToolResult], edited: set[str]) -> list[ToolResult]:
@@ -130,8 +132,9 @@ def run_loop(
     patch_policy: Mapping[str, list[str] | tuple[str, ...]] | None = None,
     review_edits: bool = False,
     initial_diagnostics=None,
-    max_turns: int = 20,
-    max_tool_calls: int = 30,
+    log_path: Path | None = None,
+    max_turns: int = 30,
+    max_tool_calls: int = 60,
     clock: Callable[[], float] = monotonic,
 ) -> LoopResult:
     # Provisional local safeguards, not official competition limits.
@@ -298,9 +301,11 @@ def run_loop(
             )
 
         if turn.action == "tool":
-            if pending_turn is not None:
+            if pending_turn is not None and not config.use_tools:
                 edit_validation_feedback += "\nReturn one correction edit, an empty edit list to remove it, or stop."
                 continue
+            # During a correction the pending batch stays pending: reading the
+            # file is how the model finds the text it failed to copy.
             if not config.use_tools:
                 feedback = (
                     "Investigation tools are disabled for this run. "
@@ -327,6 +332,7 @@ def run_loop(
                     tool_request,
                     context.worktree,
                     diff_tracker=tracker,
+                    log_path=log_path,
                 )
                 tool_results.append(result)
 

@@ -97,12 +97,16 @@ class SystemPrompt(unittest.TestCase):
         # The prompt and Part B must agree on argument names and types.
         examples = re.findall(r"(?m)^- (\w+) (\{.*?\}):", prompts.system_prompt())
         self.assertEqual([name for name, _ in examples], list(TOOLS)[:4] + ["patch_series",
-                                                                            "current_diff"])
+                                                                            "current_diff",
+                                                                            "read_log",
+                                                                            "search_log"])
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "input/debian").mkdir(parents=True)
             for name, args in examples:
                 with self.subTest(tool=name):
-                    result = run_tool(ToolRequest(name, json.loads(args)), Path(tmp))
+                    (Path(tmp) / "build.log").write_text("line\n")
+                    result = run_tool(ToolRequest(name, json.loads(args)), Path(tmp),
+                                      log_path=Path(tmp) / "build.log")
                     for complaint in ("missing argument", "invalid argument", "must be"):
                         self.assertNotIn(complaint, result.text)
 
@@ -128,7 +132,7 @@ class SystemPrompt(unittest.TestCase):
         text = " ".join(prompts.system_prompt(budget=Budget(4, 2, 60_000, 1_200)).split())
         self.assertIn("4 edit attempts, 2 builds, about 60,000 tokens and 20 minutes", text)
         default = " ".join(prompts.system_prompt().split())
-        self.assertIn("5 edit attempts, 3 builds, about 100,000 tokens and 30 minutes", default)
+        self.assertIn("5 edit attempts, 3 builds, about 3,000,000 tokens and 30 minutes", default)
 
     def test_no_unfilled_placeholders_and_no_overlong_lines(self):
         for config in EVERY_CONFIG:
@@ -207,7 +211,8 @@ class OpeningMessage(Worktree):
                              .encode("utf-8"))
         first = diagnostic(offset=len(prefix.encode("utf-8")))
         text = prompts.opening_message(self.context, diagnostics=[first], log_path=self.log)
-        window = text[text.index("=== Build log around error 1 ==="):
+        header = "=== Build log around error 1 (log lines 20-38; the error is on line 32) ==="
+        window = text[text.index(header):
                       text.index("=== End of build log ===")]
         self.assertEqual(window.splitlines()[1:], (
             [f"cc -c file{n}.c" for n in range(19, 31)]
@@ -481,7 +486,7 @@ class TurnReplies(unittest.TestCase):
 
 class BudgetNote(unittest.TestCase):
     def test_what_is_left(self):
-        text = prompts.budget_note(Budget(), attempts_used=2, builds_used=1, tokens_used=41_500,
+        text = prompts.budget_note(Budget(max_tokens=100_000), attempts_used=2, builds_used=1, tokens_used=41_500,
                                    seconds_used=610)
         self.assertEqual(text, "Budget for this case: 2 of 5 edit attempts used (3 left), "
                                "1 of 3 builds used (2 left), about 41,500 of 100,000 tokens used "
@@ -492,16 +497,21 @@ class BudgetNote(unittest.TestCase):
                       prompts.budget_note(Budget()))
 
     def test_unknown_token_use_is_not_reported_as_zero_used(self):
-        text = prompts.budget_note(Budget())
+        text = prompts.budget_note(Budget(max_tokens=100_000))
         self.assertIn("token use unknown (limit 100,000)", text)
         self.assertNotIn("minutes", text)
 
     def test_never_negative(self):
-        text = prompts.budget_note(Budget(), attempts_used=9, builds_used=9, tokens_used=10 ** 6,
+        text = prompts.budget_note(Budget(max_tokens=100_000), attempts_used=9, builds_used=9, tokens_used=10 ** 6,
                                    seconds_used=10 ** 5)
         self.assertIn("5 of 5 edit attempts used (0 left), 3 of 3 builds used (0 left), about "
                       "100,000 of 100,000 tokens used (0 left), about 30 of 30 minutes used (0 left)",
                       text)
+
+    def test_builds_are_not_mentioned_when_none_can_run(self):
+        text = prompts.budget_note(Budget(), attempts_used=1, builds=False)
+        self.assertIn("1 of 5 edit attempts used (4 left)", text)
+        self.assertNotIn("build", text)
 
 
 if __name__ == "__main__":

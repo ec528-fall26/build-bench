@@ -8,7 +8,11 @@ sys.path.insert(0, str(
     Path(__file__).resolve().parents[2]
     / "buildbench-starter-kit-0.1.0-rc.5/agents/full-agent"
 ))
-from src.edit_preflight import focused_feedback
+from src.edit_preflight import FULL_FILE_CHARS, focused_feedback
+
+# Pads a file past the size at which a correction shows it whole, so the
+# windowed hints below are what the model gets.
+PADDING = "\n" * 2 + "// filler\n" * (FULL_FILE_CHARS // 10 + 1)
 
 
 def edit(old, new):
@@ -27,7 +31,7 @@ class MissingContextTests(unittest.TestCase):
             "let value = std::ffi::CStr::from_ptr(repos_uuid)\n"
             "    .to_str()\n"
             "    .unwrap();\n"
-        )
+        ) + PADDING
         old = "std::ffi::CStr::from_ptr(repos_uuid).to_str().unwrap()"
         index, feedback = focused_feedback(
             snapshot(text), [edit(old, "replacement")], "repair"
@@ -39,7 +43,7 @@ class MissingContextTests(unittest.TestCase):
         self.assertIn("NOT confirmed matches", feedback)
 
     def test_actual_and_simulated_source_are_distinguished(self):
-        original = "let repos_uuid = old_value;\n"
+        original = "let repos_uuid = old_value;\n" + PADDING
         index, feedback = focused_feedback(
             snapshot(original),
             [
@@ -56,12 +60,27 @@ class MissingContextTests(unittest.TestCase):
 
     def test_unrelated_source_does_not_claim_a_match(self):
         index, feedback = focused_feedback(
-            snapshot("unrelated\n"),
+            snapshot("unrelated\n" + PADDING),
             [edit("repos_uuid", "replacement")],
             "repair",
         )
         self.assertEqual(index, 0)
         self.assertIn("No related source lines found", feedback)
+
+    def test_a_small_file_is_shown_whole_with_earlier_edits(self):
+        original = "fn main() {\n    let repos_uuid = old_value;\n}\n"
+        index, feedback = focused_feedback(
+            snapshot(original),
+            [
+                edit("old_value", "new_value"),
+                edit("let repos_uuid = absent_value;", "replacement"),
+            ],
+            "repair",
+        )
+        self.assertEqual(index, 1)
+        self.assertIn("Complete text of input/client.rs", feedback)
+        self.assertIn("fn main() {\n    let repos_uuid = new_value;\n}\n", feedback)
+        self.assertNotIn("NOT confirmed matches", feedback)
 
     def test_large_source_produces_bounded_feedback(self):
         text = ("repos_uuid " + "x" * 1000 + "\n") * 1000

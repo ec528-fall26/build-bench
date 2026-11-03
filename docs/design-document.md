@@ -71,14 +71,14 @@ What this shows:
 - **The five "blocked" cases** are the ARM64 → x86-64 direction. Their builds crashed in the x86 emulator (QEMU) during setup, before our code mattered, so they don't measure repair ability.
 - **The four remaining development cases** (including a large Rust package) were not repaired by either agent. A hand-assisted Rust fix does build, which shows that editing the source is enough. Our agent hasn't found that fix on its own.
 
-Full case-by-case results: [demo2-comparison-diagnostics.md](demo2-comparison-diagnostics.md). Raw records: `docs/evidence/demo2/paired-retest/`.
+Full case-by-case results: [demo2-results.md](demo2-results.md). Raw records: `docs/evidence/demo2/paired-retest/`.
 
 ## 4. Limitations and next steps
 
 - **Repair rate is low.** One repair in 22 runs. Our proposal promised a working prototype and evaluation coverage for Demo 2, not a minimum repair rate. Improving it is the Demo 3 goal.
 - **Reverse-direction cases need a working emulator setup** before they can be evaluated.
 - **Results vary between runs** because the model's output varies.
-- **The competition's hosted platform isn't qualified yet.** It provides the model differently and doesn't allow in-loop builds. Notes and plan: [hosted-submission-notes.md](hosted-submission-notes.md).
+- **The competition's hosted platform isn't qualified yet.** It provides the model differently and doesn't allow in-loop builds. Notes and plan: [hosted-submission.md](hosted-submission.md).
 - **Demo 3:** controlled repeated runs, measuring whether build feedback and history help, and fixes for the edit-matching failures above.
 
 ## 5. How to reproduce our results
@@ -384,7 +384,7 @@ Copy anything you want to keep from `~/buildbench-experiments/`, then **terminat
 ## More detail
 
 - [one-shot-agent.md](one-shot-agent.md) and [full-agent.md](full-agent.md): how each agent works, in depth.
-- [demo2-comparison-diagnostics.md](demo2-comparison-diagnostics.md): case-by-case results with log evidence.
+- [demo2-results.md](demo2-results.md): case-by-case results with log evidence.
 - [part5-findings.md](part5-findings.md): earlier experiments, including the hand-assisted Rust repair.
-- [hosted-submission-notes.md](hosted-submission-notes.md): the competition's hosted platform and our plan for it.
+- [hosted-submission.md](hosted-submission.md): the competition's hosted platform and our plan for it.
 - [design-proposal.md](design-proposal.md): the original proposal and milestones.

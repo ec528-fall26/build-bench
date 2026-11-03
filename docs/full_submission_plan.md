@@ -1,6 +1,6 @@
 # Full Agent — Submission and Demo 3 Build Plan
 
-**Status:** proposed plan following Demo 2  
+**Status:** proposed plan following Demo 2. Not the current plan: as of 2 November the team is fixing the agent's largest failures instead (see [no-build-live-findings.md](no-build-live-findings.md)). Kept for reference.  
 **Target dates:** competition selection November 13; Demo 3 November 16. Confirm the exact submission deadline and timezone in the current portal.  
 **Ownership:** unassigned; parts define work boundaries rather than individual assignments.
 

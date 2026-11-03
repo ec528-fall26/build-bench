@@ -25,6 +25,7 @@ from .case import load_case
 from .config import config_from_env, config_record
 from .contracts import AgentConfig, Budget, BuildFeedback
 from .evidence import diagnose
+from .failure import FailureStage, classify_failure
 from .log_tail import extract_tail
 from .loop import LoopResult, run_loop
 from .model_adapter import Complete, ModelAdapter, client_completion
@@ -37,6 +38,14 @@ TAIL_LINES = 500  # Part 2's tail: the evidence when Part A finds no error
 # limits are not yet announced. Stop well inside it (the loop also keeps
 # Budget.reserve_seconds back), and no request may run past this point.
 HOSTED_SECONDS = 1_020
+
+
+def _failure_stage(log_path: Path) -> FailureStage:
+    """Part A's classification, which must never stop the repair."""
+    try:
+        return classify_failure(log_path)
+    except Exception as error:  # noqa: BLE001 - a record field, not worth a failed run
+        return FailureStage(evidence=[f"classification failed: {type(error).__name__}"])
 
 
 def write_json(path: Path, data: dict) -> None:
@@ -144,7 +153,11 @@ def main() -> int:
             # The guide: log the stage and error type, exit nonzero.
             return _failed(output_dir, "model_initialization", exc)
         result = {"schema_version": "0.1", "status": "completed", "model": model.name,
-                  "served_model": None}
+                  "served_model": None,
+                  # Part A: Debian, RPM or unknown, and the stage the original
+                  # build failed at (setup failures cannot be fixed by edits).
+                  "package_format": asdict(case.package_format),
+                  "failure_stage": asdict(_failure_stage(case.log_path))}
         budget = None
         if model.hosted:
             budget = Budget(max_seconds=HOSTED_SECONDS)

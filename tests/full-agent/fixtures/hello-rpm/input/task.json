@@ -1,0 +1,6 @@
+{
+  "schema_version": "0.1",
+  "case_id": "hello",
+  "worktree": "/workspace/work/repo",
+  "initial_build_log": "/workspace/input/initial-build.log"
+}

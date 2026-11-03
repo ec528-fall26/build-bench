@@ -11,7 +11,7 @@ work. See the [full-agent plan](full-agent.md).
 ## Files
 
 The implementation lives in
-`buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/`:
+`buildbench-starter-kit-0.1.0-rc.5/agents/full-agent/src/`:
 
 | File | Responsibility |
 | --- | --- |

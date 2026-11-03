@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 AGENT = (
     Path(__file__).resolve().parents[2]
-    / "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent"
+    / "buildbench-starter-kit-0.1.0-rc.5/agents/full-agent"
 )
 sys.path.insert(0, str(AGENT))
 from src import repair_strategy as strategy

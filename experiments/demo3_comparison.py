@@ -56,7 +56,7 @@ from harness.summarize import load_rows, summarize  # noqa: E402
 from harness.tests.test_frozen_baseline import FROZEN as FROZEN_BASELINE  # noqa: E402
 
 
-AGENTS = REPO / "buildbench-starter-kit-0.1.0-rc.2/agents"
+AGENTS = REPO / "buildbench-starter-kit-0.1.0-rc.5/agents"
 DEFAULT_OUT = Path.home() / "buildbench-experiments" / "demo3-comparison"
 PLANNED_CASES = 10            # the frozen development set (docs/full-agent.md)
 REPEATS = 3

@@ -69,7 +69,7 @@ def capture(cmd, cwd):
     return {'exit_code': p.returncode, 'output': p.stdout.strip()}
 
 def source_settings(repo):
-    src = repo / 'buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src'
+    src = repo / 'buildbench-starter-kit-0.1.0-rc.5/agents/full-agent/src'
     values = {}
     for filename in ('contracts.py', 'loop.py'):
         tree = ast.parse((src / filename).read_text())
@@ -132,7 +132,7 @@ def main(argv=None):
         'tracked_changes': ['git', 'status', '--short'],
     }.items()}
     hashes = {}
-    for directory in ('harness', 'buildbench-starter-kit-0.1.0-rc.2/agents'):
+    for directory in ('harness', 'buildbench-starter-kit-0.1.0-rc.5/agents'):
         for f in sorted((repo / directory).rglob('*.py')):
             if f.is_file() and not f.is_symlink() and not any(x.startswith('.') or x == '__pycache__' for x in f.relative_to(repo).parts):
                 hashes[str(f.relative_to(repo))] = hashlib.sha256(f.read_bytes()).hexdigest()

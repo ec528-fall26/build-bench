@@ -17,7 +17,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] /
-                      "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent"))
+                      "buildbench-starter-kit-0.1.0-rc.5/agents/full-agent"))
 from src import prompts  # noqa: E402
 from src.contracts import (AgentConfig, Attempt, Budget, BuildResult, Diagnostic,  # noqa: E402
                            ModelTurn, ToolRequest, ToolResult)

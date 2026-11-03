@@ -17,7 +17,7 @@ from unittest.mock import patch
 import urllib.error
 
 ROOT = Path(__file__).resolve().parents[2]
-AGENT = ROOT / "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent"
+AGENT = ROOT / "buildbench-starter-kit-0.1.0-rc.5/agents/full-agent"
 sys.path.insert(0, str(AGENT))
 
 from src import main as agent_main  # noqa: E402

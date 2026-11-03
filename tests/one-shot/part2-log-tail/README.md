@@ -2,7 +2,7 @@
 
 Implements `extract_tail(path: Path, n_lines: int) -> str` for the one-shot
 agent. The module is at
-`buildbench-starter-kit-0.1.0-rc.2/agents/one-shot/src/log_tail.py`, alongside
+`buildbench-starter-kit-0.1.0-rc.5/agents/one-shot/src/log_tail.py`, alongside
 Part 4's edit applier. It uses only the Python standard library.
 
 ## Integration

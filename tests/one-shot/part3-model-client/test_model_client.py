@@ -18,7 +18,7 @@ from unittest.mock import patch
 import urllib.error
 
 
-AGENT = Path(__file__).resolve().parents[3] / "buildbench-starter-kit-0.1.0-rc.2/agents/one-shot"
+AGENT = Path(__file__).resolve().parents[3] / "buildbench-starter-kit-0.1.0-rc.5/agents/one-shot"
 sys.path.insert(0, str(AGENT))
 
 from src import model_client as mc  # noqa: E402

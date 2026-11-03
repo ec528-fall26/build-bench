@@ -18,7 +18,7 @@ import tracemalloc
 
 MODULE = (
     Path(__file__).resolve().parents[3]
-    / "buildbench-starter-kit-0.1.0-rc.2/agents/one-shot/src/log_tail.py"
+    / "buildbench-starter-kit-0.1.0-rc.5/agents/one-shot/src/log_tail.py"
 )
 spec = importlib.util.spec_from_file_location("log_tail", MODULE)
 log_tail = importlib.util.module_from_spec(spec)

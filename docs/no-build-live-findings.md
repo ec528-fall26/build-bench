@@ -1,6 +1,6 @@
 # Full agent without build feedback: live findings (2–3 November 2026)
 
-Updated 3 November, evening, with round 5 (0.3.1 against 0.3.0) and the 0.3.2 changes.
+Updated 3 November, evening, with rounds 5–7: 0.3.1 against 0.3.0, the 0.3.2 changes, and 0.3.2 on all eleven local cases.
 
 What the full agent does when it runs as it will be scored: no builds during the
 run, edits submitted untested. Branch `agent-improvements`, full-agent 0.3.0
@@ -132,6 +132,38 @@ costing a correction and the tool turns the model spends looking for it.
 Result: `v032-rust-subversion-3` repaired in 13 turns and 280k tokens (from
 60 turns and 1.1M), one attempt of 9 edits, and the model stopped itself.
 
+
+## Round 7: 0.3.2 on the other eight local cases (3 November, 20:09–20:48 UTC)
+
+One run each, same settings, about a dollar of model calls in all. With the
+three cases above this covers all eleven local cases (ten bundles plus
+rcran). Each failure is classified by comparing the final build's errors with
+the original log.
+
+| Case | Target | Outcome | Classification |
+| --- | --- | --- | --- |
+| html-xml-utils | arm64 | **repaired**: `nolto` and `-fno-lto` in debian/rules, 8 edits, 40 turns | plausible repair of the original `lto1: internal compiler error`; weak evidence, because the unchanged source also built locally on 19 October (different compiler) |
+| ectrans | arm64 | not repaired: 1 edit to `CMakeLists.txt`, configure fails the same way | agent miss (CMake include path from the `fiat` import target) |
+| libmceliece | arm64 | not repaired: `-fPIC` added in three files; the link still ends in `BFD assertion fail elfnn-aarch64.c:9754`, 62 times before and after | toolchain (binutils 2.41 assertion), not repairable by a source edit we know of |
+| pybigwig | amd64 | not repaired: `repack_failed`; the agent edited `debian/patches/prepareForExternalLibBigWig.patch` by hand and dpkg-source rejected the malformed patch | agent fault, and a controller gap: editing a quilt patch directly can never produce a valid source package |
+| libbpp-core | amd64 | not repaired: symbols file edited (the pattern block's advice); build segfaults in the QEMU chroot | environment (x86 emulation on the ARM instance) |
+| libbpp-qt | amd64 | `infrastructure_error`: symbols file edited; chroot segfaults | environment |
+| python-intbitset | amd64 | `infrastructure_error`: `setup.cfg` and rules edited; chroot segfaults | environment |
+| libevtx | amd64 | `infrastructure_error`: `tests/Makefile.am` and rules edited; chroot segfaults | environment |
+
+**Score on the eleven local cases with 0.3.2: 4 repaired** (rcran,
+libunwind, rust-subversion, html-xml-utils), **2 agent misses** (ectrans,
+pybigwig), **1 toolchain failure** (libmceliece), **4 undetermined** because
+x86 emulation on this instance segfaults before the build starts. On the
+seven cases the environment can judge, 4 of 7; the 19 October retest of the
+same set had 1 of 11 (rcran), with the same four environment failures. The
+four x86 cases need an x86 instance (or a working QEMU) before they say
+anything about the agent; their edits are recorded in the run directories.
+
+Next controller rule from this round: an edit under `debian/patches/` should
+be refused with the reason (edit the patched source under `input/` instead;
+dpkg-source applies the series and refuses a hand-edited patch), the way a
+path outside `input/` is refused now.
 
 ## What went wrong
 

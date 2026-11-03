@@ -37,6 +37,7 @@ through Smoke.
 | 5 | `v031-*-1` | **0.3.1**: batch repair (`edit_repair.py`), notes to the model, no-build prompt rules | **repaired**, 1 edit, 5 turns, 44k tokens | 28/28 edits applied, build failed (111 type errors), 60-turn limit, 841k tokens | **repaired**, 5 edits, 54 turns, attempt limit |
 | 5 | `v030-*-1` | 0.3.0 reference, same day, same key | **repaired**, 4 edits, 25 turns, 248k tokens | 39/39 edits applied, build failed (93 type errors), 60-turn limit, 1.50M tokens | **repaired**, 8 edits, 39 turns, attempt limit |
 | 6 | `v032-*-2` | **0.3.2**: recognised patterns next to the errors; wrong-path and export-removal fixes | **repaired**, 1 edit, 4 turns, 33k tokens | **repaired**, 13 edits in 7 files, 60-turn limit, 1.12M tokens | **repaired**, 1 edit, 5 turns, 56k tokens |
+| 6 | `v032-rust-subversion-3` | 0.3.2 plus the `already_made` drop | — | **repaired**, 9 edits in 7 files, 13 turns, stopped itself, 280k tokens, 272 s | — |
 
 libmceliece (round 2) fails on a BFD linker assertion
 (`elfnn-aarch64.c:9754`), most likely a toolchain bug; it is not a useful
@@ -128,6 +129,8 @@ errors, which the prompt rules say but do not make it feel. Added for
 and whose new_text already does is dropped at once with the note that the
 change has already been made (`edit_repair.already_made`), instead of
 costing a correction and the tool turns the model spends looking for it.
+Result: `v032-rust-subversion-3` repaired in 13 turns and 280k tokens (from
+60 turns and 1.1M), one attempt of 9 edits, and the model stopped itself.
 
 
 ## What went wrong
@@ -205,8 +208,8 @@ Steps 1–4 are implemented in full-agent **0.3.1** (3 November,
    two further controller faults found and fixed in 0.3.2. ~~Run 0.3.2 on
    rust-subversion.~~ Done (round 6): repaired, the first time. Still to do:
    the cases not yet tried without builds (html-xml-utils, ectrans and the
-   five x86 cases under QEMU), and a second rust-subversion run to see
-   whether the `already_made` drop ends the run early.
+   five x86 cases under QEMU). ~~A second rust-subversion run to see whether
+   the `already_made` drop ends the run early.~~ Done: 13 turns, model stop.
 6. More recognisers, one per failure class in the local cases and in the
    playbook: the symbols-file one is written but untested live (libbpp-core,
    libbpp-qt); `-fPIC` relocation errors (libmceliece); CMake include paths

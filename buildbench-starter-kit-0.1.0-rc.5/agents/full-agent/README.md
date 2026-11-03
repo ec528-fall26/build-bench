@@ -25,7 +25,10 @@ Version 0.3.0 (2 November), for submitted runs with no build feedback:
   16,384, and the loop allows 60 turns and 120 tool calls (30 turns ran out
   after 3 to 6 minutes of the 17 in the first live no-build runs);
 - an edit that an earlier edit in its batch already made (a broad replace_all
-  followed by a narrower one) is dropped instead of sent back for correction.
+  followed by a narrower one) is dropped instead of sent back for correction;
+- 8 edit attempts (was 5), and the playbook says where a Debian package's
+  flags take effect (debian/rules, DEB_CFLAGS_MAINT_APPEND) and to change Rust
+  C-string types to c_char in every file at once.
 
 | File | Part | Status |
 | --- | --- | --- |

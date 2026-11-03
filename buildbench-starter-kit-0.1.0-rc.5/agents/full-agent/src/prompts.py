@@ -222,8 +222,11 @@ before you use it, and prefer the narrowest change that fixes the cause.
 - char signedness: plain char is unsigned on ARM and signed on x86. In C,
   comparisons such as c < 0 or c == EOF on a char behave differently. In Rust,
   C strings are *const c_char (std::ffi::c_char or std::os::raw::c_char),
-  which is u8 on ARM and i8 on x86: replace hard-coded *const i8 or *const u8
-  in FFI code with c_char so the code compiles on both.
+  which is u8 on ARM and i8 on x86. Replace the hard-coded i8 (or u8) C-string
+  pointer types with c_char in every file of the crate in one edit batch,
+  including *mut pointers, casts and generic parameters such as
+  Vec<*const i8>. Do not change them to u8, which breaks x86, and do not change
+  only some files: the remaining ones then disagree with the edited ones.
 - __aarch64_ldadd*, __aarch64_cas* and similar symbols are ARM outline-atomics
   helpers. They live in libgcc, not libatomic, so -latomic does not provide
   them. If one is undefined, or "hidden ... referenced by DSO", the object that
@@ -232,6 +235,12 @@ before you use it, and prefer the narrowest change that fixes the cause.
   linked, not where its users are: compile it with -mno-outline-atomics on
   aarch64, or link libgcc into it. Undefined __atomic_* functions, by
   contrast, do need libatomic (-latomic).
+- Where to add a compiler or linker flag in a Debian package: in debian/rules,
+  for example "export DEB_CFLAGS_MAINT_APPEND += -flag" (also CXXFLAGS and
+  LDFLAGS) inside an "ifeq ($(DEB_HOST_ARCH),arm64)" block. Every compile then
+  gets it through dpkg-buildflags. A flag added to Makefile.am or configure.ac
+  only takes effect if the build regenerates them, and a new line in the middle
+  of a backslash-continued Makefile variable breaks that variable.
 - "recompile with -fPIC" or relocation errors when linking a shared object: a
   static library or object built without position-independent code is linked
   into a shared one. Add -fPIC (or the build system's position-independent

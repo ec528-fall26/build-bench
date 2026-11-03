@@ -132,7 +132,7 @@ class SystemPrompt(unittest.TestCase):
         text = " ".join(prompts.system_prompt(budget=Budget(4, 2, 60_000, 1_200)).split())
         self.assertIn("4 edit attempts, 2 builds, about 60,000 tokens and 20 minutes", text)
         default = " ".join(prompts.system_prompt().split())
-        self.assertIn("5 edit attempts, 3 builds, about 3,000,000 tokens and 30 minutes", default)
+        self.assertIn("8 edit attempts, 3 builds, about 3,000,000 tokens and 30 minutes", default)
 
     def test_no_unfilled_placeholders_and_no_overlong_lines(self):
         for config in EVERY_CONFIG:
@@ -488,12 +488,12 @@ class BudgetNote(unittest.TestCase):
     def test_what_is_left(self):
         text = prompts.budget_note(Budget(max_tokens=100_000), attempts_used=2, builds_used=1, tokens_used=41_500,
                                    seconds_used=610)
-        self.assertEqual(text, "Budget for this case: 2 of 5 edit attempts used (3 left), "
+        self.assertEqual(text, "Budget for this case: 2 of 8 edit attempts used (6 left), "
                                "1 of 3 builds used (2 left), about 41,500 of 100,000 tokens used "
                                "(58,500 left), about 10 of 30 minutes used (20 left).")
 
     def test_nothing_used_reads_as_all_left(self):
-        self.assertIn("0 of 5 edit attempts used (5 left), 0 of 3 builds used (3 left)",
+        self.assertIn("0 of 8 edit attempts used (8 left), 0 of 3 builds used (3 left)",
                       prompts.budget_note(Budget()))
 
     def test_unknown_token_use_is_not_reported_as_zero_used(self):
@@ -504,13 +504,13 @@ class BudgetNote(unittest.TestCase):
     def test_never_negative(self):
         text = prompts.budget_note(Budget(max_tokens=100_000), attempts_used=9, builds_used=9, tokens_used=10 ** 6,
                                    seconds_used=10 ** 5)
-        self.assertIn("5 of 5 edit attempts used (0 left), 3 of 3 builds used (0 left), about "
+        self.assertIn("8 of 8 edit attempts used (0 left), 3 of 3 builds used (0 left), about "
                       "100,000 of 100,000 tokens used (0 left), about 30 of 30 minutes used (0 left)",
                       text)
 
     def test_builds_are_not_mentioned_when_none_can_run(self):
         text = prompts.budget_note(Budget(), attempts_used=1, builds=False)
-        self.assertIn("1 of 5 edit attempts used (4 left)", text)
+        self.assertIn("1 of 8 edit attempts used (7 left)", text)
         self.assertNotIn("build", text)
 
 

@@ -69,7 +69,9 @@ class Attempt:                    # Part C keeps these: the repair history
 
 @dataclass
 class Budget:                     # research settings, calibrated on rcran; not competition limits
-    max_attempts: int = 5
+    # Without builds an attempt is one edit batch; five ended rust-subversion
+    # with ten of its seventeen minutes unused.
+    max_attempts: int = 8
     max_builds: int = 3
     # Prompt and completion tokens summed over every call. The website sets no
     # token limit for Hosted Smoke (time is the limit), and each turn resends

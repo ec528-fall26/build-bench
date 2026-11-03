@@ -101,6 +101,53 @@ def inspect_batch(snapshot, edits):
     return issues
 
 
+def _covered(original, earlier, edit, before):
+    """Whether ``edit`` changes nothing that the ``earlier`` edits did not.
+
+    Applying it to the original file first and the earlier edits after gives
+    the same text as the earlier edits alone.
+    """
+    try:
+        text, _ = replacement(original, edit)
+        for previous in earlier:
+            if previous.path != edit.path:
+                continue
+            try:
+                text, _ = replacement(text, previous)
+            except EditRejected as error:
+                # Nothing left for it to change; the comparison decides.
+                if str(error) != "old_text_not_found":
+                    return False
+    except (EditRejected, UnicodeError):
+        return False
+    return text == before
+
+
+def drop_covered(snapshot, edits):
+    """The batch without edits an earlier edit in it already made, and how many.
+
+    A broad replace_all followed by a narrower one (*const i8, then
+    as *const i8) leaves the second nothing to match. Its change is already
+    in the batch, so it is dropped instead of sent back for correction:
+    rust-subversion spent all twelve corrections re-reading the file on disk,
+    where the narrow text still appears because nothing is written yet.
+    """
+    edits = list(edits)
+    originals = {saved.path: saved.content.decode("utf-8") for saved in snapshot.files}
+    dropped = 0
+    while True:
+        issues = inspect_batch(snapshot, edits)
+        if not issues:
+            break
+        index, edit, reason, _, before, _ = issues[0]
+        if (reason != "old_text_not_found" or before is None
+                or not _covered(originals[edit.path], edits[:index], edit, before)):
+            break
+        del edits[index]
+        dropped += 1
+    return edits, dropped
+
+
 def validate_batch(snapshot, edits):
     issues = inspect_batch(snapshot, edits)
     if not issues:
@@ -187,6 +234,17 @@ def focused_feedback(snapshot, edits, hypothesis):
         f"replace_all: {getattr(edit, 'replace_all', False)!r}. Preserve the intended mode explicitly.",
         detail,
     ]
+    if reason == "old_text_not_found" and before is not None:
+        original = next(saved.content.decode("utf-8")
+                        for saved in snapshot.files if saved.path == edit.path)
+        if edit.old_text in original:
+            blocks.append(
+                "\nThis old_text IS in the file on disk, but an earlier edit in this batch "
+                "has already changed it; the file on disk does not show pending edits, so "
+                "reading it again will not help. Match the text as the earlier edits leave "
+                "it, or, if an earlier edit already makes this change, remove this item "
+                "with edits: []."
+            )
     if before is not None and len(before) <= FULL_FILE_CHARS:
         blocks.append(
             f"\n=== Complete text of {edit.path} before the focused edit, including "

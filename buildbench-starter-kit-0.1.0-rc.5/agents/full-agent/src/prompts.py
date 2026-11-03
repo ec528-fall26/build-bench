@@ -224,10 +224,14 @@ before you use it, and prefer the narrowest change that fixes the cause.
   C strings are *const c_char (std::ffi::c_char or std::os::raw::c_char),
   which is u8 on ARM and i8 on x86: replace hard-coded *const i8 or *const u8
   in FFI code with c_char so the code compiles on both.
-- Undefined references to __aarch64_ldadd*, __aarch64_cas* and similar are
-  ARM outline-atomics helpers from libgcc; undefined __atomic_* functions need
-  libatomic (-latomic). Link the missing library for the target, or build with
-  -mno-outline-atomics on aarch64.
+- __aarch64_ldadd*, __aarch64_cas* and similar symbols are ARM outline-atomics
+  helpers. They live in libgcc, not libatomic, so -latomic does not provide
+  them. If one is undefined, or "hidden ... referenced by DSO", the object that
+  uses it was compiled with outline atomics and linked without libgcc (often a
+  library linked with -nostdlib). Fix it where that library is compiled or
+  linked, not where its users are: compile it with -mno-outline-atomics on
+  aarch64, or link libgcc into it. Undefined __atomic_* functions, by
+  contrast, do need libatomic (-latomic).
 - "recompile with -fPIC" or relocation errors when linking a shared object: a
   static library or object built without position-independent code is linked
   into a shared one. Add -fPIC (or the build system's position-independent

@@ -22,7 +22,10 @@ Version 0.3.0 (2 November), for submitted runs with no build feedback:
   adapter it says edits are not test-built and that `stop` submits them;
 - `Budget.max_tokens` is 3,000,000 (was 100,000, which ended runs after about
   six turns; the website sets no token limit), `max_completion_tokens` is
-  16,384, and the loop allows 30 turns and 60 tool calls.
+  16,384, and the loop allows 60 turns and 120 tool calls (30 turns ran out
+  after 3 to 6 minutes of the 17 in the first live no-build runs);
+- an edit that an earlier edit in its batch already made (a broad replace_all
+  followed by a narrower one) is dropped instead of sent back for correction.
 
 | File | Part | Status |
 | --- | --- | --- |

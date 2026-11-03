@@ -44,7 +44,7 @@ def main():
         shutil.copy2(source / 'scripts' / name, out / 'scripts' / name)
     shutil.copytree(source / 'docs/evidence/demo2', out / 'docs/evidence/demo2', dirs_exist_ok=True)
     tag = subprocess.run(['git', 'diff', '--exit-code', 'one-shot-v1', '--',
-        'buildbench-starter-kit-0.1.0-rc.2/agents/one-shot'], cwd=out)
+        'buildbench-starter-kit-0.1.0-rc.5/agents/one-shot'], cwd=out)
     if tag.returncode:
         raise SystemExit('Frozen baseline differs; do not run this checkout.')
     (out / 'ta-recorded-profile.json').write_text(json.dumps({

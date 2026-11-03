@@ -47,7 +47,7 @@ from harness.run_case import (
 )
 
 
-FULL_AGENT_DIR = REPO / "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent"
+FULL_AGENT_DIR = REPO / "buildbench-starter-kit-0.1.0-rc.5/agents/full-agent"
 STAGE_ORDER = ("unknown", "configure", "build", "test", "install", "packaging")
 
 EXCERPT_ERRORS = 5    # errors whose surrounding lines are kept

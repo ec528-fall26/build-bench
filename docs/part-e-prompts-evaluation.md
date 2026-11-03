@@ -21,7 +21,7 @@ Plan: [`full-agent.md`](full-agent.md), Part E. Failure categories:
 | `tests/full-agent/test_prompts.py`, `test_reply.py`, `test_config.py` | Unit tests for the three agent modules |
 | `tests/experiments/` | Unit tests for the two scripts (new CI step) |
 
-(`agents/` is `buildbench-starter-kit-0.1.0-rc.2/agents/`.) Standard library
+(`agents/` is `buildbench-starter-kit-0.1.0-rc.5/agents/`.) Standard library
 only. `contracts.py`, `main.py`, `model_client.py` and the frozen baseline are
 unchanged.
 

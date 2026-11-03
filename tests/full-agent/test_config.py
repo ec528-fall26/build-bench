@@ -9,7 +9,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] /
-                      "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent"))
+                      "buildbench-starter-kit-0.1.0-rc.5/agents/full-agent"))
 from src.config import config_env, config_from_env, config_record, env_name  # noqa: E402
 from src.contracts import AgentConfig  # noqa: E402
 

@@ -13,7 +13,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] /
-                      "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent"))
+                      "buildbench-starter-kit-0.1.0-rc.5/agents/full-agent"))
 from src.contracts import ModelTurn, ToolRequest  # noqa: E402
 from src.reply import extract_action_json, parse_turn  # noqa: E402
 from src.tools import TOOLS  # noqa: E402

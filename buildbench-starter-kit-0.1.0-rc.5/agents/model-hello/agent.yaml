@@ -1,0 +1,13 @@
+schema_version: "0.1"
+agent:
+  name: "organizer-model-hello"
+  version: "0.2.2"
+runtime:
+  type: "managed"
+  profile: "python-3.11"
+entrypoint:
+  - "python"
+  - "-m"
+  - "src.main"
+protocol:
+  version: "0.1"

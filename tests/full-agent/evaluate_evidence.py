@@ -12,7 +12,7 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] /
-                      "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent"))
+                      "buildbench-starter-kit-0.1.0-rc.5/agents/full-agent"))
 from src.evidence import diagnose
 
 

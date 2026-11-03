@@ -18,7 +18,7 @@ import unittest
 
 MODULE = (
     Path(__file__).resolve().parents[3]
-    / "buildbench-starter-kit-0.1.0-rc.2/agents/one-shot/src/edit_applier.py"
+    / "buildbench-starter-kit-0.1.0-rc.5/agents/one-shot/src/edit_applier.py"
 )
 spec = importlib.util.spec_from_file_location("edit_applier", MODULE)
 edit_applier = importlib.util.module_from_spec(spec)

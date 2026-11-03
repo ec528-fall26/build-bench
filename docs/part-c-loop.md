@@ -34,7 +34,7 @@ local build and live-model runs described below.
 > `latest_attempt`, so the latest edit's result reaches the model with history
 > off. Item 8 (a live revise on rcran) is next.
 
-Under `buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/`:
+Under `buildbench-starter-kit-0.1.0-rc.5/agents/full-agent/src/`:
 
 - `loop.py`: orchestrates model turns, investigation tools, edits, build
   feedback, budgets, and candidate selection.

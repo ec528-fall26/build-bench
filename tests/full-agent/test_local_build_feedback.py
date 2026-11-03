@@ -14,7 +14,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent"))
+sys.path.insert(0, str(ROOT / "buildbench-starter-kit-0.1.0-rc.5/agents/full-agent"))
 sys.path.insert(0, str(ROOT))
 
 from harness.build_feedback import LocalBuildFeedback, load_full_agent  # noqa: E402

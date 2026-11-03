@@ -50,7 +50,7 @@ from harness.record import append_jsonl, load_outcome, outcome_row
 
 
 REPO = Path(__file__).resolve().parents[1]
-AGENTS = REPO / "buildbench-starter-kit-0.1.0-rc.2/agents"
+AGENTS = REPO / "buildbench-starter-kit-0.1.0-rc.5/agents"
 AGENT_DIR = AGENTS / "one-shot"
 DPKG_TIMEOUT = 600
 BUILD_MARGIN = 600  # beyond the manifest's own timeout_seconds

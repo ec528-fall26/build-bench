@@ -7,7 +7,7 @@ unchanged. Part C still needs to connect these APIs to its loop.
 ## Files and integration
 
 Implementation lives in
-`buildbench-starter-kit-0.1.0-rc.2/agents/full-agent/src/`:
+`buildbench-starter-kit-0.1.0-rc.5/agents/full-agent/src/`:
 
 - `evidence.py`: `diagnose(log_path, worktree) -> list[Diagnostic]`.
 - `case.py`: `load_case(task_path, *, manifest_path=None, worktree=None,

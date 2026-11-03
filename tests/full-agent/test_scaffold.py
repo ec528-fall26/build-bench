@@ -16,7 +16,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-AGENTS = ROOT / "buildbench-starter-kit-0.1.0-rc.2/agents"
+AGENTS = ROOT / "buildbench-starter-kit-0.1.0-rc.5/agents"
 AGENT = AGENTS / "full-agent"
 sys.path.insert(0, str(AGENT))
 

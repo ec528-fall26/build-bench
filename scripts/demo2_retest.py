@@ -104,12 +104,12 @@ def main(argv=None):
     text = handler.read_text()
     if not text.startswith('enabled') or not any(line.startswith('flags:') and 'F' in line for line in text.splitlines()):
         p.error('qemu-x86_64 handler must be enabled with F flag; fix before launching.')
-    baseline_path = 'buildbench-starter-kit-0.1.0-rc.2/agents/one-shot'
+    baseline_path = 'buildbench-starter-kit-0.1.0-rc.5/agents/one-shot'
     check = capture(['git', 'diff', '--exit-code', 'one-shot-v1', '--', baseline_path], repo)
     if check['exit_code']:
         p.error('Frozen baseline verification failed: fetch tag one-shot-v1 and inspect changes; do not relabel modified baseline.')
     fingerprints = {}
-    for base in ('harness', 'scripts', 'buildbench-starter-kit-0.1.0-rc.2/agents'):
+    for base in ('harness', 'scripts', 'buildbench-starter-kit-0.1.0-rc.5/agents'):
         for f in sorted((repo / base).rglob('*.py')):
             if not f.is_symlink() and '__pycache__' not in f.parts:
                 fingerprints[str(f.relative_to(repo))] = hashlib.sha256(f.read_bytes()).hexdigest()

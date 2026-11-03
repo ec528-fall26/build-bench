@@ -4,7 +4,7 @@ The local test setup around the agent: unpack a case, run the agent, repack the
 source package, build it with the organizers' validator, and record the result.
 
 **Never part of the submission.** The agent ZIP is built from
-`buildbench-starter-kit-0.1.0-rc.2/agents/one-shot/`; this folder sits outside
+`buildbench-starter-kit-0.1.0-rc.5/agents/one-shot/`; this folder sits outside
 the starter kit so it cannot be packaged by mistake, and so a newer starter-kit
 release can replace that folder without touching our code.
 

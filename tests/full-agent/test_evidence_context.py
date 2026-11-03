@@ -14,7 +14,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent"))
+sys.path.insert(0, str(ROOT / "buildbench-starter-kit-0.1.0-rc.5/agents/full-agent"))
 from src import evidence
 from src.evidence import COMMAND_CHARS, diagnose
 
@@ -220,6 +220,23 @@ class SetupNoise(Context):
         result = self.parse("ERROR: foo failed\ndpkg-buildpackage: info: source package x\n"
                             "ERROR: foo failed\n")
         self.assertEqual([d.message for d in result], ["ERROR: foo failed"])
+
+    def test_a_setup_line_is_not_reported_as_the_last_command(self):
+        # libmceliece (development-v1): line 42 lists packages being installed, and
+        # its build links through scripts the command pattern does not recognize.
+        result = self.parse(
+            "[   10s]   g++ g++-13 gcc gcc-13 gcc-13-base grep init init-system-helpers\n"
+            "[   60s] dpkg-buildpackage: info: source package libmceliece\n"
+            "[  200s] scripts/sharedlib libmceliece -lrandombytes\n"
+            "[  201s] /usr/bin/ld: BFD (GNU Binutils for Ubuntu) 2.41.50.20231214 "
+            "assertion fail ../../bfd/elfnn-aarch64.c:9754\n")
+        self.assertTrue(result[0].message.startswith("/usr/bin/ld: BFD"))
+        self.assertNotIn("compile or link step", result[0].compiler_details)
+
+    def test_a_command_inside_the_package_build_is_still_reported(self):
+        result = self.parse("dpkg-buildpackage: info: source package foo\n"
+                            "gcc -c src/a.c\nsrc/a.c:1:1: error: real\n")
+        self.assertIn("gcc -c src/a.c", result[0].compiler_details)
 
     def test_a_later_final_dpkg_error_is_not_a_start_marker(self):
         result = self.parse("src/a.c:1:1: error: real\n"

@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(
     Path(__file__).resolve().parents[2]
-    / "buildbench-starter-kit-0.1.0-rc.2/agents/full-agent"
+    / "buildbench-starter-kit-0.1.0-rc.5/agents/full-agent"
 ))
 from src.request_trace import trace_completion
 

@@ -15,7 +15,7 @@ import tempfile
 import unittest
 
 
-AGENT = Path(__file__).resolve().parents[3] / "buildbench-starter-kit-0.1.0-rc.2/agents/one-shot"
+AGENT = Path(__file__).resolve().parents[3] / "buildbench-starter-kit-0.1.0-rc.5/agents/one-shot"
 sys.path.insert(0, str(AGENT))
 
 from src.log_tail import extract_tail  # noqa: E402

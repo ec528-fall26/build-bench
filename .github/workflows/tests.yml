@@ -20,12 +20,17 @@ jobs:
         with:
           # The tests need only these folders. Skipping the rest avoids
           # downloading ~1.3 GB of committed starter-kit run output.
+          # The docs/ folders are real logs and case records that Part A's
+          # tests read (about 5 MB).
           sparse-checkout: |
             buildbench-starter-kit-0.1.0-rc.2/agents/one-shot
             buildbench-starter-kit-0.1.0-rc.2/agents/full-agent
             harness
             experiments
             tests
+            docs/evidence/demo2/paired-retest
+            docs/evidence/qemu-fix-20261102
+            docs/results/part-c-rcran-694ehfba
 
       - uses: actions/setup-python@v5
         with:

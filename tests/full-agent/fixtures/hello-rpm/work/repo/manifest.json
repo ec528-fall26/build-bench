@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "case_id": "hello-demo",
+  "package_type": "rpm",
+  "build": {
+    "recipe": "input/buildbench-hello.spec",
+    "buildconfig": "config/buildconfig",
+    "dependency_dirs": ["dependencies/rpms"],
+    "architecture": "x86_64",
+    "timeout_seconds": 600,
+    "jobs": 1,
+    "vm_type": "docker:privileged",
+    "backend": "obs-rpm"
+  },
+  "patch_policy": {
+    "allowed_paths": ["input/**"],
+    "forbidden_paths": ["manifest.json", "config/**", "dependencies/**"]
+  },
+  "expected_artifacts": {
+    "binary": ["buildbench-hello-*.noarch.rpm"],
+    "source": ["buildbench-hello-*.src.rpm"]
+  },
+  "security_mode": "privileged"
+}

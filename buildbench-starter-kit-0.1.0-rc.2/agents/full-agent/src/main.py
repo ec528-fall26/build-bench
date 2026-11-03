@@ -25,6 +25,7 @@ from .case import load_case
 from .config import config_from_env, config_record
 from .contracts import AgentConfig, Budget, BuildFeedback
 from .evidence import diagnose
+from .failure import FailureStage, classify_failure
 from .log_tail import extract_tail
 from .loop import LoopResult, run_loop
 from .model_adapter import Complete, ModelAdapter, client_completion
@@ -33,6 +34,14 @@ from .types import CaseContext
 
 
 TAIL_LINES = 500  # Part 2's tail: the evidence when Part A finds no error
+
+
+def _failure_stage(log_path: Path) -> FailureStage:
+    """Part A's classification, which must never stop the repair."""
+    try:
+        return classify_failure(log_path)
+    except Exception as error:  # noqa: BLE001 - a record field, not worth a failed run
+        return FailureStage(evidence=[f"classification failed: {type(error).__name__}"])
 
 
 def write_json(path: Path, data: dict) -> None:
@@ -126,7 +135,11 @@ def main() -> int:
         policy = case.task_metadata.get("patch_policy")
         model = ModelClient.from_env()
         result = {"schema_version": "0.1", "status": "completed", "model": model.name,
-                  "served_model": None}
+                  "served_model": None,
+                  # Part A: Debian, RPM or unknown, and the stage the original
+                  # build failed at (setup failures cannot be fixed by edits).
+                  "package_format": asdict(case.package_format),
+                  "failure_stage": asdict(_failure_stage(case.log_path))}
 
         if not model.api_key:
             # Like the baseline: finish without a request and without edits.

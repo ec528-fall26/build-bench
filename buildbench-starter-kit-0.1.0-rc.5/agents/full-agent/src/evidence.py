@@ -368,6 +368,9 @@ def diagnose(log_path: Path, worktree: Path) -> list[Diagnostic]:
                     # Errors before this are dropped below; a repeat inside the
                     # package build must not be deduplicated against them.
                     seen.clear()
+                    # Nor is a command line from setup context for a build error
+                    # (libmceliece's was a list of packages being installed).
+                    last_command = ""
                 # Rust prints the file location after its error header.
                 location = _RUST_LOCATION.match(text) if pending is not None and pending.line is None else None
                 if location:

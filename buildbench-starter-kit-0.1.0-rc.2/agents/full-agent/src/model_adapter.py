@@ -39,7 +39,7 @@ from .contracts import AgentConfig, Budget, BuildResult, Diagnostic, ModelTurn, 
 from .edit_applier import LOGGER as EDIT_LOGGER
 from .edit_preflight import FOCUSED_PREFIX
 from .loop import LoopRequest
-from .model_client import ModelCallFailed, request_completion
+from .model_client import MODEL_ID, ModelCallFailed, request_completion
 from .reply import extract_action_json, parse_turn
 from .request_trace import trace_completion
 from . import repair_strategy
@@ -53,6 +53,7 @@ Completion = tuple[str, "str | None", dict]
 Complete = Callable[[list[dict]], Completion]
 
 MAX_TOOL_RESULTS = 8  # most recent results shown; older ones are counted
+MIN_REQUEST_SECONDS = 30  # do not start a request that could not finish in time
 NUDGE_AFTER = 4  # tool turns in a row without an edit before the model is asked to act
 TOOL_TURN_LIMIT = 6  # ... and before tools are switched off until its next edit
 TOOLS_OFF = ("Tools are switched off until your next edit: you have spent {n} turns "
@@ -77,12 +78,23 @@ def client_completion(client) -> Complete:
         client.served_model = None
         if not client.api_key:
             raise RuntimeError("no model API key configured (set BB_MODEL_API_KEY)")
+        timeout = client.timeout
+        deadline = getattr(client, "deadline", None)
+        if deadline is not None:
+            # A request may not outlive the run: the platform's limit includes model calls.
+            timeout = min(timeout, deadline - monotonic())
+            if timeout < MIN_REQUEST_SECONDS:
+                raise RuntimeError("model call skipped: no time left for another request")
         try:
             body = request_completion(client.base_url, client.api_key, messages,
                                       opener=client.opener, sleep=client.sleep,
-                                      max_attempts=client.max_attempts, timeout=client.timeout)
+                                      max_attempts=client.max_attempts, timeout=timeout,
+                                      model=getattr(client, "model", MODEL_ID),
+                                      hosted=getattr(client, "hosted", False))
         except (ModelCallFailed, ValueError) as error:
             raise RuntimeError(f"model call failed: {error}") from None
+        if hasattr(client, "successful_calls"):
+            client.successful_calls += 1
         body = body if isinstance(body, dict) else {}
         served = body.get("model")
         client.served_model = served if isinstance(served, str) else None

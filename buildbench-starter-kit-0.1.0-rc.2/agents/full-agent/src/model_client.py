@@ -1,10 +1,13 @@
 """Part 3: ask the model for one repair through an OpenAI-compatible endpoint.
 
-Development calls Amazon Bedrock's OpenAI-compatible Chat Completions endpoint.
-The competition serves its model through an organizer-managed endpoint in the
-same format, so switching is configuration only: BB_MODEL_BASE_URL and
-BB_MODEL_API_KEY. MODEL_ID is the one model used by both the baseline and the
-full agent; results from different models are not comparable.
+Two configurations, both Chat Completions:
+
+- Hosted: the platform injects BB_MODEL_BASE_URL, BB_MODEL_NAME and
+  BB_MODEL_TOKEN_FILE (Starter Kit rc.5 model-access guide). The alias and the
+  credential file are used unchanged; there are no retries, no proxies from the
+  environment and only the documented request fields.
+- Development: Amazon Bedrock with BB_MODEL_API_KEY and MODEL_ID, the one model
+  used for every local result; results from different models are not comparable.
 
 Standard library only.
 """
@@ -18,6 +21,7 @@ from pathlib import Path
 import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from .types import CaseContext, Edit, EditPlan
@@ -25,8 +29,10 @@ from .types import CaseContext, Edit, EditPlan
 
 MODEL_ID = "openai.gpt-oss-120b-1:0"
 DEFAULT_BASE_URL = "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1"
-MAX_COMPLETION_TOKENS = 8192  # includes the model's reasoning
+MAX_COMPLETION_TOKENS = 8192  # includes the model's reasoning; hosted ceiling is 32,768
 TEMPERATURE = 0
+HOSTED_TIMEOUT = 600  # Hosted Smoke allows 10 minutes per request
+TOKEN_FILE_LIMIT = 4096
 
 # The naive baseline sees the same files for every case, chosen without looking
 # at the log. Order matters: later files are dropped first when the budget runs out.
@@ -71,6 +77,10 @@ _REASONING = re.compile(r"<reasoning>.*?</reasoning>", re.IGNORECASE | re.DOTALL
 
 class ModelCallFailed(Exception):
     """The endpoint could not be reached or refused the request."""
+
+
+class ModelConfigError(ValueError):
+    """The injected hosted model settings are missing or invalid."""
 
 
 class _Unavailable(Exception):
@@ -153,17 +163,22 @@ def build_messages(context: CaseContext) -> list[dict]:
 def request_completion(
     base_url: str, api_key: str, messages: list[dict], *,
     opener=urllib.request.urlopen, sleep=time.sleep, max_attempts: int = 3, timeout: float = 180,
+    model: str = MODEL_ID, hosted: bool = False,
 ) -> dict:
-    """POST one chat completion; retry only throttling, server errors and timeouts."""
-    body = json.dumps({
-        "model": MODEL_ID,
-        "messages": messages,
-        "max_completion_tokens": MAX_COMPLETION_TOKENS,
-        "temperature": TEMPERATURE,
-    }).encode("utf-8")
+    """POST one chat completion; retry only throttling, server errors and timeouts.
+
+    Hosted requests send only documented fields (store=false, n=1, no sampling
+    settings); callers pass max_attempts=1 because the guide forbids retries.
+    """
+    fields = {"model": model, "messages": messages,
+              "max_completion_tokens": MAX_COMPLETION_TOKENS}
+    fields.update({"store": False, "n": 1} if hosted else {"temperature": TEMPERATURE})
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+    if hosted:
+        headers["Accept-Encoding"] = "identity"
     request = urllib.request.Request(
-        base_url.rstrip("/") + "/chat/completions", data=body, method="POST",
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+        base_url.rstrip("/") + "/chat/completions",
+        data=json.dumps(fields).encode("utf-8"), method="POST", headers=headers,
     )
     for attempt in range(1, max_attempts + 1):
         try:
@@ -226,24 +241,68 @@ def parse_response(data: dict) -> EditPlan:
     return EditPlan(edits=edits, rationale=data.get("rationale", ""), usage=_no_usage())
 
 
+def hosted_settings(environ=None) -> tuple[str, str, str] | None:
+    """The injected (base URL, alias, credential), or None when not hosted.
+
+    Raises ModelConfigError when the platform's settings are present but
+    unusable; the credential's contents never appear in the message.
+    """
+    environ = os.environ if environ is None else environ
+    names = ("BB_MODEL_BASE_URL", "BB_MODEL_NAME", "BB_MODEL_TOKEN_FILE")
+    if not (environ.get("BB_MODEL_NAME") or environ.get("BB_MODEL_TOKEN_FILE")):
+        return None
+    missing = [name for name in names if not environ.get(name)]
+    if missing:
+        raise ModelConfigError(f"missing injected model settings: {', '.join(missing)}")
+    base, alias = environ["BB_MODEL_BASE_URL"].rstrip("/"), environ["BB_MODEL_NAME"]
+    parsed = urllib.parse.urlsplit(base)
+    if (parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username
+            or parsed.password or parsed.query or parsed.fragment
+            or not parsed.path.endswith("/v1") or not alias.strip()):
+        raise ModelConfigError("invalid injected model base URL or alias")
+    credential = Path(environ["BB_MODEL_TOKEN_FILE"])
+    try:
+        if credential.stat().st_size > TOKEN_FILE_LIMIT:
+            raise ModelConfigError("model credential file is too large")
+        token = credential.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeError) as error:
+        raise ModelConfigError(f"cannot read model credential file: {type(error).__name__}") from None
+    if not token or any(character.isspace() for character in token):
+        raise ModelConfigError("invalid model credential")
+    return base, alias, token
+
+
 class ModelClient:
     """One model call per case. Edits are judged later, one by one, by Part 4."""
 
     def __init__(self, api_key: str | None, base_url: str = DEFAULT_BASE_URL, *,
                  opener=urllib.request.urlopen, sleep=time.sleep,
-                 max_attempts: int = 3, timeout: float = 180):
+                 max_attempts: int = 3, timeout: float = 180,
+                 model: str = MODEL_ID, hosted: bool = False):
         self.api_key = api_key
         self.base_url = base_url
         self.opener = opener
         self.sleep = sleep
         self.max_attempts = max_attempts
         self.timeout = timeout
-        self.name = f"openai-compatible:{MODEL_ID}"
+        self.model = model
+        self.hosted = hosted
+        self.name = f"openai-compatible:{model}"
         # The model the server says answered the last call; None if no reply.
         self.served_model: str | None = None
+        self.successful_calls = 0
+        # Monotonic time after which no request may still be running; None: no limit.
+        self.deadline: float | None = None
 
     @classmethod
     def from_env(cls) -> "ModelClient":
+        hosted = hosted_settings()
+        if hosted is not None:
+            base, alias, token = hosted
+            # Ignore proxy variables, like the guide's trust_env=False.
+            no_proxy = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            return cls(token, base, opener=no_proxy.open, max_attempts=1,
+                       timeout=HOSTED_TIMEOUT, model=alias, hosted=True)
         return cls(os.environ.get("BB_MODEL_API_KEY") or None,
                    os.environ.get("BB_MODEL_BASE_URL") or DEFAULT_BASE_URL)
 
@@ -256,6 +315,7 @@ class ModelClient:
                 self.base_url, self.api_key, build_messages(context),
                 opener=self.opener, sleep=self.sleep,
                 max_attempts=self.max_attempts, timeout=self.timeout,
+                model=self.model, hosted=self.hosted,
             )
         except (ModelCallFailed, ValueError) as exc:
             return _empty(f"Model call failed: {exc}")

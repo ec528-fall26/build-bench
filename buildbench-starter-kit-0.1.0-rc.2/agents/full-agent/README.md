@@ -33,14 +33,38 @@ Part E prompts, reply parsing, switches and the Demo 3 comparison:
 [Prompts and evaluation guide](../../../docs/part-e-prompts-evaluation.md).
 
 ## Model access
-Configured through environment variables, never through files in this folder:
+Configured through environment variables, never through files in this folder.
 
-- `BB_MODEL_API_KEY` — API key for the endpoint (required for a repair).
+**Hosted** (competition platform; Starter Kit rc.5 model-access guide). The
+platform injects all three; the agent uses them unchanged:
+
+- `BB_MODEL_BASE_URL` — the organizers' endpoint, ending in `/v1`.
+- `BB_MODEL_NAME` — the model alias, sent as `model`.
+- `BB_MODEL_TOKEN_FILE` — a file holding the task credential.
+
+Hosted requests send only `model`, `messages`, `max_completion_tokens`,
+`store: false` and `n: 1`, with no retries and no proxy settings from the
+environment. The run stops within `HOSTED_SECONDS` in `main.py` (17 minutes;
+Hosted Smoke allows 20). Invalid settings, or no successful model call, end
+with `status: "no_fix"`, the failing stage and exit code 1.
+
+**Development** (local runs; used when `BB_MODEL_NAME` and
+`BB_MODEL_TOKEN_FILE` are unset):
+
+- `BB_MODEL_API_KEY` — Amazon Bedrock API key (required for a repair).
 - `BB_MODEL_BASE_URL` — endpoint base URL (default: Amazon Bedrock's
   OpenAI-compatible endpoint in `us-east-1`).
 
-The model is fixed in code (`MODEL_ID` in `model_client.py`). Without a key the
-agent still completes, makes no request and proposes no edits.
+The development model is fixed in code (`MODEL_ID` in `model_client.py`).
+Without a key the agent still completes, makes no request and proposes no edits.
+
+Check and package with Starter Kit rc.5 from the repository root:
+
+```bash
+cd buildbench-starter-kit-0.1.0-rc.5
+./bb check --agent ../buildbench-starter-kit-0.1.0-rc.2/agents/full-agent
+./bb package --agent ../buildbench-starter-kit-0.1.0-rc.2/agents/full-agent
+```
 
 ## Ablation switches
 `src/config.py` reads one variable per `AgentConfig` field. Unset means on, which

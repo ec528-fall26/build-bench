@@ -4,8 +4,8 @@
 
 run_agent() is the whole repair, shared with the local harness, which passes
 its own build feedback (harness/build_feedback.py). Submitted, the agent has
-none: the organizers' in-run build protocol is not published, so edits are
-proposed, investigated and revised, then submitted untested.
+none: the competition website says agents cannot request builds during a run,
+so edits are proposed, investigated and revised, then submitted untested.
 
 "completed" in agent-result.json means the agent finished, even with no
 repair: the platform's clean build decides whether anything was fixed.
@@ -28,11 +28,15 @@ from .evidence import diagnose
 from .log_tail import extract_tail
 from .loop import LoopResult, run_loop
 from .model_adapter import Complete, ModelAdapter, client_completion
-from .model_client import ModelClient
+from .model_client import ModelClient, ModelConfigError
 from .types import CaseContext
 
 
 TAIL_LINES = 500  # Part 2's tail: the evidence when Part A finds no error
+# Hosted Smoke allows 20 minutes from startup, model calls included; official
+# limits are not yet announced. Stop well inside it (the loop also keeps
+# Budget.reserve_seconds back), and no request may run past this point.
+HOSTED_SECONDS = 1_020
 
 
 def write_json(path: Path, data: dict) -> None:
@@ -99,7 +103,17 @@ def result_record(result: LoopResult, adapter: ModelAdapter, config: AgentConfig
     }
 
 
+def _failed(output_dir: Path, stage: str, exc: Exception, message: str = "") -> int:
+    """Record a run the model could not take part in, without secrets, and exit 1."""
+    result = {"schema_version": "0.1", "status": "no_fix", "failure_stage": stage,
+              "error_type": type(exc).__name__, "message": (message or str(exc))[:500]}
+    write_json(output_dir / "agent-result.json", result)
+    print(json.dumps(result), file=sys.stderr)
+    return 1
+
+
 def main() -> int:
+    started = monotonic()
     # Use BB_WORKSPACE when set, otherwise use /workspace.
     workspace = Path(os.environ.get("BB_WORKSPACE", "/workspace"))
     input_dir = workspace / "input"
@@ -124,9 +138,17 @@ def main() -> int:
         context = CaseContext(case_id=case.case_id or "", worktree=worktree, log_tail="",
                               task_metadata=case.task_metadata)
         policy = case.task_metadata.get("patch_policy")
-        model = ModelClient.from_env()
+        try:
+            model = ModelClient.from_env()
+        except ModelConfigError as exc:
+            # The guide: log the stage and error type, exit nonzero.
+            return _failed(output_dir, "model_initialization", exc)
         result = {"schema_version": "0.1", "status": "completed", "model": model.name,
                   "served_model": None}
+        budget = None
+        if model.hosted:
+            budget = Budget(max_seconds=HOSTED_SECONDS)
+            model.deadline = started + HOSTED_SECONDS
 
         if not model.api_key:
             # Like the baseline: finish without a request and without edits.
@@ -134,8 +156,12 @@ def main() -> int:
         else:
             loop_result, adapter = run_agent(
                 context, case.log_path, client_completion(model), config=config,
-                patch_policy=policy if isinstance(policy, dict) else None,
+                budget=budget, patch_policy=policy if isinstance(policy, dict) else None,
                 package=case.package)
+            if model.hosted and model.successful_calls == 0:
+                # No answer from the platform's model: not a completed repair attempt.
+                return _failed(output_dir, "model_repair",
+                               RuntimeError(loop_result.message), loop_result.message)
             last = next((a.hypothesis for a in reversed(loop_result.attempts)
                          if a.hypothesis), "")
             result.update(result_record(loop_result, adapter, config))

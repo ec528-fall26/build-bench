@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
+import re
 from time import monotonic
 
 from .candidates import CandidateSnapshot
@@ -20,8 +21,9 @@ from .contracts import (
 )
 from .diff_tracker import DiffTracker
 from .edit_applier import apply_edits
-from .edit_preflight import drop_covered, focused_feedback
-from .path_feedback import missing_prefix_feedback
+from .edit_preflight import focused_feedback
+from .edit_repair import prune_batch, retarget_path, simulate, static_warnings
+from .path_feedback import missing_prefix_feedback, uncapturable_feedback
 from .tools import run_tool
 from .types import CaseContext
 from .proposal_review import render_review, signature
@@ -40,6 +42,9 @@ class LoopRequest:
     latest_attempt: Attempt | None = None
     edit_validation_feedback: str = ""
     proposal_review: str = ""
+    # What the controller changed or dropped in the latest batch before
+    # applying it (edit_repair): shown with the attempt's result.
+    notes: list[str] = field(default_factory=list)
 
 @dataclass
 class LoopResult:
@@ -99,6 +104,9 @@ def _build_rank(build: BuildResult) -> tuple[int, int, int]:
 # rename files, so listings and name searches stay true, and the failure log
 # is never edited.
 _EDIT_PROOF = {"list_dir", "find_files", "patch_series", "read_log", "search_log"}
+# Rejections about where an edit applies, as opposed to what it writes.
+_ANCHOR_REASONS = {"old_text_not_found", "old_text_ambiguous", "path_outside_allowed_prefix",
+                   "file_not_in_snapshot", "file_not_capturable"}
 
 
 def _still_valid(results: list[ToolResult], edited: set[str]) -> list[ToolResult]:
@@ -176,6 +184,7 @@ def run_loop(
     known_usage = {"input_tokens": 0, "output_tokens": 0}
     feedback = ""
     latest_attempt_feedback = ""
+    batch_notes: list[str] = []
     edit_validation_feedback = ""
     pending_turn = None
     pending_index = None
@@ -185,6 +194,16 @@ def run_loop(
     review_events = []
     correction_responses = 0
     max_correction_responses = 12
+    # (path, old_text) of corrections already rejected for the pending item: a
+    # repeat cannot succeed either (libunwind sent one ten times, 3 November).
+    rejected_texts: set[tuple[str, str]] = set()
+    # The item being corrected keeps an identity across corrections (a
+    # correction replaces it in its slot), so its budget follows the item.
+    slot_ids = iter(range(1, 1_000_000))
+    pending_slot = None
+    pending_position = 0           # that item's number in the model's list
+    pending_notes: list[str] = []  # prune notes of the batch being corrected
+    review_notes: list[str] = []   # prune notes of a batch awaiting approval
     malformed_count = 0
     empty_edit_streak = 0
     attempts: list[Attempt] = []
@@ -206,12 +225,6 @@ def run_loop(
         )
 
     for _ in range(max_turns):
-        if pending_turn is not None and correction_responses >= max_correction_responses:
-            return finish(
-                "edit_correction_budget",
-                "Twelve correction responses did not produce a valid batch; "
-                "the pending batch was not applied.",
-            )
         if clock() >= work_deadline:
             return finish(
                 "time_budget",
@@ -254,6 +267,7 @@ def run_loop(
             latest_attempt=deepcopy(attempts[-1]) if attempts else None,
             edit_validation_feedback=edit_validation_feedback,
             proposal_review=proposal_review,
+            notes=list(batch_notes),
         )
 
 
@@ -354,6 +368,7 @@ def run_loop(
             proposal_review = ""
 
         if turn.action == "edit":
+            repeated = False   # the correction repeats an already rejected old_text
             if pending_turn is not None:
                 if len(turn.edits) > 1:
                     edit_validation_feedback += "\nYour correction contained multiple edits. Return at most ONE."
@@ -364,12 +379,24 @@ def run_loop(
                 if not turn.edits:
                     pending_turn = None
                     pending_index = None
+                    pending_slot = None
+                    pending_notes = []
                     correction_responses = 0
+                    rejected_texts.clear()
                     edit_validation_feedback = ""
                     feedback = "The pending batch was explicitly emptied; no files changed."
                     continue
+                for item in turn.edits[pending_index:pending_index + len(merged.edits)
+                                       - len(pending_turn.edits) + 1]:
+                    item._slot = pending_slot
+                    item._position = pending_position
+                    repeated = (item.path, item.old_text) in rejected_texts
+            for position, item in enumerate(turn.edits, start=1):
+                if getattr(item, "_position", None) is None:
+                    item._position = position  # as the model listed it, for notes
             if not turn.edits:
                 empty_edit_streak += 1
+                batch_notes = []
                 attempts.append(
                     Attempt(
                         number=len(attempts) + 1,
@@ -399,31 +426,122 @@ def run_loop(
             build = None
             snapshot = None
             build_error = None
+            if approved_key is not None:
+                notes = list(review_notes)
+            elif pending_turn is not None:
+                notes = list(pending_notes)
+            else:
+                notes = []
+            review_notes = []
 
             try:
-                pending_index, edit_validation_feedback = missing_prefix_feedback(
-                    context.worktree, turn.edits, patch_policy=patch_policy
-                )
-                if edit_validation_feedback:
+                # Validate; mechanically repair what is unambiguous; and when
+                # the model cannot fix one item, drop that item alone and
+                # apply the rest (without builds an unapplied batch is a
+                # certain failure: rust-subversion, 26 edits, none written).
+                while True:
+                    pending_index, edit_validation_feedback = missing_prefix_feedback(
+                        context.worktree, turn.edits, patch_policy=patch_policy
+                    )
+                    if not edit_validation_feedback:
+                        pending_index, edit_validation_feedback = uncapturable_feedback(
+                            context.worktree, turn.edits, patch_policy=patch_policy
+                        )
+                    if not edit_validation_feedback:
+                        snapshot = CandidateSnapshot.capture(
+                            context.worktree,
+                            [edit.path for edit in turn.edits],
+                            patch_policy=patch_policy,
+                        )
+                        kept, more, _ = prune_batch(snapshot, turn.edits)
+                        notes.extend(more)
+                        turn = deepcopy(turn)
+                        turn.edits = kept
+                        if turn.edits:
+                            pending_index, edit_validation_feedback = focused_feedback(
+                                snapshot, turn.edits, turn.hypothesis
+                            )
+                    if not turn.edits or not edit_validation_feedback:
+                        break
+                    failing = turn.edits[pending_index]
+                    key = (failing.path, failing.old_text)
+                    reason = re.search(r"Reason: (\S+)", edit_validation_feedback)
+                    reason = reason.group(1) if reason else ""
+                    if reason == "old_text_not_found" and not getattr(failing, "_retargeted", False):
+                        target = retarget_path(context.worktree, failing, patch_policy=patch_policy)
+                        if target is not None:
+                            notes.append(
+                                f"Moved edit {getattr(failing, '_position', pending_index + 1)} "
+                                f"from {failing.path} to {target}: its old_text is not in the "
+                                "file it named and occurs in that one file only.")
+                            failing.path = target
+                            failing._retargeted = True
+                            edit_validation_feedback = ""
+                            continue
+                    slot = getattr(failing, "_slot", None)
+                    if slot is None:
+                        slot = next(slot_ids)
+                        failing._slot = slot
+                    if slot != pending_slot:
+                        # A different item: it gets corrections of its own, but
+                        # not a whole new budget after one item has used it up.
+                        if pending_slot is not None:
+                            correction_responses = min(
+                                correction_responses, max_correction_responses - 3)
+                        pending_slot = slot
+                        pending_position = getattr(failing, "_position", pending_index + 1)
+                        rejected_texts.clear()
+                        repeated = False
+                    if repeated:
+                        why = "its correction repeated an old_text that was already rejected"
+                    elif correction_responses >= max_correction_responses:
+                        why = "the correction budget was spent on it"
+                    else:
+                        break
+                    preview = failing.old_text[:60].replace("\n", "\\n")
+                    notes.append(
+                        f"Dropped edit {pending_position} ({failing.path}, old_text starting "
+                        f"{preview!r}) because {why}{' (' + reason + ')' if reason else ''}; "
+                        "the rest of the batch continued."
+                    )
+                    del turn.edits[pending_index]
+                    repeated = False
+                    rejected_texts.clear()
+                    edit_validation_feedback = ""
+                if turn.edits and edit_validation_feedback:
+                    if notes:
+                        edit_validation_feedback += "\n\nBefore this check: " + " ".join(notes)
                     pending_turn = deepcopy(turn)
-                    continue
-                snapshot = CandidateSnapshot.capture(
-                    context.worktree,
-                    [edit.path for edit in turn.edits],
-                    patch_policy=patch_policy,
-                )
-                kept, covered = drop_covered(snapshot, turn.edits)
-                if covered:
-                    turn = deepcopy(turn)
-                    turn.edits = kept
-                pending_index, edit_validation_feedback = focused_feedback(
-                    snapshot, turn.edits, turn.hypothesis
-                )
-                if edit_validation_feedback:
-                    pending_turn = deepcopy(turn)
+                    pending_notes = list(notes)
+                    if reason in _ANCHOR_REASONS:
+                        # Only a rejected anchor makes a repeat hopeless; a
+                        # new_text problem can be fixed with the same old_text.
+                        rejected_texts.add(key)
                     continue
                 pending_turn = None
+                pending_index = None
+                pending_slot = None
+                pending_notes = []
                 correction_responses = 0
+                rejected_texts.clear()
+                if not turn.edits:
+                    # Nothing left that can be applied: the batch is over, and
+                    # it costs an attempt so a run cannot loop on empty batches.
+                    attempts.append(Attempt(
+                        number=len(attempts) + 1, hypothesis=turn.hypothesis,
+                        edits=[], applied=0, build=None,
+                        tokens=_normalize_usage(reported_usage),
+                    ))
+                    edit_validation_feedback = ""
+                    batch_notes = notes + ["No edit of that batch could be applied, so no "
+                                           "file changed. Propose a new batch or stop."]
+                    feedback = " ".join(batch_notes)
+                    continue
+                originals = {saved.path: saved.content.decode("utf-8")
+                             for saved in snapshot.files}
+                warnings = []
+                for path, text in simulate(snapshot, turn.edits).items():
+                    warnings.extend(static_warnings(path, originals.get(path, ""), text))
                 if review_edits:
                     current_key = signature(snapshot, turn)
                     if approved_key != current_key:
@@ -435,6 +553,7 @@ def run_loop(
                         )
                         review_turn = deepcopy(turn)
                         review_key = current_key
+                        review_notes = notes
                         review_events.append({"event": "proposed", "signature": current_key,
                                               "counts": counts, "feedback": proposal_review})
                         continue
@@ -446,9 +565,18 @@ def run_loop(
                     f"The edit batch was not applied because its files "
                     f"could not be captured: {exc}"
                 )
+                batch_notes = []
+                attempts.append(Attempt(
+                    number=len(attempts) + 1, hypothesis=turn.hypothesis,
+                    edits=[], applied=0, build=None,
+                    tokens=_normalize_usage(reported_usage),
+                ))
                 pending_turn = None
                 pending_index = None
+                pending_slot = None
+                pending_notes = []
                 correction_responses = 0
+                rejected_texts.clear()
                 edit_validation_feedback = (
                     "=== Edit batch validation failed ===\n"
                     "NO edits were written and NO build was requested.\n"
@@ -478,12 +606,9 @@ def run_loop(
                     f"Accepted {applied} of {len(turn.edits)} proposed "
                     "edit operations."
                 )
-                if covered:
-                    feedback += (
-                        f" {covered} more {'were' if covered != 1 else 'was'} dropped: an "
-                        "earlier edit in the same batch had already made "
-                        f"{'their changes' if covered != 1 else 'its change'}."
-                    )
+                batch_notes = notes + [f"Warning (the edit was applied): {w}" for w in warnings]
+                if batch_notes:
+                    feedback += " " + " ".join(batch_notes)
 
             # Record the attempt before requesting a build.
             attempt = Attempt(

@@ -30,6 +30,44 @@ Version 0.3.0 (2 November), for submitted runs with no build feedback:
   flags take effect (debian/rules, DEB_CFLAGS_MAINT_APPEND) and to change Rust
   C-string types to c_char in every file at once.
 
+Version 0.3.1 (3 November), from the no-build live findings
+(`docs/no-build-live-findings.md`), all in `src/edit_repair.py` and the loop:
+- a batch is never lost to one item: when an item's correction budget is
+  spent, or a correction repeats an already rejected old_text, that item alone
+  is dropped and the rest of the batch is applied (rust-subversion: 26 edits,
+  none written);
+- an old_text that matches one place in the file apart from indentation is
+  corrected to the file's whitespace when that is unambiguous (two tabs for
+  three, consistently: libunwind sent that ten times); otherwise the
+  correction shows the exact lines with tabs and spaces made visible;
+- no-op edits and exact duplicates are dropped before any correction is asked;
+- a `DEB_*_MAINT_*` line added at make level in debian/rules gets `export`,
+  which it needs to reach any compile; a line inserted into a backslash-
+  continued Makefile variable is rejected with the fix; a GNU make conditional
+  in Makefile.am gets a warning;
+- the prompts say the build output predates every edit and never changes, so
+  the model stops once its edit addresses the cause instead of re-checking.
+
+Version 0.3.2 (3 November, evening), from the live comparison of 0.3.1 with
+0.3.0 (`docs/no-build-live-findings.md`, round 5):
+- `src/patterns.py`: a recognised cross-architecture failure (Rust C-string
+  signedness, an x86 intrinsics header on ARM, ARM outline-atomics helpers, a
+  dpkg-gensymbols mismatch) is named right after the errors, with the files
+  and lines gathered from the worktree and the usual repair; advice only;
+- an edit whose old_text lives in exactly one other file of the same type is
+  moved there instead of costing correction turns (16 wrong paths on
+  rust-subversion);
+- an edit that only removes `export` from a `DEB_*_MAINT_*` line is dropped
+  with the reason instead of being re-exported into a no-op (37 turns on
+  libunwind).
+- an edit whose old_text is gone from the file and whose new_text is already
+  there is dropped as already made, instead of being sent back for correction
+  (rust-subversion: 58 turns after the repair was complete).
+
+Live, without build feedback (round 6 in the findings): 0.3.2 repaired
+rust-subversion, libunwind and rcran, one run each; rust-subversion for the
+first time.
+
 | File | Part | Status |
 | --- | --- | --- |
 | `contracts.py` | shared | Agreed 7 October. Change only by team agreement |

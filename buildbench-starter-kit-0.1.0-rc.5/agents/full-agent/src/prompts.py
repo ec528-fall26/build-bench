@@ -198,7 +198,9 @@ _STOP_NO_BUILDS = """\
 """
 _STOP_RULE_NO_BUILDS = """\
 - Reply "stop" once your edits form a complete repair: they are submitted as
-  they stand when you stop.
+  they stand when you stop. Do not re-check a finished edit against the build
+  output or add further edits "to be safe": the output is from before any edit
+  and cannot confirm or refute one, and each extra edit can break a repair.
 - Otherwise choose "stop" only when you have reason to believe that no edit
   under input/ can repair the build, for example because it needs a dependency
   that does not exist for the target architecture. Not having been shown a file
@@ -297,6 +299,10 @@ def system_prompt(config: AgentConfig | None = None, budget: Budget | None = Non
     else:
         run.append("Your edits are not test-built during this run: they are submitted as "
                    "they stand, so make the repair complete.")
+        run.append("The build output you are shown is from the original failing build, "
+                   "before any edit, and it does not change during the run. After an edit "
+                   "it still shows the original error: that is not evidence that the edit "
+                   "failed, and re-reading it cannot tell you whether the edit worked.")
     if config.use_history and config.use_build_feedback:
         run.append("You are shown each earlier attempt: its hypothesis, its edits and what "
                    "the build said. Do not repeat an attempt that failed; say in your "
@@ -629,7 +635,7 @@ def opening_message(
     context: CaseContext, config: AgentConfig | None = None, *,
     diagnostics: Sequence[Diagnostic] = (), log_path: Path | None = None,
     package: str | None = None, history: Sequence[Attempt] = (),
-    kept: Collection[int] | None = None, note: str = "",
+    kept: Collection[int] | None = None, note: str = "", pattern: str = "",
 ) -> str:
     """The first user message of a conversation: the evidence for one case.
 
@@ -637,7 +643,8 @@ def opening_message(
     diagnosed; pass both so the log around the first error can be shown.
     ``context.log_tail`` is Part 2's tail of that log, or "" when only
     diagnostics exist. ``history`` is used only when use_history is on;
-    ``note`` is appended as given, for example a budget_note.
+    ``note`` is appended as given, for example a budget_note. ``pattern`` is
+    patterns.recognise's block for the case, shown right after the errors.
     """
     config = config or AgentConfig()
     if config.use_evidence_manager:
@@ -653,6 +660,7 @@ def opening_message(
         parts = [
             header,
             render_diagnostics(diagnostics),
+            pattern,   # patterns.recognise: the known repair of a recognised failure
             render_source_excerpts(diagnostics, context.worktree),
             # Bound fallback evidence even when no error was recognized
             window or _log_tail(context.log_tail, TAIL_LINES),
@@ -711,8 +719,10 @@ def attempt_result_message(
                      "file under input/.")
     elif attempt.build is None:
         lines.append("No build was run for this attempt, so it is untested. Its edits are "
-                     "in the files. Reply with a further edit if the repair is incomplete, "
-                     "or with stop if it is complete.")
+                     "in the files. The errors and log shown above are still those of the "
+                     "original build, before any edit: they cannot confirm or refute this "
+                     "attempt, so do not re-check it against them. Reply with a further "
+                     "edit only if the repair is incomplete; otherwise reply stop.")
     elif attempt.build.succeeded:
         lines.append("The build succeeded.")
     else:

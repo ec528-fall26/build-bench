@@ -34,7 +34,7 @@ from pathlib import Path
 from time import monotonic
 from typing import Callable
 
-from . import prompts
+from . import patterns, prompts
 from .contracts import AgentConfig, Budget, BuildResult, Diagnostic, ModelTurn, ToolRequest
 from .edit_applier import LOGGER as EDIT_LOGGER
 from .edit_preflight import FOCUSED_PREFIX
@@ -278,6 +278,12 @@ class ModelAdapter:
         self.diagnostics = diagnostics
         self.log_path = log_path
         self.package = package
+        self.pattern = ""
+        worktree = getattr(context, "worktree", None)
+        if config.use_evidence_manager and worktree is not None:
+            metadata = getattr(context, "task_metadata", None) or {}
+            self.pattern = patterns.recognise(
+                diagnostics, log_path, worktree, str(metadata.get("target_arch") or ""))
         self.clock = clock
         self.started = clock()
         self.turns: list[dict] = []    # one summary per model call, for the run record
@@ -412,14 +418,14 @@ class ModelAdapter:
             context, config, diagnostics=diagnostics, log_path=log_path,
             package=self.package, history=request.history,
             kept=request.kept_attempts if config.use_history else None,
-            note=strategy_note))]
+            note=strategy_note, pattern=self.pattern))]
 
         if request.edit_validation_feedback:
             parts.append(request.edit_validation_feedback)
 
         latest = request.latest_attempt
         if latest is not None and latest.number != self._seen_attempt:
-            self._new_attempt(latest, request.current_build)
+            self._new_attempt(latest, request.current_build, request.notes)
         if latest is not None:
             parts.append(
                 repair_strategy.attempt_summary(latest, request.current_build)
@@ -552,7 +558,8 @@ class ModelAdapter:
 
         return "\n\n".join(blocks)
 
-    def _new_attempt(self, attempt, current_build: BuildResult | None) -> None:
+    def _new_attempt(self, attempt, current_build: BuildResult | None,
+                     notes: list[str] = ()) -> None:
         """Word the result of an attempt the model has not been told about yet."""
         self._seen_attempt = attempt.number
         rejections = self._rejections.messages[:]
@@ -572,6 +579,8 @@ class ModelAdapter:
             undone=undone,
             same_first_error=same,
             note="\n\n".join(filter(None, [
+                ("=== Changes the controller made to this batch before applying it ===\n"
+                 + "\n".join(f"- {note}" for note in notes)) if notes else "",
                 _edit_outcomes(attempt, rejections, undone=undone),
                 self._rejection_help(attempt, rejections),
             ])),

@@ -1475,7 +1475,9 @@ class RepairLoop(unittest.TestCase):
                 apply.assert_not_called()
 
             self.assertEqual(result.termination_reason, "turn_budget")
-            self.assertEqual(result.attempts, [])
+            # The forbidden item is corrected once, dropped on the repeat, and
+            # the empty batch costs an attempt (3 November).
+            self.assertEqual([a.applied for a in result.attempts], [0])
             self.assertEqual(len(requests), 2)
             self.assertIn(
                 "path_forbidden_by_policy",

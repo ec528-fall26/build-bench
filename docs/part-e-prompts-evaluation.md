@@ -1,10 +1,15 @@
 # Part E — Prompts and evaluation
 
-**Owner:** Owen Zhang · **Last updated:** 13 October 2026
-**Status:** prompts, reply parsing, ablation switches, the Demo 3 comparison
-command and the ground-truth bundle tool are implemented and unit-tested.
-**None of it has been run against the model or the validator yet**: the full
-agent's loop (Part C) does not exist, so there are no full-agent runs to compare.
+**Owner:** Owen Zhang · **Last updated:** 3 November 2026
+**Status:** prompts, reply parsing and ablation switches run in every
+full-agent turn (`model_adapter.py`); the Demo 3 comparison command and the
+ground-truth bundle tool are implemented and unit-tested but have produced no
+committed result yet. Live results so far: `part5-findings.md` §9c–9d,
+`demo2-results.md` and `no-build-live-findings.md`. The sections below
+describe the 13 October design; the prompt text has since been extended by
+Joonseo Moon (dependency and budget wording, the playbook) and, on 3 November,
+with the no-build rules: the build output predates every edit and never
+changes, so the model stops once its edit addresses the cause.
 
 Plan: [`full-agent.md`](full-agent.md), Part E. Failure categories:
 [`failure-taxonomy.md`](failure-taxonomy.md).

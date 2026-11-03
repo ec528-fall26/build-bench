@@ -112,6 +112,43 @@ class FocusedCorrectionTests(unittest.TestCase):
         self.assertEqual(result.attempts, [])
         self.assertEqual(self.path.read_text(), self.original)
 
+    def test_an_edit_an_earlier_one_already_made_is_dropped(self):
+        # rust-subversion, 2 Nov: replace_all "*const i8" made every
+        # "as *const i8" edit unmatched, and 12 corrections could not fix it.
+        self.path.write_text("a as *const i8;\nfn f(p: *const i8) {}\n")
+        broad = SimpleNamespace(path="input/example.rs", old_text="*const i8",
+                                new_text="*const u8", replace_all=True)
+        narrow = SimpleNamespace(path="input/example.rs", old_text="as *const i8",
+                                 new_text="as *const u8", replace_all=True)
+        result = self.run_script([turn([broad, narrow]), self.stop()])
+        self.assertEqual(result.termination_reason, "model_stop")
+        self.assertEqual(result.attempts[0].applied, 1)
+        self.assertEqual(self.path.read_text(), "a as *const u8;\nfn f(p: *const u8) {}\n")
+        self.assertEqual(self.requests[1].edit_validation_feedback, "")
+        self.assertIn("1 more was dropped", self.requests[1].feedback)
+
+    def test_dropped_when_every_broad_match_is_also_a_narrow_one(self):
+        # delta.rs: all 13 "*const i8" were "as *const i8".
+        self.path.write_text("a as *const i8;\nb as *const i8;\n")
+        broad = SimpleNamespace(path="input/example.rs", old_text="*const i8",
+                                new_text="*const u8", replace_all=True)
+        narrow = SimpleNamespace(path="input/example.rs", old_text="as *const i8",
+                                 new_text="as *const u8", replace_all=True)
+        result = self.run_script([turn([broad, narrow]), self.stop()])
+        self.assertEqual(result.attempts[0].applied, 1)
+        self.assertEqual(self.path.read_text(), "a as *const u8;\nb as *const u8;\n")
+
+    def test_an_edit_with_a_different_change_is_not_dropped(self):
+        self.path.write_text("a as *const i8;\n")
+        broad = SimpleNamespace(path="input/example.rs", old_text="*const i8",
+                                new_text="*const u8", replace_all=True)
+        other = SimpleNamespace(path="input/example.rs", old_text="as *const i8",
+                                new_text="as *const c_char", replace_all=False)
+        self.run_script([turn([broad, other]), self.stop()])
+        feedback = self.requests[1].edit_validation_feedback
+        self.assertIn("FOCUSED INDEX: 1", feedback)
+        self.assertIn("IS in the file on disk", feedback)
+
     def test_no_write_before_correction_and_only_one_build_after(self):
         calls = 0
         builds = []

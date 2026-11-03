@@ -20,7 +20,7 @@ from .contracts import (
 )
 from .diff_tracker import DiffTracker
 from .edit_applier import apply_edits
-from .edit_preflight import focused_feedback
+from .edit_preflight import drop_covered, focused_feedback
 from .path_feedback import missing_prefix_feedback
 from .tools import run_tool
 from .types import CaseContext
@@ -133,8 +133,8 @@ def run_loop(
     review_edits: bool = False,
     initial_diagnostics=None,
     log_path: Path | None = None,
-    max_turns: int = 30,
-    max_tool_calls: int = 60,
+    max_turns: int = 60,
+    max_tool_calls: int = 120,
     clock: Callable[[], float] = monotonic,
 ) -> LoopResult:
     # Provisional local safeguards, not official competition limits.
@@ -412,6 +412,10 @@ def run_loop(
                     [edit.path for edit in turn.edits],
                     patch_policy=patch_policy,
                 )
+                kept, covered = drop_covered(snapshot, turn.edits)
+                if covered:
+                    turn = deepcopy(turn)
+                    turn.edits = kept
                 pending_index, edit_validation_feedback = focused_feedback(
                     snapshot, turn.edits, turn.hypothesis
                 )
@@ -474,6 +478,12 @@ def run_loop(
                     f"Accepted {applied} of {len(turn.edits)} proposed "
                     "edit operations."
                 )
+                if covered:
+                    feedback += (
+                        f" {covered} more {'were' if covered != 1 else 'was'} dropped: an "
+                        "earlier edit in the same batch had already made "
+                        f"{'their changes' if covered != 1 else 'its change'}."
+                    )
 
             # Record the attempt before requesting a build.
             attempt = Attempt(

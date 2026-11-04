@@ -6,7 +6,8 @@ Two configurations, both Chat Completions:
   BB_MODEL_TOKEN_FILE (Starter Kit rc.5 model-access guide). The alias and the
   credential file are used unchanged; there are no retries, no proxies from the
   environment and only the documented request fields.
-- Development: Amazon Bedrock with BB_MODEL_API_KEY and MODEL_ID, the one model
+- Development: Amazon Bedrock with BB_MODEL_API_KEY; BB_MODEL_BASE_URL selects the
+  region (default us-east-1) and BB_MODEL_ID the model (default MODEL_ID, the one model
   used for every local result; results from different models are not comparable.
 
 Standard library only.
@@ -303,8 +304,12 @@ class ModelClient:
             no_proxy = urllib.request.build_opener(urllib.request.ProxyHandler({}))
             return cls(token, base, opener=no_proxy.open, max_attempts=1,
                        timeout=HOSTED_TIMEOUT, model=alias, hosted=True)
+        # Development: another Bedrock region is another base URL
+        # (https://bedrock-runtime.<region>.amazonaws.com/openai/v1), and another
+        # model is BB_MODEL_ID; neither is read in the hosted runtime above.
         return cls(os.environ.get("BB_MODEL_API_KEY") or None,
-                   os.environ.get("BB_MODEL_BASE_URL") or DEFAULT_BASE_URL)
+                   os.environ.get("BB_MODEL_BASE_URL") or DEFAULT_BASE_URL,
+                   model=os.environ.get("BB_MODEL_ID") or MODEL_ID)
 
     def propose(self, context: CaseContext) -> EditPlan:
         self.served_model = None

@@ -13,6 +13,21 @@ it has no build feedback, so edits are investigated and revised but submitted
 untested. Locally, `harness/run_case.py --agent full-agent` runs the same loop
 with real builds (Part D). Results: `docs/part5-findings.md` §9c.
 
+Version 0.3.3 (4 November), from the Demo 2 feedback; no change in behaviour:
+- `loop.py`: `run_loop` (634 lines, 68 `if`s) is now a thin wrapper around
+  `_Loop`, one method per stage of a turn (budgets, request, model call, tool
+  turn, review, and the six steps of an edit batch: merge a correction,
+  validate and repair, review, apply, build, feedback). The longest method is
+  70 lines; the stage order is documented in the class docstring;
+- `tools.py`: one function per tool and a dispatch table (`_WORKTREE_TOOLS`)
+  replace the 338-line `if` chain;
+- `model_client.py`: `BB_MODEL_BASE_URL` (another Bedrock region) and
+  `BB_MODEL_ID` (another model) are read for development runs; the hosted
+  settings are unchanged. The one-shot baseline keeps its own copy of this
+  file on purpose: `agents/one-shot/` is frozen (tag `one-shot-v1`) and a
+  submission ZIP must be self-contained, so the two copies have diverged and
+  cannot share a module.
+
 Version 0.3.0 (2 November), for submitted runs with no build feedback:
 - the model can read and search the whole failure log (`read_log`, `search_log`);
   the log excerpt it is shown carries line numbers;

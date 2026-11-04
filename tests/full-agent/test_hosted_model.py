@@ -218,3 +218,24 @@ class HostedMain(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DevelopmentOverrides(unittest.TestCase):
+    """Demo 2 feedback: the region was hard-coded with no way to change it."""
+
+    def test_region_and_model_come_from_the_environment(self):
+        env = {"BB_MODEL_API_KEY": "k", "BB_MODEL_ID": "openai.gpt-oss-20b-1:0",
+               "BB_MODEL_BASE_URL": "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1"}
+        cleared = {name: "" for name in ("BB_MODEL_NAME", "BB_MODEL_TOKEN_FILE")}
+        with patch.dict(os.environ, {**cleared, **env}):
+            client = ModelClient.from_env()
+        self.assertEqual((client.hosted, client.model, client.base_url),
+                         (False, "openai.gpt-oss-20b-1:0", env["BB_MODEL_BASE_URL"]))
+
+    def test_defaults_without_overrides(self):
+        cleared = {name: "" for name in ("BB_MODEL_NAME", "BB_MODEL_TOKEN_FILE",
+                                         "BB_MODEL_ID", "BB_MODEL_BASE_URL")}
+        with patch.dict(os.environ, {**cleared, "BB_MODEL_API_KEY": "k"}):
+            client = ModelClient.from_env()
+        self.assertIn("us-east-1", client.base_url)
+        self.assertEqual(client.model, "openai.gpt-oss-120b-1:0")

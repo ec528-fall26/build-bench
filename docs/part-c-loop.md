@@ -123,6 +123,30 @@ log path, and line number from adjacent changed attempts with failed builds.
 Handled model or build-adapter errors return a termination reason and
 preserve recorded attempts. Restoration errors are reported explicitly.
 
+## Structure of the loop (4 November)
+
+`run_loop` keeps its signature and is a thin wrapper around `_Loop`
+(`src/loop.py`). The run's state is the instance; each stage of a turn is one
+method, called in this order by `_Loop.run`:
+
+| Stage | Method | What it decides |
+| --- | --- | --- |
+| budgets | `_exhausted` | attempt, build, token and time limits |
+| request | `_request`, `_ask_model` | what the model is shown; one model call; usage accounting |
+| tool turn | `_tool_turn` | read-only tools, bounded by the call budget |
+| review | `_resolve_review` | an approve or revise reply to a reviewed batch |
+| edit turn | `_edit_turn` | the six steps below |
+| 1 | `_merge_correction` | a focused correction replaces one pending item |
+| 2 | `_validate` (`_retarget`, `_drop_reason`) | preflight, mechanical repair, one item at a time back to the model |
+| 3 | `_review` | optional proposed-batch review |
+| 4 | `_apply` | write the batch, record the attempt |
+| 5 | `_build` | build feedback if any; keep or restore the candidate |
+| 6 | `_attempt_feedback` (`_repeated_diagnostic`) | what the model is told; the repeated-diagnostic stop |
+
+A stage returns a `LoopResult` to end the run or `None` to go on to the next
+model turn. The 490 full-agent tests exercise `run_loop` only, so the
+restructuring (from one 634-line function) changed no behaviour they observe.
+
 ## Batch repair before a correction (3 November)
 
 Before an edit batch is sent back to the model for correction, the loop

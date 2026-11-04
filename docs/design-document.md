@@ -2,7 +2,7 @@
 
 **Team:** Anthony Capraru, Austin Li, Joonseo Moon, Juliette Jacques, Owen Zhang
 **Mentor:** Minghua Ma, Microsoft
-**Branch:** `demo-2`. Last updated 21 October 2026.
+**Branch:** `demo-2`. Last updated 21 October 2026. **Revised 4 November 2026** after the Demo 2 feedback: §2 names the two techniques that are specific to cross-architecture failures, §3a reports the runs since Demo 2, §4 says what the reverse-direction cases need, §5.0 says how to change the model region and model, and Experiment 5 no longer claims that `./bb ready` passes locally (it cannot, for a model-dependent agent; see there). The code the feedback measured was restructured on 4 November (full agent 0.3.3: one function per loop stage, a dispatch table for tools).
 
 > **TA: to reproduce our results, go straight to [§5](#5-how-to-reproduce-our-results).** It starts from launching a new EC2 instance and gives every command, its run time and its expected output. §§1–4 explain what the system is and what we found.
 
@@ -51,6 +51,17 @@ A run counts as **repaired** only if the validator's final, separate build repor
 | Independent final validation | A plausible-looking patch that doesn't build gets no credit. |
 | Debian source repacking in the harness | The validator consumes a Debian source package, not loose files, so the harness rebuilds it with `dpkg-source` after each edit. |
 
+### What is specific to cross-architecture failures
+
+The loop above is a standard agent loop, and the feedback on Demo 2 said so. Two things in the full agent are not, and both were measured on the real model after Demo 2 (§3a):
+
+| Technique | What it does | Why a general agent loop does not have it |
+| --- | --- | --- |
+| **Recognised cross-architecture patterns** (`src/patterns.py`, 0.3.2) | The errors and the log are matched against signatures of failures that only happen when a package is built for another CPU: a Rust crate that hard-codes C `char` as `i8` (it is `u8` on ARM), an x86-only intrinsics header included on ARM, GCC's ARM outline-atomics helpers missing at link time, a Debian symbols file written for another architecture. For a match, the agent gathers the facts the repair needs from the package itself (which files hard-code `i8` and how many lines; which `#if HAVE_*` guards the include and which header defines the macro; which symbols the diff lists) and shows them, with the usual repair, right after the compiler errors. | The portable fix is often the opposite of what the compiler message suggests. On rust-subversion the compiler says "expected `*const u8`, found `*const i8`", and the model twice "fixed" it by casting to `i8`, the wrong direction, even with the rule in its instructions. Shown the files and the replacement next to the errors, it made the portable `c_char` change across seven files in one turn and the package built. |
+| **Mechanical batch repair without build feedback** (`src/edit_repair.py`, 0.3.1–0.3.2) | The competition applies the agent's edits untested and builds once at the end, so a batch that is not written is a certain failure. Before a batch goes back to the model for correction, the controller repairs what is unambiguous: whitespace-only mismatches, an edit whose text lives in one other file, a Debian maintainer flag that needs `export` to take effect, a line inserted into a backslash-continued Makefile variable, no-op and already-made edits; and when one item cannot be fixed it drops that item alone and applies the rest. | A loop with build feedback can afford to lose a batch and try again. Without it, rust-subversion lost 26 edits to one no-op item and libunwind sent the same mis-indented text ten times; the controller's handling of failures cost more than the model's reasoning. |
+
+Both are deterministic, standard-library code with their own tests (`tests/full-agent/test_patterns.py`, `test_edit_repair.py`), and both are advice or repair that the model's own edit still has to carry: nothing is patched behind the model's back.
+
 Approaches we tried and dropped (details in [full-agent.md](full-agent.md) and [part5-findings.md](part5-findings.md)): editing in small groups of three changes, which was too slow for package-wide problems; larger token budgets alone, which didn't fix wrong or repeated edits; and summarizing compiler errors, which discarded details the model needed.
 
 ## 3. Results
@@ -73,10 +84,27 @@ What this shows:
 
 Full case-by-case results: [demo2-results.md](demo2-results.md). Raw records: `docs/evidence/demo2/paired-retest/`.
 
+### 3a. Runs since Demo 2 (3 November, full agent 0.3.0 → 0.3.2, no build feedback)
+
+These runs use the hosted regime (edits applied untested, one final validation build), one run per case, with the real model, on the same ARM64 instance. Details and every run record: [no-build-live-findings.md](no-build-live-findings.md), rounds 5–7.
+
+| Case | 0.3.0 | 0.3.2 | What decided it |
+| --- | --- | --- | --- |
+| rcran | repaired, 25 turns | repaired, 4 turns | the x86-intrinsics pattern names the config header |
+| libunwind | repaired, 39 turns | repaired, 5 turns | the outline-atomics pattern gives the `debian/rules` lines |
+| rust-subversion | not repaired | **repaired**, 13 edits in 7 files | the signedness pattern; first repair of this case in any run |
+| html-xml-utils | | repaired (`nolto`) | weak evidence: the unchanged source also builds locally |
+| ectrans | | not repaired | agent miss (CMake include path) |
+| libmceliece | | not repaired | binutils assertion, same before and after |
+| pybigwig | | not repaired | agent edited a quilt patch by hand; `dpkg-source` rejected it |
+| libbpp-core, libbpp-qt, python-intbitset, libevtx | | undetermined | x86 targets: QEMU segfaults in the chroot before the build (see §4) |
+
+On the seven cases the environment can judge, 4 of 7 are repaired (3 solid, 1 weak), against 1 of 11 at Demo 2. Model cost for the whole set was about a dollar.
+
 ## 4. Limitations and next steps
 
 - **Repair rate is low.** One repair in 22 runs. Our proposal promised a working prototype and evaluation coverage for Demo 2, not a minimum repair rate. Improving it is the Demo 3 goal.
-- **Reverse-direction cases need a working emulator setup** before they can be evaluated.
+- **Reverse-direction cases (ARM64 → x86-64) have still not been evaluated.** Their validator runs an x86-64 chroot, which on our ARM64 instance means QEMU user-mode emulation, and `chroot ... grep` segfaults inside it before the package build starts (same failure at Demo 2 and on 3 November). The harness itself has no architecture check; what is architecture-bound is the instance. The plan is to run those five cases on an x86-64 instance (`m7i.xlarge`, same Ubuntu image, same §5.2 commands) where their validator runs natively, and to keep the ARM64 instance for the other six. This has not been done yet; the x86 cases' edits from 3 November are recorded but unjudged.
 - **Results vary between runs** because the model's output varies.
 - **The competition's hosted platform isn't qualified yet.** It provides the model differently and doesn't allow in-loop builds. Notes and plan: [hosted-submission.md](hosted-submission.md).
 - **Demo 3:** controlled repeated runs, measuring whether build feedback and history help, and fixes for the edit-matching failures above.
@@ -94,7 +122,7 @@ Full case-by-case results: [demo2-results.md](demo2-results.md). Raw records: `d
 | Tools | Python 3.12 (Ubuntu's built-in; standard library only, no `pip install`). Docker, `dpkg-dev`, git, QEMU and tmux from Ubuntu's package manager (§5.2). |
 | Accounts | GitHub read access to this repository, and an AWS account that can launch EC2 and use Amazon Bedrock. The case bundles download without an account. |
 | Our code | This repository at tag `demo2-ta-v1`. The starter kit is committed inside it. |
-| Model | Amazon Bedrock, `us-east-1`, model `openai.gpt-oss-120b-1:0`. Needed for Experiments 3–5 only. |
+| Model | Amazon Bedrock, `us-east-1`, model `openai.gpt-oss-120b-1:0`. Needed for Experiments 3–4 only. **Another region:** set `BB_MODEL_BASE_URL` to `https://bedrock-runtime.<region>.amazonaws.com/openai/v1` and generate the key in that region; the default is us-east-1 because that is where we enabled model access. **Another model:** set `BB_MODEL_ID` to its Bedrock id (full agent) or edit `MODEL_ID` in the one-shot agent, which is frozen. In the competition neither applies: the hosted runner injects `BB_MODEL_BASE_URL`, `BB_MODEL_NAME` and `BB_MODEL_TOKEN_FILE`, and the agent reads those first. |
 | Cost | EC2 is about $0.16/hour. Bedrock calls cost a few cents per run. Terminate the instance when finished. |
 
 | Experiment | What it shows | Needs model key? | Time |
@@ -338,44 +366,22 @@ Expected: `22 live runs: 11 cases × 2 agents × 1 repeat(s). No calls/builds st
 
 Expected (about 2 h, up to 4 h): progress lines `[1/22] ...` to `[22/22] ...`, with long quiet periods during builds, ending with `Schedule complete. Read results.md and coverage.json; already-building cases are not repairs.` The output folder's `results.md` has one row per case and agent. Compare it with §3. As in our run, expect the five ARM64 → x86-64 cases to fail during setup. If the run stops partway (for example, the key expired), paste a new key and rerun the same command with `--resume` added.
 
-### Experiment 5: Starter kit readiness check
+### Experiment 5: Starter kit checks
 
-`./bb ready` is the competition starter kit's own test. It validates the agent's packaging, runs the agent on a small example package called `hello`, and builds the result. By default, the kit runs the agent with no network access. For this local test we changed the kit's runner (`runner/run-agent-case.sh`) so that `BB_LOCAL_AGENT_NETWORK=bridge` turns on network access and the model key is passed into the agent's container. Without that change, the agent cannot reach the model. This experiment runs in the **main** checkout, not the recorded one, and in the shell that holds the key:
+**What changed since 21 October.** This section used to say that `./bb ready` passes for our agents after a change to the kit's runner (`runner/run-agent-case.sh`) that gave the agent network access and the model key. That change was committed after the Demo 2 deadline, so the submitted code could not pass this experiment, and the grader's `./bb ready` failed twice. We have withdrawn the claim and the runner change: the kit's `AGENTS.md` forbids modifying `runner/` for a submission, and the current kit (rc.5) runs the agent with `--network none` and injects no model settings locally. A model-dependent agent therefore cannot pass `./bb ready` on a laptop or on EC2, by design. Verified on 4 November with full agent 0.3.3 on the ARM64 instance, no key in the environment: the kit prints `✓ Agent submission is valid`, `✓ Example Case prepared`, `✓ Initial build failure reproduced`, `✓ Agent completed`, then `generate_patch.py: error: Agent made no allowed textual change`, `[1/1] hello failed (exit=2)`, `Passed: 0/1`, and exits 5; the agent's own `agent-result.json` in the run folder says `No model API key configured (set BB_MODEL_API_KEY).` That outcome is the expected one, not a setup error, and it is what the grader saw.
 
-```bash
-cd "$HOME/build-bench-demo2/buildbench-starter-kit-0.1.0-rc.2" &&
-export BB_VALIDATOR_IMAGE='ghcr.io/terriyyy/buildbench-validator-runtime@sha256:11151f88f6b12c578b9c9fafd0420d6da27c6969b5909aaa4c51e78dd9acd7c7' &&
-export BB_EXAMPLE_ASSETS_IMAGE='ghcr.io/terriyyy/buildbench-example-assets@sha256:98bdf0f445cf0296f67ffc8b4601ab1cb1f82b957f84bd9739276f5659cdde54' &&
-docker pull "$BB_VALIDATOR_IMAGE" && docker pull "$BB_EXAMPLE_ASSETS_IMAGE" &&
-export BB_LOCAL_AGENT_NETWORK=bridge &&
-./bb ready --agent ./agents/full-agent --output runs/readiness/ta-full-agent/full-agent.zip --json
-```
+What `./bb` can verify locally is packaging. This runs offline, in a checkout of **main** (its kit is rc.5; the `demo2-ta-v1` tag carries rc.2, whose `bb check` behaves the same), and must pass:
 
 ```bash
-./bb ready --agent ./agents/one-shot --output runs/readiness/ta-one-shot/one-shot.zip --json
+git clone https://github.com/ec528-fall26/build-bench.git "$HOME/build-bench-main" &&
+cd "$HOME/build-bench-main/buildbench-starter-kit-0.1.0-rc.5" &&
+./bb check --agent ./agents/full-agent &&
+./bb package --agent ./agents/full-agent
 ```
 
-A pass looks like this:
+Expected: `✓ Agent submission is valid` (31 files for 0.3.3), then the ZIP path, size and SHA-256 from `bb package`. The same two commands for `./agents/one-shot`.
 
-```text
-✓ Agent submission is valid
-✓ Example Case prepared
-✓ Initial build failure reproduced
-✓ Agent completed
-✓ Canonical patch generated
-✓ Final validation succeeded
-[1/1] hello succeeded
-...
-"status": "succeeded", "exit_code": 0
-```
-
-**This result varies between runs.** `hello` is an RPM package, but our agents are built for Debian, so the model sometimes gives up without editing. You then see `✓ Agent completed`, `Agent made no allowed textual change`, `Passed: 0/1` and exit code 5. That is a valid model outcome, not a setup error. In our runs, the full agent passed 2 of 3 times. Its passing package hash (`153413be…`) was identical each time. One-shot passed 1 of 3 times, because its fixed file list doesn't include `.spec` files. To confirm the model was actually called, print the agent's message using the run folder shown after `Summary:`:
-
-```bash
-grep -o '"message": *"[^"]*"' runs/tests/<agent>/<run>/cases/hello/agent-result.json
-```
-
-A message explaining the model's reasoning means the setup works. `No model API key configured` means the key didn't reach the agent: check that you're in the shell where you pasted it.
+The model-dependent part is verified where model access exists: the organizers' **Hosted Smoke**, which checks model access, agent execution and independent validation on their platform. Full agent 0.2.0 passed it on 3 November; the version table and the procedure are in [hosted-submission.md](hosted-submission.md). The repair ability itself is measured by Experiments 3–4 and §3a, which use the real validator through our harness.
 
 ### 5.5 When you're done
 

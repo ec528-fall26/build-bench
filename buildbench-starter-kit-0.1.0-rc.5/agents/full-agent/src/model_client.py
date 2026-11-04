@@ -8,6 +8,8 @@ Two configurations, both Chat Completions:
   environment and only the documented request fields.
 - Development: Amazon Bedrock with BB_MODEL_API_KEY and MODEL_ID, the one model
   used for every local result; results from different models are not comparable.
+  BB_AGENT_MODEL_ID (with BB_MODEL_BASE_URL) picks another model for a local
+  comparison run; a hosted run ignores it and uses the injected alias.
 
 Standard library only.
 """
@@ -272,6 +274,20 @@ def hosted_settings(environ=None) -> tuple[str, str, str] | None:
     return base, alias, token
 
 
+_MODEL_ID_SHAPE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}")
+
+
+def local_model_id(environ=None) -> str:
+    """The development model: BB_AGENT_MODEL_ID if set, else MODEL_ID."""
+    environ = os.environ if environ is None else environ
+    value = environ.get("BB_AGENT_MODEL_ID", "").strip()
+    if not value:
+        return MODEL_ID
+    if not _MODEL_ID_SHAPE.fullmatch(value):
+        raise ModelConfigError("BB_AGENT_MODEL_ID is not a model id")
+    return value
+
+
 class ModelClient:
     """One model call per case. Edits are judged later, one by one, by Part 4."""
 
@@ -304,7 +320,8 @@ class ModelClient:
             return cls(token, base, opener=no_proxy.open, max_attempts=1,
                        timeout=HOSTED_TIMEOUT, model=alias, hosted=True)
         return cls(os.environ.get("BB_MODEL_API_KEY") or None,
-                   os.environ.get("BB_MODEL_BASE_URL") or DEFAULT_BASE_URL)
+                   os.environ.get("BB_MODEL_BASE_URL") or DEFAULT_BASE_URL,
+                   model=local_model_id())
 
     def propose(self, context: CaseContext) -> EditPlan:
         self.served_model = None

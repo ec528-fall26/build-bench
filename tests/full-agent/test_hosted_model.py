@@ -99,6 +99,21 @@ class Settings(unittest.TestCase):
                          (True, ALIAS, TOKEN, 1))
         self.assertEqual(client.name, f"openai-compatible:{ALIAS}")
 
+    def test_local_model_override_applies_only_without_hosted_settings(self):
+        local = {"BB_MODEL_API_KEY": "dev-key", "BB_AGENT_MODEL_ID": "anthropic.claude-opus-5-5",
+                 "BB_MODEL_BASE_URL": "https://bedrock-mantle.us-east-1.api.aws/v1"}
+        with patch.dict(os.environ, local, clear=True):
+            client = ModelClient.from_env()
+        self.assertEqual((client.hosted, client.model, client.base_url),
+                         (False, "anthropic.claude-opus-5-5", local["BB_MODEL_BASE_URL"]))
+        with patch.dict(os.environ, {**self.env, "BB_AGENT_MODEL_ID": "other.model"}):
+            self.assertEqual(ModelClient.from_env().model, ALIAS)
+        with patch.dict(os.environ, {"BB_MODEL_API_KEY": "dev-key"}, clear=True):
+            self.assertEqual(ModelClient.from_env().model, model_client.MODEL_ID)
+        with patch.dict(os.environ, {"BB_AGENT_MODEL_ID": "bad id\n"}, clear=True):
+            with self.assertRaises(ModelConfigError):
+                ModelClient.from_env()
+
 
 class Requests(unittest.TestCase):
     def client(self, opener, hosted=True):

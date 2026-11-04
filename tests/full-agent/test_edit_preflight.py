@@ -141,7 +141,8 @@ class PreflightTests(unittest.TestCase):
             )
         apply.assert_not_called()
         self.assertEqual(result.termination_reason, "turn_budget")
-        self.assertEqual(result.attempts, [])
+        # The second identical rejected old_text ends the batch without a write.
+        self.assertEqual([a.applied for a in result.attempts], [0])
         self.assertEqual(result.usage["input_tokens"], 2)
 
     def test_adapter_sends_and_records_validation_feedback(self):

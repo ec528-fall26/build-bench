@@ -103,14 +103,37 @@ class FocusedCorrectionTests(unittest.TestCase):
         self.assertEqual(result.attempts[0].applied, 2)
         self.assertNotIn("WRONG", self.path.read_text())
 
-    def test_correction_limit_leaves_files_unchanged(self):
+    def test_unfixable_single_item_discards_the_batch_and_continues(self):
+        # A correction that repeats an already rejected old_text cannot succeed,
+        # so the item is dropped at once; with nothing left, the batch is over
+        # (it costs an attempt) and the model may propose another.
+        result = self.run_script([
+            turn([edit("absent", "new")]),
+            turn([edit("still absent", "new")]),
+            turn([edit("still absent", "new")]),
+            turn([edit("alpha", "gamma")]),
+            self.stop(),
+        ])
+        self.assertEqual(result.termination_reason, "model_stop")
+        self.assertEqual([a.applied for a in result.attempts], [0, 1])
+        self.assertEqual(self.path.read_text(), self.original.replace("alpha", "gamma"))
+        self.assertIn("No edit of that batch could be applied", self.requests[3].feedback)
+        self.assertEqual(self.requests[3].edit_validation_feedback, "")
+
+    def test_correction_budget_applies_the_rest_of_the_batch(self):
+        # rust-subversion, 2 November: 26 edits, one unfixable, none written.
+        corrections = [turn([edit(f"absent {n}", "new")]) for n in range(12)]
         result = self.run_script(
-            [turn([edit("absent", "new")])]
-            + [turn([edit("still absent", "new")]) for _ in range(12)]
+            [turn([edit("alpha", "gamma"), edit("absent", "new"),
+                   edit("second repeat", "second replacement")])]
+            + corrections + [self.stop()]
         )
-        self.assertEqual(result.termination_reason, "edit_correction_budget")
-        self.assertEqual(result.attempts, [])
-        self.assertEqual(self.path.read_text(), self.original)
+        self.assertEqual(result.termination_reason, "model_stop")
+        self.assertEqual(len(result.attempts), 1)
+        self.assertEqual(result.attempts[0].applied, 2)
+        self.assertEqual(self.path.read_text(), "gamma\nfirst repeat\nsecond replacement\n")
+        self.assertIn("the correction budget was spent on it", self.requests[-1].feedback)
+        self.assertIn("Accepted 2 of 2", self.requests[-1].feedback)
 
     def test_an_edit_an_earlier_one_already_made_is_dropped(self):
         # rust-subversion, 2 Nov: replace_all "*const i8" made every
@@ -125,7 +148,8 @@ class FocusedCorrectionTests(unittest.TestCase):
         self.assertEqual(result.attempts[0].applied, 1)
         self.assertEqual(self.path.read_text(), "a as *const u8;\nfn f(p: *const u8) {}\n")
         self.assertEqual(self.requests[1].edit_validation_feedback, "")
-        self.assertIn("1 more was dropped", self.requests[1].feedback)
+        self.assertIn("an earlier edit in the batch had already made its change",
+                      self.requests[1].feedback)
 
     def test_dropped_when_every_broad_match_is_also_a_narrow_one(self):
         # delta.rs: all 13 "*const i8" were "as *const i8".

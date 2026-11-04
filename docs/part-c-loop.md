@@ -123,6 +123,52 @@ log path, and line number from adjacent changed attempts with failed builds.
 Handled model or build-adapter errors return a termination reason and
 preserve recorded attempts. Restoration errors are reported explicitly.
 
+## Batch repair before a correction (3 November)
+
+Before an edit batch is sent back to the model for correction, the loop
+repairs it mechanically where the intended result is unambiguous
+(`src/edit_repair.py`, `prune_batch`), repeating until the first remaining
+problem is one only the model can resolve:
+
+| Problem | What happens | Why |
+| --- | --- | --- |
+| `DEB_*_MAINT_*` or `DEB_BUILD_MAINT_OPTIONS` added to debian/rules at make level without `export` | `export` is added | dpkg-buildflags reads the environment; an unexported line reaches no compile (libunwind, round 4). Tab-indented recipe lines are left alone: there `VAR=value command` is shell |
+| `no_change` (old_text equals new_text) | dropped | it changes nothing (rust-subversion, round 4: this one item cost the other 25) |
+| an exact duplicate of an earlier edit | dropped | the first copy already makes the change |
+| a change an earlier edit in the batch already made | dropped | a broad replace_all followed by a narrower one |
+| old_text absent, but one run of lines matches it apart from indentation; no indented line written at column 0; each model indent stands for one real indent; new_text uses only those indents | old_text replaced by the file's text; new_text re-indented the same way | the model wrote two tabs for three ten times (libunwind). Anything less clear-cut is not touched |
+| old_text absent, but one run of lines matches it apart from leading or trailing whitespace (any other shape) | the correction shows those exact lines with tabs and spaces made visible | the model copies the real whitespace instead of guessing again |
+| an assignment inserted between a line ending in `\` and its continuation (Makefile, Makefile.am, debian/rules, *.mk), or appended as a continued item | rejected: `breaks_backslash_continuation`, with where to put the line | the 19 October libunwind diff split `noinst_PROGRAMS_cdep` |
+| `old_text_not_found`, old_text occurs nowhere in the file on disk and new_text (12+ characters) already does (0.3.2) | dropped: the change has already been made, with a note saying so | after the batch that replaced every `i8` with `c_char`, the model proposed the same `replace_all` 35 more times and searched for the text between corrections (rust-subversion, round 6) |
+| an edit that only removes `export` from such a line (0.3.2) | dropped, with the reason | the model decided `export VAR += value` was invalid make and spent 37 turns on it while the controller re-exported each attempt into a no-op (libunwind, round 5) |
+| `old_text_not_found`, the text is not in the file the edit names, and it occurs exactly once in exactly one other file of the same type under `input/` (0.3.2) | the edit is moved to that file (`retarget_path`), with a note | 16 edits named `src/client.rs` for functions in `src/delta.rs`; each cost one to three correction turns (rust-subversion, round 5). The text must be at least 24 characters, and the target must pass the path policy |
+
+What remains goes to the focused correction as before, with two new ways out:
+a correction that repeats an `old_text` already rejected for that item, and
+the item's correction budget running out, both **drop that item alone and
+continue validating the rest of the batch**, which is then applied
+(`termination_reason` `edit_correction_budget` no longer exists). The budget
+belongs to the item being corrected: a batch has 12 corrections in all, and
+a later item always gets at least 3 of them, so one bad item cannot keep the rest
+of the batch from being applied, and a second bad item is not dropped unseen.
+The same applies to an edit whose path lacks the `input/` prefix. A batch
+with nothing left to apply is recorded as an attempt with no edits, so the
+attempt budget still bounds the run, and the model is told to propose another
+batch or stop. Every repair and drop is reported to the model with the
+attempt's result (`LoopRequest.notes`).
+
+A GNU make conditional (`ifeq`, `ifdef`) added to a `Makefile.am` is applied
+with a warning that automake owns `if`/`else`/`endif` there and the regenerated
+Makefile will fail (`static_warnings`).
+
+Separately from the batch repair, `src/patterns.py` (0.3.2) looks at the
+diagnostics and the log once per case and, when they match a known
+cross-architecture failure, renders a block right after the errors in the
+opening message: the evidence, the files involved (gathered from the
+worktree), and the usual repair. It is the playbook's advice moved to where
+the model reads, with the facts filled in; it edits nothing. See
+`docs/no-build-live-findings.md`, round 5, for why.
+
 ## Budget limitations
 
 Time checks prevent new work from starting after the working deadline,
@@ -277,7 +323,7 @@ reproducibility still requires saving the runner and environment details.
 
 Merged from `reviewed-repairs.md` (19 October) on 2 November, unchanged apart
 from headings. Edits that an earlier edit in their batch already made are now
-dropped before correction (`edit_preflight.drop_covered`); see
+dropped before correction (`edit_repair.prune_batch`); see
 `no-build-live-findings.md`.
 
 This full-agent extension contains no package-specific solution. The frozen one-shot agent is unchanged.

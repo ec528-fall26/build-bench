@@ -1,5 +1,7 @@
 """Read-only validation of a sequential edit batch against a snapshot."""
 
+import difflib
+from pathlib import PurePosixPath
 import re
 
 from .edit_applier import EditRejected, MAX_FILE_BYTES, _policy_reason, replacement
@@ -40,6 +42,76 @@ def _context(text, positions):
         )
         blocks.append(excerpt)
     return "\n---\n".join(blocks)
+
+
+_MAKE_ASSIGNMENT = re.compile(r"^\s*[A-Za-z_@$(][\w.@$(){}-]*\s*[:+?!]?=")
+CONTINUATION_BREAK = "breaks_backslash_continuation"
+
+
+def _is_makefile(path: str) -> bool:
+    name = PurePosixPath(path)
+    return (name.parts[-2:] == ("debian", "rules")
+            or name.name.lower().startswith(("makefile", "gnumakefile"))
+            or name.suffix == ".mk")
+
+
+def window_matches(file_lines: list[str], wanted: list[str]) -> list[int]:
+    """Start indices where ``wanted`` matches consecutive lines, whitespace aside."""
+    width = len(wanted)
+    return [start for start in range(len(file_lines) - width + 1)
+            if all(file_lines[start + k].strip() == wanted[k] for k in range(width))]
+
+
+def whitespace_window(text: str, old_text: str) -> tuple[int, list[str]] | None:
+    """(first line number, exact lines) of the one place old_text matches
+    apart from leading and trailing whitespace, or None."""
+    if not isinstance(old_text, str) or not old_text.strip():
+        return None
+    wanted = [line.strip() for line in old_text.rstrip("\n").split("\n")]
+    if not wanted or not any(wanted):
+        return None
+    lines = text.split("\n")
+    starts = window_matches(lines, wanted)
+    if len(starts) != 1:
+        return None
+    start = starts[0]
+    return start + 1, lines[start:start + len(wanted)]
+
+
+def _visible(line: str) -> str:
+    """A line with its whitespace made visible (tabs as ->, a trailing CR as \\r)."""
+    return line.replace("\t", "->").replace("\r", "\\r").replace(" ", "\u00b7")
+
+
+def continuation_breaks(path: str, before: str, after: str) -> list[int]:
+    """Line numbers (1-based, in ``after``) of inserted assignments that split a
+    backslash-continued line: the line above still ends in a backslash, so make
+    reads the insertion as part of that variable and the original continuation
+    as a stray line (libunwind, 19 October: three *_LDFLAGS lines inside
+    noinst_PROGRAMS_cdep)."""
+    if not _is_makefile(path):
+        return []
+    old_lines, new_lines = before.split("\n"), after.split("\n")
+    breaks = []
+    matcher = difflib.SequenceMatcher(None, old_lines, new_lines, autojunk=False)
+    for tag, _, _, j1, j2 in matcher.get_opcodes():
+        if tag not in ("insert", "replace"):
+            continue
+        for j in range(j1, j2):
+            line = new_lines[j]
+            if not (j > 0 and new_lines[j - 1].rstrip().endswith("\\")
+                    and not line.rstrip().endswith("\\") and _MAKE_ASSIGNMENT.match(line)):
+                continue
+            first = j - 1
+            while first > 0 and new_lines[first - 1].rstrip().endswith("\\"):
+                first -= 1
+            if new_lines[first].startswith("\t"):
+                continue  # a recipe: "VAR=value" as a continued argument is shell
+            # Inside a make-level variable an indented "LDFLAGS=-x" is a plausible
+            # continued item; a column-0 line or "X = 1" is a new statement.
+            if line[:1] not in (" ", "\t") or re.match(r"^\s*\S+\s+[:+?!]?=", line):
+                breaks.append(j + 1)
+    return breaks
 
 
 def inspect_batch(snapshot, edits):
@@ -92,6 +164,9 @@ def inspect_batch(snapshot, edits):
                 raise EditRejected(reason)
             if len(after.encode("utf-8")) > MAX_FILE_BYTES:
                 raise EditRejected("result_too_large")
+            broken = continuation_breaks(edit.path, before, after)
+            if broken:
+                raise EditRejected(f"{CONTINUATION_BREAK}: result line {broken[0]}")
             current[edit.path] = after
         except (EditRejected, UnicodeError) as error:
             issues.append((
@@ -121,31 +196,6 @@ def _covered(original, earlier, edit, before):
     except (EditRejected, UnicodeError):
         return False
     return text == before
-
-
-def drop_covered(snapshot, edits):
-    """The batch without edits an earlier edit in it already made, and how many.
-
-    A broad replace_all followed by a narrower one (*const i8, then
-    as *const i8) leaves the second nothing to match. Its change is already
-    in the batch, so it is dropped instead of sent back for correction:
-    rust-subversion spent all twelve corrections re-reading the file on disk,
-    where the narrow text still appears because nothing is written yet.
-    """
-    edits = list(edits)
-    originals = {saved.path: saved.content.decode("utf-8") for saved in snapshot.files}
-    dropped = 0
-    while True:
-        issues = inspect_batch(snapshot, edits)
-        if not issues:
-            break
-        index, edit, reason, _, before, _ = issues[0]
-        if (reason != "old_text_not_found" or before is None
-                or not _covered(originals[edit.path], edits[:index], edit, before)):
-            break
-        del edits[index]
-        dropped += 1
-    return edits, dropped
 
 
 def validate_batch(snapshot, edits):
@@ -234,7 +284,24 @@ def focused_feedback(snapshot, edits, hypothesis):
         f"replace_all: {getattr(edit, 'replace_all', False)!r}. Preserve the intended mode explicitly.",
         detail,
     ]
+    if reason.startswith(CONTINUATION_BREAK):
+        blocks.append(
+            "\nThe line above your inserted line ends in a backslash, so make would read "
+            "your line as part of that continued variable and the variable's remaining "
+            "lines as a stray statement. Put the new line after the variable's last line "
+            "(the first following line that does not end in a backslash), or add it to the "
+            "end of the continued list. Then copy old_text from that place, with its exact "
+            "whitespace.")
     if reason == "old_text_not_found" and before is not None:
+        found = whitespace_window(before, edit.old_text)
+        if found is not None:
+            number, exact = found
+            blocks.append(
+                f"\nYour old_text matches lines {number}-{number + len(exact) - 1} of the file "
+                "apart from leading or trailing whitespace. The exact text is below, with "
+                "tabs shown as -> and spaces as \u00b7; copy the real whitespace into old_text "
+                "and keep the same indentation in new_text:\n"
+                + "\n".join(f"{number + k}: {_visible(line)}" for k, line in enumerate(exact)))
         original = next(saved.content.decode("utf-8")
                         for saved in snapshot.files if saved.path == edit.path)
         if edit.old_text in original:

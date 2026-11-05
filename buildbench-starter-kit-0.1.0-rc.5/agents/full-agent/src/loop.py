@@ -126,6 +126,10 @@ def _still_valid(results: list[ToolResult], edited: set[str]) -> list[ToolResult
             kept.append(result)
     return kept
 
+# What one stage hands back to the turn loop: a LoopResult ends the run; None
+# means "ask the model again".
+_CONTINUE = None
+
 
 def run_loop(
     context: CaseContext,
@@ -145,6 +149,17 @@ def run_loop(
     max_tool_calls: int = 120,
     clock: Callable[[], float] = monotonic,
 ) -> LoopResult:
+    """Run the repair loop for one case until it stops; see ``_Loop``."""
+    return _Loop(
+        context, next_turn=next_turn, config=config, budget=budget,
+        build_feedback=build_feedback, patch_policy=patch_policy,
+        review_edits=review_edits, initial_diagnostics=initial_diagnostics,
+        log_path=log_path, max_turns=max_turns, max_tool_calls=max_tool_calls,
+        clock=clock,
+    ).run()
+
+
+def _validate_limits(budget: Budget, review_edits, max_turns, max_tool_calls) -> None:
     # Provisional local safeguards, not official competition limits.
     if type(review_edits) is not bool:
         raise ValueError("review_edits must be a boolean")
@@ -152,10 +167,6 @@ def run_loop(
         raise ValueError("max_turns must be a positive integer.")
     if type(max_tool_calls) is not int or max_tool_calls < 0:
         raise ValueError("max_tool_calls must be a non-negative integer.")
-    if config is None:
-        config = AgentConfig()
-    if budget is None:
-        budget = Budget()
     if type(budget.max_attempts) is not int or budget.max_attempts < 0:
         raise ValueError("max_attempts must be a non-negative integer.")
     if type(budget.max_builds) is not int or budget.max_builds < 0:
@@ -164,600 +175,563 @@ def run_loop(
         raise ValueError("max_tokens must be a non-negative integer.")
     if type(budget.max_seconds) is not int or budget.max_seconds <= 0:
         raise ValueError("max_seconds must be a positive integer.")
-    if (
-        type(budget.reserve_seconds) is not int
-        or not 0 <= budget.reserve_seconds <= budget.max_seconds
-    ):
-        raise ValueError(
-            "reserve_seconds must be between zero and max_seconds."
-        )
-
-    work_deadline = (
-        clock() + budget.max_seconds - budget.reserve_seconds
-    )
-    # Initialize per run state
-    build_calls = 0
-    tracker = DiffTracker(context.worktree)
-    tool_results = []
-    tool_calls = 0
-    usage = {"input_tokens": 0, "output_tokens": 0}
-    known_usage = {"input_tokens": 0, "output_tokens": 0}
-    feedback = ""
-    latest_attempt_feedback = ""
-    batch_notes: list[str] = []
-    edit_validation_feedback = ""
-    pending_turn = None
-    pending_index = None
-    review_turn = None
-    review_key = None
-    proposal_review = ""
-    review_events = []
-    correction_responses = 0
-    max_correction_responses = 12
-    # (path, old_text) of corrections already rejected for the pending item: a
-    # repeat cannot succeed either (libunwind sent one ten times, 3 November).
-    rejected_texts: set[tuple[str, str]] = set()
-    # The item being corrected keeps an identity across corrections (a
-    # correction replaces it in its slot), so its budget follows the item.
-    slot_ids = iter(range(1, 1_000_000))
-    pending_slot = None
-    pending_position = 0           # that item's number in the model's list
-    pending_notes: list[str] = []  # prune notes of the batch being corrected
-    review_notes: list[str] = []   # prune notes of a batch awaiting approval
-    malformed_count = 0
-    empty_edit_streak = 0
-    attempts: list[Attempt] = []
-    best_build: BuildResult | None = None
-    kept_attempts: list[int] = []
+    if (type(budget.reserve_seconds) is not int
+            or not 0 <= budget.reserve_seconds <= budget.max_seconds):
+        raise ValueError("reserve_seconds must be between zero and max_seconds.")
 
 
-    def finish(reason: str, message: str) -> LoopResult:
+class _Loop:
+    """One case's repair loop: a model turn is requested, parsed and acted on
+    until a budget runs out or the model stops.
+
+    Each stage of a turn is one method, in the order ``run`` calls them:
+
+      _exhausted         the attempt, build, token and time budgets
+      _request           what the model is shown this turn
+      _ask_model         one model call, usage accounting
+      _tool_turn         read-only tools, bounded by a call budget
+      _resolve_review    an approve or revise reply to a reviewed batch
+      _edit_turn         an edit batch, in six steps:
+        _merge_correction    a focused correction replaces one pending item
+        _validate            preflight; mechanical repair; one item at a
+                             time back to the model (edit_repair, path_feedback)
+        _review              optional proposed-batch review
+        _apply               write the batch, record the attempt
+        _build               build feedback, if any, and candidate retention
+        _attempt_feedback    what the model is told, and the repeated-
+                             diagnostic stop
+
+    A stage returns a LoopResult to end the run or _CONTINUE to go on to the
+    next model turn. The run's state is the instance; ``finish`` snapshots it.
+    """
+
+    MAX_CORRECTIONS = 12   # per batch; a later item always keeps at least 3
+
+    def __init__(self, context: CaseContext, *, next_turn, config, budget, build_feedback,
+                 patch_policy, review_edits, initial_diagnostics, log_path, max_turns,
+                 max_tool_calls, clock):
+        self.config = config if config is not None else AgentConfig()
+        self.budget = budget if budget is not None else Budget()
+        _validate_limits(self.budget, review_edits, max_turns, max_tool_calls)
+        self.context = context
+        self.next_turn = next_turn
+        self.build_feedback = build_feedback
+        self.patch_policy = patch_policy
+        self.review_edits = review_edits
+        self.initial_diagnostics = initial_diagnostics
+        self.log_path = log_path
+        self.max_turns = max_turns
+        self.max_tool_calls = max_tool_calls
+        self.clock = clock
+        self.work_deadline = clock() + self.budget.max_seconds - self.budget.reserve_seconds
+
+        # Accounting
+        self.build_calls = 0
+        self.tool_calls = 0
+        self.usage = {"input_tokens": 0, "output_tokens": 0}
+        self.known_usage = {"input_tokens": 0, "output_tokens": 0}
+        self.malformed_count = 0
+        self.empty_edit_streak = 0
+        # What the model is told next turn
+        self.tracker = DiffTracker(context.worktree)
+        self.tool_results: list[ToolResult] = []
+        self.feedback = ""
+        self.latest_attempt_feedback = ""
+        self.batch_notes: list[str] = []
+        self.edit_validation_feedback = ""
+        self.proposal_review = ""
+        # The batch being corrected one item at a time
+        self.pending_turn = None
+        self.pending_index = None
+        self.pending_notes: list[str] = []   # prune notes of that batch
+        self.correction_responses = 0
+        # (path, old_text) of corrections already rejected for the pending item:
+        # a repeat cannot succeed either (libunwind sent one ten times, 3 November).
+        self.rejected_texts: set[tuple[str, str]] = set()
+        # The item being corrected keeps an identity across corrections (a
+        # correction replaces it in its slot), so its budget follows the item.
+        self.slot_ids = iter(range(1, 1_000_000))
+        self.pending_slot = None
+        self.pending_position = 0          # that item's number in the model's list
+        # A batch awaiting the model's approval (review mode)
+        self.review_turn = None
+        self.review_key = None
+        self.review_notes: list[str] = []
+        self.review_events: list[dict] = []
+        # Attempts and the retained candidate
+        self.attempts: list[Attempt] = []
+        self.best_build: BuildResult | None = None
+        self.kept_attempts: list[int] = []
+        # Per-turn working state
+        self.turn: ModelTurn | None = None
+        self.reported_usage: dict = {}
+
+    # --- run -----------------------------------------------------------------
+
+    def run(self) -> LoopResult:
+        for _ in range(self.max_turns):
+            result = self._exhausted() or self._ask_model()
+            if result is not None:
+                return result
+            action = self.turn.action
+            if action == "malformed":
+                self._malformed()
+                continue
+            if action == "stop":
+                return self.finish("model_stop", self.turn.reason)
+            if self.clock() >= self.work_deadline:
+                return self.finish("time_budget", "The time reserved for graceful shutdown was reached.")
+            if action == "tool":
+                result = self._tool_turn()
+            else:
+                approved_key = self._resolve_review()
+                if approved_key is False:
+                    continue
+                if self.turn.action != "edit":
+                    raise NotImplementedError(
+                        f"Loop handling for action {self.turn.action!r} is not implemented yet.")
+                result = self._edit_turn(approved_key)
+            if result is not None:
+                return result
+        return self.finish("turn_budget", "The model-turn limit was reached.")
+
+    def finish(self, reason: str, message: str) -> LoopResult:
         return LoopResult(
             termination_reason=reason,
             message=message,
-            attempts=deepcopy(attempts),
-            usage=dict(usage),
-            malformed_count=malformed_count,
-            known_usage=dict(known_usage),
-            current_build=deepcopy(best_build),
-            kept_attempts=list(kept_attempts),
-            review_events=deepcopy(review_events),
+            attempts=deepcopy(self.attempts),
+            usage=dict(self.usage),
+            malformed_count=self.malformed_count,
+            known_usage=dict(self.known_usage),
+            current_build=deepcopy(self.best_build),
+            kept_attempts=list(self.kept_attempts),
+            review_events=deepcopy(self.review_events),
         )
 
-    for _ in range(max_turns):
-        if clock() >= work_deadline:
-            return finish(
-                "time_budget",
-                "The time reserved for graceful shutdown was reached.",
-            )
+    def _out_of_time(self) -> bool:
+        return self.clock() >= self.work_deadline
 
-        if len(attempts) >= budget.max_attempts:
-            return finish(
-                "attempt_budget",
-                "The repair-attempt limit was reached.",
-            )
-        if (
-            config.use_build_feedback
-            and build_feedback is not None
-            and build_calls >= budget.max_builds
-        ):
-            return finish(
-                "build_budget",
-                "The build-request limit was reached.",
-            )
-        known_tokens = sum(known_usage.values())
+    def _record_attempt(self, applied: int, edits: list) -> Attempt:
+        attempt = Attempt(
+            number=len(self.attempts) + 1, hypothesis=self.turn.hypothesis,
+            edits=edits, applied=applied, build=None,
+            tokens=_normalize_usage(self.reported_usage),
+        )
+        self.attempts.append(attempt)
+        return attempt
 
-        if known_tokens >= budget.max_tokens:
-            return finish(
-                "token_budget",
-                "The reported token usage reached the limit.",
-            )
+    def _clear_pending(self) -> None:
+        self.pending_turn = None
+        self.pending_index = None
+        self.pending_slot = None
+        self.pending_notes = []
+        self.correction_responses = 0
+        self.rejected_texts.clear()
 
-        request = LoopRequest(
-            context=context,
-            tool_results=list(tool_results),
-            feedback="\n\n".join(
-                message
-                for message in (latest_attempt_feedback, feedback)
-                if message
-            ),
-            history=deepcopy(attempts) if config.use_history else [],
-            current_build=deepcopy(best_build),
-            kept_attempts=list(kept_attempts) if config.use_history else [],
-            latest_attempt=deepcopy(attempts[-1]) if attempts else None,
-            edit_validation_feedback=edit_validation_feedback,
-            proposal_review=proposal_review,
-            notes=list(batch_notes),
+    # --- before the model is asked ------------------------------------------
+
+    def _exhausted(self) -> LoopResult | None:
+        if self._out_of_time():
+            return self.finish("time_budget", "The time reserved for graceful shutdown was reached.")
+        if len(self.attempts) >= self.budget.max_attempts:
+            return self.finish("attempt_budget", "The repair-attempt limit was reached.")
+        if (self.config.use_build_feedback and self.build_feedback is not None
+                and self.build_calls >= self.budget.max_builds):
+            return self.finish("build_budget", "The build-request limit was reached.")
+        if sum(self.known_usage.values()) >= self.budget.max_tokens:
+            return self.finish("token_budget", "The reported token usage reached the limit.")
+        return _CONTINUE
+
+    def _request(self) -> LoopRequest:
+        config = self.config
+        return LoopRequest(
+            context=self.context,
+            tool_results=list(self.tool_results),
+            feedback="\n\n".join(m for m in (self.latest_attempt_feedback, self.feedback) if m),
+            history=deepcopy(self.attempts) if config.use_history else [],
+            current_build=deepcopy(self.best_build),
+            kept_attempts=list(self.kept_attempts) if config.use_history else [],
+            latest_attempt=deepcopy(self.attempts[-1]) if self.attempts else None,
+            edit_validation_feedback=self.edit_validation_feedback,
+            proposal_review=self.proposal_review,
+            notes=list(self.batch_notes),
         )
 
-
+    def _ask_model(self) -> LoopResult | None:
         try:
-            turn, reported_usage = next_turn(request)
+            self.turn, reported = self.next_turn(self._request())
         except (OSError, RuntimeError, ValueError) as exc:
-            unknown_usage = {
-                "input_tokens": None,
-                "output_tokens": None,
-            }
-            usage = _add_usage(usage, unknown_usage)
-            return finish(
-                "model_error",
-                f"Model request failed: {type(exc).__name__}: {exc}",
-            )
-
-        if pending_turn is not None:
-            correction_responses += 1
-
-        reported_usage = _normalize_usage(reported_usage)
-
-        for name, count in reported_usage.items():
+            self.usage = _add_usage(self.usage, {"input_tokens": None, "output_tokens": None})
+            return self.finish("model_error", f"Model request failed: {type(exc).__name__}: {exc}")
+        if self.pending_turn is not None:
+            self.correction_responses += 1
+        self.reported_usage = _normalize_usage(reported)
+        for name, count in self.reported_usage.items():
             if count is not None:
-                known_usage[name] += count
+                self.known_usage[name] += count
+        self.usage = _add_usage(self.usage, self.reported_usage)
+        self.feedback = ""
+        return _CONTINUE
 
-        usage = _add_usage(usage, reported_usage)
+    # --- turns that are not edits -------------------------------------------
 
-        feedback = ""
+    def _malformed(self) -> None:
+        self.malformed_count += 1
+        self.feedback = (f"Your previous reply was malformed: {self.turn.reason}\n"
+                         "Please resend a valid JSON action object.")
 
-        if turn.action == "malformed":
-            malformed_count += 1
-            feedback = (
-                f"Your previous reply was malformed: {turn.reason}\n"
-                "Please resend a valid JSON action object."
-            )
-            continue
+    def _tool_turn(self) -> LoopResult | None:
+        if not self.config.use_tools:
+            if self.pending_turn is not None:
+                self.edit_validation_feedback += (
+                    "\nReturn one correction edit, an empty edit list to remove it, or stop.")
+            else:
+                self.feedback = ("Investigation tools are disabled for this run. "
+                                 "Use the evidence already provided to propose an edit "
+                                 "or return a stop action.")
+            return _CONTINUE
+        # During a correction the pending batch stays pending: reading the
+        # file is how the model finds the text it failed to copy.
+        for tool_request in self.turn.tool_requests:
+            if self._out_of_time():
+                return self.finish("time_budget", "No time remains to start another tool.")
+            if self.tool_calls >= self.max_tool_calls:
+                return self.finish("tool_budget", "The tool-call limit was reached.")
+            self.tool_calls += 1
+            self.tool_results.append(run_tool(
+                tool_request, self.context.worktree,
+                diff_tracker=self.tracker, log_path=self.log_path,
+            ))
+        return _CONTINUE
 
-        if turn.action == "stop":
-            return finish("model_stop", turn.reason)
-
-        if clock() >= work_deadline:
-            return finish(
-                "time_budget",
-                "The time reserved for graceful shutdown was reached.",
-            )
-
-        if turn.action == "tool":
-            if pending_turn is not None and not config.use_tools:
-                edit_validation_feedback += "\nReturn one correction edit, an empty edit list to remove it, or stop."
-                continue
-            # During a correction the pending batch stays pending: reading the
-            # file is how the model finds the text it failed to copy.
-            if not config.use_tools:
-                feedback = (
-                    "Investigation tools are disabled for this run. "
-                    "Use the evidence already provided to propose an edit "
-                    "or return a stop action."
-                )
-                continue
-
-            for tool_request in turn.tool_requests:
-                if clock() >= work_deadline:
-                    return finish(
-                        "time_budget",
-                        "No time remains to start another tool.",
-                    )
-
-                if tool_calls >= max_tool_calls:
-                    return finish(
-                        "tool_budget",
-                        "The tool-call limit was reached.",
-                    )
-
-                tool_calls += 1
-                result = run_tool(
-                    tool_request,
-                    context.worktree,
-                    diff_tracker=tracker,
-                    log_path=log_path,
-                )
-                tool_results.append(result)
-
-            continue
-
-        approved_key = None
+    def _resolve_review(self):
+        """Approve: the reviewed batch becomes this turn's edit. Returns the
+        approved signature, None for an ordinary edit, or False to skip the
+        turn (nothing to approve)."""
+        turn = self.turn
         if turn.action == "approve":
-            if review_turn is None:
-                feedback = "No pending diff is available to approve. Propose an edit or stop."
+            if self.review_turn is None:
+                self.feedback = "No pending diff is available to approve. Propose an edit or stop."
+                return False
+            approved_key = self.review_key
+            self.review_events.append(
+                {"event": "approved", "signature": self.review_key, "reason": turn.reason})
+            self.turn = deepcopy(self.review_turn)
+            self.review_turn = None
+            self.proposal_review = ""
+            return approved_key
+        if turn.action == "edit" and self.review_turn is not None:
+            self.review_events.append({"event": "revised", "signature": self.review_key})
+            self.review_turn = None
+            self.proposal_review = ""
+        return None
+
+    # --- an edit batch -------------------------------------------------------
+
+    def _edit_turn(self, approved_key) -> LoopResult | None:
+        merged = self._merge_correction()
+        if merged is not True:
+            return merged
+        if not self.turn.edits:
+            return self._empty_proposal()
+        self.empty_edit_streak = 0
+        if approved_key is not None:
+            notes = list(self.review_notes)
+        elif self.pending_turn is not None:
+            notes = list(self.pending_notes)
+        else:
+            notes = []
+        self.review_notes = []
+        try:
+            snapshot = self._validate(notes)
+            if snapshot is None:
+                return _CONTINUE
+            if self._review(snapshot, notes, approved_key):
+                return _CONTINUE
+            for edit in self.turn.edits:
+                self.tracker.capture_before_edit(edit.path)
+        except (OSError, ValueError) as exc:
+            return self._capture_failed(exc)
+        warnings = self._warnings(snapshot)
+        applied = self._apply(snapshot, notes, warnings)
+        if isinstance(applied, LoopResult):
+            return applied
+        return self._build(snapshot, applied)
+
+    def _merge_correction(self):
+        """Put a focused correction into the pending batch. Returns True to go
+        on with the (merged) batch, or _CONTINUE to ask the model again."""
+        self.repeated = False   # the correction repeats an already rejected old_text
+        for position, item in enumerate(self.turn.edits, start=1):
+            if getattr(item, "_position", None) is None:
+                item._position = position   # as the model listed it, for notes
+        if self.pending_turn is None:
+            return True
+        if len(self.turn.edits) > 1:
+            self.edit_validation_feedback += (
+                "\nYour correction contained multiple edits. Return at most ONE.")
+            return _CONTINUE
+        merged = deepcopy(self.pending_turn)
+        merged.edits[self.pending_index:self.pending_index + 1] = deepcopy(self.turn.edits)
+        if not merged.edits:
+            self._clear_pending()
+            self.edit_validation_feedback = ""
+            self.feedback = "The pending batch was explicitly emptied; no files changed."
+            return _CONTINUE
+        if self.turn.edits:
+            item = merged.edits[self.pending_index]
+            item._slot = self.pending_slot
+            item._position = self.pending_position
+            self.repeated = (item.path, item.old_text) in self.rejected_texts
+        self.turn = merged
+        return True
+
+    def _empty_proposal(self) -> LoopResult | None:
+        self.empty_edit_streak += 1
+        self.batch_notes = []
+        self._record_attempt(0, [])
+        if self.empty_edit_streak >= 2:
+            return self.finish("no_edits", "Two consecutive edit proposals contained no edits.")
+        self.feedback = ("Your edit proposal contained no edits. Investigate further, "
+                         "propose a supported change, or return a stop action.")
+        return _CONTINUE
+
+    def _validate(self, notes: list[str]):
+        """Preflight the batch, repair it mechanically, and decide what the
+        model must correct. Returns the snapshot of a batch ready to apply, or
+        None when the turn ends here (an item goes back to the model, or
+        nothing applicable is left)."""
+        worktree, policy = self.context.worktree, self.patch_policy
+        snapshot = None
+        reason = key = None
+        # Validate; mechanically repair what is unambiguous; and when the
+        # model cannot fix one item, drop that item alone and apply the rest
+        # (without builds an unapplied batch is a certain failure:
+        # rust-subversion, 26 edits, none written).
+        while True:
+            self.pending_index, feedback = missing_prefix_feedback(
+                worktree, self.turn.edits, patch_policy=policy)
+            if not feedback:
+                self.pending_index, feedback = uncapturable_feedback(
+                    worktree, self.turn.edits, patch_policy=policy)
+            if not feedback:
+                snapshot = CandidateSnapshot.capture(
+                    worktree, [edit.path for edit in self.turn.edits], patch_policy=policy)
+                kept, more, _ = prune_batch(snapshot, self.turn.edits)
+                notes.extend(more)
+                self.turn = deepcopy(self.turn)
+                self.turn.edits = kept
+                if self.turn.edits:
+                    self.pending_index, feedback = focused_feedback(
+                        snapshot, self.turn.edits, self.turn.hypothesis)
+            self.edit_validation_feedback = feedback
+            if not self.turn.edits or not feedback:
+                break
+            failing = self.turn.edits[self.pending_index]
+            key = (failing.path, failing.old_text)
+            found = re.search(r"Reason: (\S+)", feedback)
+            reason = found.group(1) if found else ""
+            if self._retarget(failing, reason, notes):
                 continue
-            approved_key = review_key
-            review_events.append({"event": "approved", "signature": review_key, "reason": turn.reason})
-            turn = deepcopy(review_turn)
-            review_turn = None
-            proposal_review = ""
-        elif turn.action == "edit" and review_turn is not None:
-            review_events.append({"event": "revised", "signature": review_key})
-            review_turn = None
-            proposal_review = ""
+            why = self._drop_reason(failing, reason)
+            if why is None:
+                break
+            preview = failing.old_text[:60].replace("\n", "\\n")
+            notes.append(
+                f"Dropped edit {self.pending_position} ({failing.path}, old_text starting "
+                f"{preview!r}) because {why}{' (' + reason + ')' if reason else ''}; "
+                "the rest of the batch continued.")
+            del self.turn.edits[self.pending_index]
+            self.repeated = False
+            self.rejected_texts.clear()
+        if self.turn.edits and self.edit_validation_feedback:
+            if notes:
+                self.edit_validation_feedback += "\n\nBefore this check: " + " ".join(notes)
+            self.pending_turn = deepcopy(self.turn)
+            self.pending_notes = list(notes)
+            if reason in _ANCHOR_REASONS:
+                # Only a rejected anchor makes a repeat hopeless; a new_text
+                # problem can be fixed with the same old_text.
+                self.rejected_texts.add(key)
+            return None
+        self._clear_pending()
+        if not self.turn.edits:
+            # Nothing left that can be applied: the batch is over, and it costs
+            # an attempt so a run cannot loop on empty batches.
+            self._record_attempt(0, [])
+            self.edit_validation_feedback = ""
+            self.batch_notes = notes + ["No edit of that batch could be applied, so no "
+                                        "file changed. Propose a new batch or stop."]
+            self.feedback = " ".join(self.batch_notes)
+            return None
+        return snapshot
 
-        if turn.action == "edit":
-            repeated = False   # the correction repeats an already rejected old_text
-            if pending_turn is not None:
-                if len(turn.edits) > 1:
-                    edit_validation_feedback += "\nYour correction contained multiple edits. Return at most ONE."
-                    continue
-                merged = deepcopy(pending_turn)
-                merged.edits[pending_index:pending_index + 1] = deepcopy(turn.edits)
-                turn = merged
-                if not turn.edits:
-                    pending_turn = None
-                    pending_index = None
-                    pending_slot = None
-                    pending_notes = []
-                    correction_responses = 0
-                    rejected_texts.clear()
-                    edit_validation_feedback = ""
-                    feedback = "The pending batch was explicitly emptied; no files changed."
-                    continue
-                for item in turn.edits[pending_index:pending_index + len(merged.edits)
-                                       - len(pending_turn.edits) + 1]:
-                    item._slot = pending_slot
-                    item._position = pending_position
-                    repeated = (item.path, item.old_text) in rejected_texts
-            for position, item in enumerate(turn.edits, start=1):
-                if getattr(item, "_position", None) is None:
-                    item._position = position  # as the model listed it, for notes
-            if not turn.edits:
-                empty_edit_streak += 1
-                batch_notes = []
-                attempts.append(
-                    Attempt(
-                        number=len(attempts) + 1,
-                        hypothesis=turn.hypothesis,
-                        edits=[],
-                        applied=0,
-                        build=None,
-                        tokens=_normalize_usage(reported_usage),
-                    )
-                )
+    def _retarget(self, failing, reason: str, notes: list[str]) -> bool:
+        """Move an edit to the one file that holds its text (edit_repair)."""
+        if reason != "old_text_not_found" or getattr(failing, "_retargeted", False):
+            return False
+        target = retarget_path(self.context.worktree, failing, patch_policy=self.patch_policy)
+        if target is None:
+            return False
+        notes.append(
+            f"Moved edit {getattr(failing, '_position', self.pending_index + 1)} "
+            f"from {failing.path} to {target}: its old_text is not in the file it "
+            "named and occurs in that one file only.")
+        failing.path = target
+        failing._retargeted = True
+        return True
 
-                if empty_edit_streak >= 2:
-                    return finish(
-                        "no_edits",
-                        "Two consecutive edit proposals contained no edits.",
-                    )
+    def _drop_reason(self, failing, reason: str) -> str | None:
+        """Why the failing item is dropped rather than sent back, or None."""
+        slot = getattr(failing, "_slot", None)
+        if slot is None:
+            slot = next(self.slot_ids)
+            failing._slot = slot
+        if slot != self.pending_slot:
+            # A different item: it gets corrections of its own, but not a
+            # whole new budget after one item has used it up.
+            if self.pending_slot is not None:
+                self.correction_responses = min(
+                    self.correction_responses, self.MAX_CORRECTIONS - 3)
+            self.pending_slot = slot
+            self.pending_position = getattr(failing, "_position", self.pending_index + 1)
+            self.rejected_texts.clear()
+            self.repeated = False
+        if self.repeated:
+            return "its correction repeated an old_text that was already rejected"
+        if self.correction_responses >= self.MAX_CORRECTIONS:
+            return "the correction budget was spent on it"
+        return None
 
-                feedback = (
-                    "Your edit proposal contained no edits. "
-                    "Investigate further, propose a supported change, "
-                    "or return a stop action."
-                )
-                continue
+    def _warnings(self, snapshot) -> list[str]:
+        originals = {saved.path: saved.content.decode("utf-8") for saved in snapshot.files}
+        warnings = []
+        for path, text in simulate(snapshot, self.turn.edits).items():
+            warnings.extend(static_warnings(path, originals.get(path, ""), text))
+        return warnings
 
-            empty_edit_streak = 0
-            applied = 0
-            build = None
-            snapshot = None
-            build_error = None
-            if approved_key is not None:
-                notes = list(review_notes)
-            elif pending_turn is not None:
-                notes = list(pending_notes)
-            else:
-                notes = []
-            review_notes = []
+    def _review(self, snapshot, notes: list[str], approved_key) -> bool:
+        """Hold the batch for the model's approval; True when it is held."""
+        if not self.review_edits:
+            return False
+        current_key = signature(snapshot, self.turn)
+        if approved_key == current_key:
+            return False
+        diagnostics = (self.best_build.diagnostics if self.best_build is not None
+                       else (self.initial_diagnostics or []))
+        self.proposal_review, counts = render_review(
+            snapshot, self.turn, diagnostics, patch_policy=self.patch_policy,
+            historical=bool(self.attempts) and self.best_build is None)
+        self.review_turn = deepcopy(self.turn)
+        self.review_key = current_key
+        self.review_notes = notes
+        self.review_events.append({"event": "proposed", "signature": current_key,
+                                   "counts": counts, "feedback": self.proposal_review})
+        return True
 
+    def _capture_failed(self, exc: Exception) -> None:
+        self.feedback = f"The edit batch was not applied because its files could not be captured: {exc}"
+        self.batch_notes = []
+        self._record_attempt(0, [])
+        self._clear_pending()
+        self.edit_validation_feedback = (
+            "=== Edit batch validation failed ===\n"
+            "NO edits were written and NO build was requested.\n" + self.feedback)
+        return _CONTINUE
+
+    def _apply(self, snapshot, notes: list[str], warnings: list[str]):
+        """Write the batch and record the attempt; an int, or a LoopResult."""
+        if self._out_of_time():
+            return self.finish("time_budget", "No time remains to apply the edit batch.")
+        applied = apply_edits(self.context.worktree, self.turn.edits, patch_policy=self.patch_policy)
+        if self.review_edits and applied != len(self.turn.edits):
             try:
-                # Validate; mechanically repair what is unambiguous; and when
-                # the model cannot fix one item, drop that item alone and
-                # apply the rest (without builds an unapplied batch is a
-                # certain failure: rust-subversion, 26 edits, none written).
-                while True:
-                    pending_index, edit_validation_feedback = missing_prefix_feedback(
-                        context.worktree, turn.edits, patch_policy=patch_policy
-                    )
-                    if not edit_validation_feedback:
-                        pending_index, edit_validation_feedback = uncapturable_feedback(
-                            context.worktree, turn.edits, patch_policy=patch_policy
-                        )
-                    if not edit_validation_feedback:
-                        snapshot = CandidateSnapshot.capture(
-                            context.worktree,
-                            [edit.path for edit in turn.edits],
-                            patch_policy=patch_policy,
-                        )
-                        kept, more, _ = prune_batch(snapshot, turn.edits)
-                        notes.extend(more)
-                        turn = deepcopy(turn)
-                        turn.edits = kept
-                        if turn.edits:
-                            pending_index, edit_validation_feedback = focused_feedback(
-                                snapshot, turn.edits, turn.hypothesis
-                            )
-                    if not turn.edits or not edit_validation_feedback:
-                        break
-                    failing = turn.edits[pending_index]
-                    key = (failing.path, failing.old_text)
-                    reason = re.search(r"Reason: (\S+)", edit_validation_feedback)
-                    reason = reason.group(1) if reason else ""
-                    if reason == "old_text_not_found" and not getattr(failing, "_retargeted", False):
-                        target = retarget_path(context.worktree, failing, patch_policy=patch_policy)
-                        if target is not None:
-                            notes.append(
-                                f"Moved edit {getattr(failing, '_position', pending_index + 1)} "
-                                f"from {failing.path} to {target}: its old_text is not in the "
-                                "file it named and occurs in that one file only.")
-                            failing.path = target
-                            failing._retargeted = True
-                            edit_validation_feedback = ""
-                            continue
-                    slot = getattr(failing, "_slot", None)
-                    if slot is None:
-                        slot = next(slot_ids)
-                        failing._slot = slot
-                    if slot != pending_slot:
-                        # A different item: it gets corrections of its own, but
-                        # not a whole new budget after one item has used it up.
-                        if pending_slot is not None:
-                            correction_responses = min(
-                                correction_responses, max_correction_responses - 3)
-                        pending_slot = slot
-                        pending_position = getattr(failing, "_position", pending_index + 1)
-                        rejected_texts.clear()
-                        repeated = False
-                    if repeated:
-                        why = "its correction repeated an old_text that was already rejected"
-                    elif correction_responses >= max_correction_responses:
-                        why = "the correction budget was spent on it"
-                    else:
-                        break
-                    preview = failing.old_text[:60].replace("\n", "\\n")
-                    notes.append(
-                        f"Dropped edit {pending_position} ({failing.path}, old_text starting "
-                        f"{preview!r}) because {why}{' (' + reason + ')' if reason else ''}; "
-                        "the rest of the batch continued."
-                    )
-                    del turn.edits[pending_index]
-                    repeated = False
-                    rejected_texts.clear()
-                    edit_validation_feedback = ""
-                if turn.edits and edit_validation_feedback:
-                    if notes:
-                        edit_validation_feedback += "\n\nBefore this check: " + " ".join(notes)
-                    pending_turn = deepcopy(turn)
-                    pending_notes = list(notes)
-                    if reason in _ANCHOR_REASONS:
-                        # Only a rejected anchor makes a repeat hopeless; a
-                        # new_text problem can be fixed with the same old_text.
-                        rejected_texts.add(key)
-                    continue
-                pending_turn = None
-                pending_index = None
-                pending_slot = None
-                pending_notes = []
-                correction_responses = 0
-                rejected_texts.clear()
-                if not turn.edits:
-                    # Nothing left that can be applied: the batch is over, and
-                    # it costs an attempt so a run cannot loop on empty batches.
-                    attempts.append(Attempt(
-                        number=len(attempts) + 1, hypothesis=turn.hypothesis,
-                        edits=[], applied=0, build=None,
-                        tokens=_normalize_usage(reported_usage),
-                    ))
-                    edit_validation_feedback = ""
-                    batch_notes = notes + ["No edit of that batch could be applied, so no "
-                                           "file changed. Propose a new batch or stop."]
-                    feedback = " ".join(batch_notes)
-                    continue
-                originals = {saved.path: saved.content.decode("utf-8")
-                             for saved in snapshot.files}
-                warnings = []
-                for path, text in simulate(snapshot, turn.edits).items():
-                    warnings.extend(static_warnings(path, originals.get(path, ""), text))
-                if review_edits:
-                    current_key = signature(snapshot, turn)
-                    if approved_key != current_key:
-                        proposal_review, counts = render_review(
-                            snapshot, turn,
-                            best_build.diagnostics if best_build is not None else (initial_diagnostics or []),
-                            patch_policy=patch_policy,
-                            historical=bool(attempts) and best_build is None,
-                        )
-                        review_turn = deepcopy(turn)
-                        review_key = current_key
-                        review_notes = notes
-                        review_events.append({"event": "proposed", "signature": current_key,
-                                              "counts": counts, "feedback": proposal_review})
-                        continue
-                # Capture every affected file before applying any edits.
-                for edit in turn.edits:
-                    tracker.capture_before_edit(edit.path)
-            except (OSError, ValueError) as exc:
-                feedback = (
-                    f"The edit batch was not applied because its files "
-                    f"could not be captured: {exc}"
-                )
-                batch_notes = []
-                attempts.append(Attempt(
-                    number=len(attempts) + 1, hypothesis=turn.hypothesis,
-                    edits=[], applied=0, build=None,
-                    tokens=_normalize_usage(reported_usage),
-                ))
-                pending_turn = None
-                pending_index = None
-                pending_slot = None
-                pending_notes = []
-                correction_responses = 0
-                rejected_texts.clear()
-                edit_validation_feedback = (
-                    "=== Edit batch validation failed ===\n"
-                    "NO edits were written and NO build was requested.\n"
-                    + feedback
-                )
-                continue
+                snapshot.restore()
+            except (OSError, ValueError, RuntimeError) as exc:
+                return self.finish("restoration_error", f"Review batch restore failed: {exc}")
+            return self.finish("edit_application_error",
+                               "Reviewed batch was not fully applied; restored files and skipped build.")
+        self.feedback = f"Accepted {applied} of {len(self.turn.edits)} proposed edit operations."
+        self.batch_notes = notes + [f"Warning (the edit was applied): {w}" for w in warnings]
+        if self.batch_notes:
+            self.feedback += " " + " ".join(self.batch_notes)
+        # Record the attempt before requesting a build.
+        self._record_attempt(applied, list(self.turn.edits))
+        # Drop only the tool results the edit may have made outdated.
+        self.tool_results[:] = _still_valid(self.tool_results, {e.path for e in self.turn.edits})
+        return applied
+
+    def _build(self, snapshot, applied: int) -> LoopResult | None:
+        """Build if feedback is available, keep or restore the candidate."""
+        attempt = self.attempts[-1]
+        build = None
+        build_error = None
+        expired_before_build = self._out_of_time()
+        if (not expired_before_build and applied > 0 and self.config.use_build_feedback
+                and self.build_feedback is not None):
+            self.build_calls += 1
+            try:
+                build = self.build_feedback.request_build(self.context.worktree)
+            except (OSError, RuntimeError, ValueError) as exc:
+                build_error = f"{type(exc).__name__}: {exc}"
             else:
-                if clock() >= work_deadline:
-                    return finish(
-                        "time_budget",
-                        "No time remains to apply the edit batch.",
-                    )
-
-                applied = apply_edits(
-                    context.worktree,
-                    turn.edits,
-                    patch_policy=patch_policy,
-                )
-                if review_edits and applied != len(turn.edits):
-                    try:
-                        snapshot.restore()
-                    except (OSError, ValueError, RuntimeError) as exc:
-                        return finish("restoration_error", f"Review batch restore failed: {exc}")
-                    return finish("edit_application_error",
-                                  "Reviewed batch was not fully applied; restored files and skipped build.")
-                feedback = (
-                    f"Accepted {applied} of {len(turn.edits)} proposed "
-                    "edit operations."
-                )
-                batch_notes = notes + [f"Warning (the edit was applied): {w}" for w in warnings]
-                if batch_notes:
-                    feedback += " " + " ".join(batch_notes)
-
-            # Record the attempt before requesting a build.
-            attempt = Attempt(
-                number=len(attempts) + 1,
-                hypothesis=turn.hypothesis,
-                edits=list(turn.edits),
-                applied=applied,
-                build=None,
-                tokens=_normalize_usage(reported_usage),
-            )
-            attempts.append(attempt)
-
-            # Drop only the tool results the edit may have made outdated.
-            tool_results[:] = _still_valid(tool_results, {e.path for e in turn.edits})
-
-            expired_before_build = clock() >= work_deadline
-
-            if (
-                not expired_before_build
-                and applied > 0
-                and config.use_build_feedback
-                and build_feedback is not None
-            ):
-                build_calls += 1
+                attempt.build = build
+        restored = False
+        if applied > 0:
+            should_restore = self.best_build is not None and (
+                build is None or _build_rank(build) < _build_rank(self.best_build))
+            if should_restore:
                 try:
-                    build = build_feedback.request_build(context.worktree)
-                except (OSError, RuntimeError, ValueError) as exc:
-                    build_error = f"{type(exc).__name__}: {exc}"
-                else:
-                    attempt.build = build
-
-            restored = False
-
-            if applied > 0:
-                should_restore = (
-                    best_build is not None
-                    and (
-                        build is None
-                        or _build_rank(build) < _build_rank(best_build)
-                    )
-                )
-
-                if should_restore:
-                    try:
-                        if snapshot is None:
-                            raise RuntimeError(
-                                "Missing pre-edit snapshot."
-                            )
-                        snapshot.restore()
-                    except (OSError, ValueError, RuntimeError) as exc:
-                        return finish(
-                            "restoration_error",
-                            f"Could not fully restore the retained candidate: {exc}",
-                        )
-                    restored = True
-                else:
-                    kept_attempts.append(attempt.number)
-                    best_build = deepcopy(build)
-
-            if expired_before_build:
-                return finish(
-                    "time_budget",
-                    "The working deadline was reached; no build was "
-                    "started and candidate selection has completed.",
-                )
-
-            if build_error is not None:
-                return finish(
-                    "build_error",
-                    f"Build feedback failed: {build_error}",
-                )
-
-            if build is None:
-                feedback += (
-                    "\nNo build result is available for this attempt; "
-                    "the candidate has not been validated."
-                )
-            elif build.succeeded:
-                return finish(
-                    "build_succeeded",
-                    "The build-feedback adapter reported success.",
-                )
+                    if snapshot is None:
+                        raise RuntimeError("Missing pre-edit snapshot.")
+                    snapshot.restore()
+                except (OSError, ValueError, RuntimeError) as exc:
+                    return self.finish("restoration_error",
+                                       f"Could not fully restore the retained candidate: {exc}")
+                restored = True
             else:
-                messages = "\n".join(
-                    diagnostic.message
-                    for diagnostic in build.diagnostics
-                )
-                feedback += (
-                    f"\nBuild failed. Reported stage: {build.stage_reached}."
-                    f"\nDiagnostics:\n{messages or 'No diagnostics returned.'}"
-                )
+                self.kept_attempts.append(attempt.number)
+                self.best_build = deepcopy(build)
+        if expired_before_build:
+            return self.finish("time_budget", "The working deadline was reached; no build was "
+                               "started and candidate selection has completed.")
+        if build_error is not None:
+            return self.finish("build_error", f"Build feedback failed: {build_error}")
+        return self._attempt_feedback(build, restored, applied)
 
-            if restored:
-                feedback += (
-                    "\nThis attempt was undone. The worktree now contains "
-                    "the previously retained candidate. The diagnostics above "
-                    "describe the discarded attempt, not the restored files."
-                )
-            if (
-                applied > 0
-                and build is not None
-                and not build.succeeded
-                and build.diagnostics
-                and len(attempts) >= 2
-            ):
-                previous = attempts[-2]
-                previous_build = previous.build
+    def _attempt_feedback(self, build, restored: bool, applied: int) -> LoopResult | None:
+        """Tell the model what the attempt did; stop on a repeated diagnostic."""
+        if build is None:
+            self.feedback += ("\nNo build result is available for this attempt; "
+                              "the candidate has not been validated.")
+        elif build.succeeded:
+            return self.finish("build_succeeded", "The build-feedback adapter reported success.")
+        else:
+            messages = "\n".join(d.message for d in build.diagnostics)
+            self.feedback += (f"\nBuild failed. Reported stage: {build.stage_reached}."
+                              f"\nDiagnostics:\n{messages or 'No diagnostics returned.'}")
+        if restored:
+            self.feedback += ("\nThis attempt was undone. The worktree now contains "
+                              "the previously retained candidate. The diagnostics above "
+                              "describe the discarded attempt, not the restored files.")
+        if self._repeated_diagnostic(build, applied):
+            return self.finish("repeated_diagnostic",
+                               "Two consecutive changed attempts reported the same leading "
+                               "diagnostic without improvement in the build-ranking heuristic.")
+        self.latest_attempt_feedback = self.feedback
+        self.feedback = ""
+        return _CONTINUE
 
-                if (
-                    previous.applied > 0
-                    and previous_build is not None
-                    and not previous_build.succeeded
-                    and previous_build.diagnostics
-                ):
-                    current_error = build.diagnostics[0]
-                    previous_error = previous_build.diagnostics[0]
-
-                    current_key = (
-                        current_error.message,
-                        current_error.log_path,
-                        current_error.line,
-                    )
-                    previous_key = (
-                        previous_error.message,
-                        previous_error.log_path,
-                        previous_error.line,
-                    )
-
-                    if (
-                        current_key == previous_key
-                        and _build_rank(build) <= _build_rank(previous_build)
-                    ):
-                        return finish(
-                            "repeated_diagnostic",
-                            "Two consecutive changed attempts reported "
-                            "the same leading diagnostic without improvement "
-                            "in the build-ranking heuristic.",
-                        )
-
-            latest_attempt_feedback = feedback
-            feedback = ""
-
-            continue
-
-        raise NotImplementedError(
-            f"Loop handling for action {turn.action!r} is not implemented yet."
-        )
-
-    return finish(
-        "turn_budget",
-        "The model-turn limit was reached.",
-    )
+    def _repeated_diagnostic(self, build, applied: int) -> bool:
+        if not (applied > 0 and build is not None and not build.succeeded
+                and build.diagnostics and len(self.attempts) >= 2):
+            return False
+        previous = self.attempts[-2]
+        previous_build = previous.build
+        if not (previous.applied > 0 and previous_build is not None
+                and not previous_build.succeeded and previous_build.diagnostics):
+            return False
+        current, before = build.diagnostics[0], previous_build.diagnostics[0]
+        same = ((current.message, current.log_path, current.line)
+                == (before.message, before.log_path, before.line))
+        return same and _build_rank(build) <= _build_rank(previous_build)

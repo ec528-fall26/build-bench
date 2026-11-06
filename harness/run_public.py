@@ -59,7 +59,9 @@ TUNED_CASES = (
 # runs get theirs from task.json.
 PATCH_POLICY = {"allowed_paths": ["input/**"],
                 "forbidden_paths": ["manifest.json", "config/**", "dependencies/**"]}
-ARCHIVE = (".dsc", ".tar.gz", ".tar.xz", ".tar.bz2", ".tar.lzma", ".tar.zst", ".diff.gz")
+# Every file a .dsc can list: the archives and the upstream signatures
+# (<orig>.tar.gz.asc, as in zvbi), which the validator checks like the rest.
+ARCHIVE = (".dsc", ".tar.gz", ".tar.xz", ".tar.bz2", ".tar.lzma", ".tar.zst", ".diff.gz", ".asc")
 
 
 def _hash_names(path: Path) -> list[str]:
@@ -81,7 +83,7 @@ def public_cases(cases_root: Path) -> list[dict]:
 
 
 def select(cases: list[dict], *, ids=None, small=False, held_out=False, sample=None,
-           seed=0) -> list[dict]:
+           seed=0, stage=None, classify=None) -> list[dict]:
     chosen = cases
     if ids:
         missing = [i for i in ids if not any(c["case_id"] == i or c["case_id"].endswith("-" + i)
@@ -94,6 +96,9 @@ def select(cases: list[dict], *, ids=None, small=False, held_out=False, sample=N
         chosen = [c for c in chosen if _matches(c["case_id"], names)]
     if held_out:
         chosen = [c for c in chosen if not _matches(c["case_id"], TUNED_CASES)]
+    if stage:
+        # The agent's own failure classifier, on each case's original log.
+        chosen = [c for c in chosen if classify(c["dir"] / "logs/target-failure.log") == stage]
     chosen = sorted(chosen, key=lambda c: c["case_id"])
     if sample is not None and sample < len(chosen):
         chosen = sorted(random.Random(seed).sample(chosen, sample), key=lambda c: c["case_id"])
@@ -214,8 +219,14 @@ def recorded(out: Path) -> dict[str, dict]:
 
 
 def cmd_run(args) -> int:
+    classify = None
+    if args.stage:
+        load_agent(AGENTS / "full-agent")
+        from src.failure import classify_failure
+        classify = lambda log: classify_failure(log).stage  # noqa: E731
     cases = select(public_cases(args.cases_root.expanduser()), ids=args.case, small=args.small,
-                   held_out=args.held_out, sample=args.sample, seed=args.seed)
+                   held_out=args.held_out, sample=args.sample, seed=args.seed,
+                   stage=args.stage, classify=classify)
     index, count = (int(x) for x in args.shard.split("/"))
     if not 1 <= index <= count:
         raise SystemExit("--shard is K/N with 1 <= K <= N")
@@ -252,11 +263,22 @@ def cmd_bundle(args) -> int:
     rows = recorded(out)
     if not rows:
         raise SystemExit(f"nothing recorded in {out}")
-    vb = _bundler()
     runs = {row["run_id"]: (row, out / row["case_id"]) for row in rows.values()}
+    if args.fill_from:
+        # Cases this run left out, taken from another run (e.g. the baseline),
+        # so the bundle covers the same cases and validates with one selection.
+        base = args.fill_from.expanduser().resolve()
+        filled = 0
+        for case_id, row in recorded(base).items():
+            if case_id not in rows:
+                rows[case_id] = row
+                runs[row["run_id"]] = (row, base / case_id)
+                filled += 1
+        print(f"{filled} cases filled in from {base}")
+    vb = _bundler()
     try:
-        sheet = vb.build_bundle(runs, sorted(runs), args.output.expanduser(),
-                                client=f"full-agent {next(iter(rows.values()))['agent_version']}")
+        # No "client" field: the website rejected a plain string there (6 November).
+        sheet = vb.build_bundle(runs, sorted(runs), args.output.expanduser())
     except vb.BundleError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
@@ -305,6 +327,8 @@ def main(argv: list) -> int:
     run.add_argument("--small", action="store_true", help="only the website's 111 small cases")
     run.add_argument("--held-out", action="store_true",
                      help="leave out the eleven cases the agent was tuned on")
+    run.add_argument("--stage", help="only cases whose original log fails at this stage "
+                                     "(the agent's classifier), e.g. test")
     run.add_argument("--sample", type=int)
     run.add_argument("--seed", type=int, default=0)
     run.add_argument("--shard", default="1/1", help="K/N: run every Nth case starting at K")
@@ -312,6 +336,8 @@ def main(argv: list) -> int:
     bundle = sub.add_parser("bundle", help="one Worktree Bundle ZIP of every recorded case")
     bundle.add_argument("--out", type=Path, required=True)
     bundle.add_argument("--output", type=Path, required=True)
+    bundle.add_argument("--fill-from", type=Path,
+                        help="another run's --out: its cases complete the bundle")
     status = sub.add_parser("status", help="count the recorded cases by outcome")
     status.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)

@@ -143,7 +143,7 @@ class Public(unittest.TestCase):
 
         output = self.root / "devval.zip"
         with redirect_stdout(io.StringIO()) as printed:
-            code = run_public.cmd_bundle(SimpleNamespace(out=self.out, output=output))
+            code = run_public.cmd_bundle(SimpleNamespace(out=self.out, output=output, fill_from=None))
         self.assertEqual(code, 0, printed.getvalue())
         with zipfile.ZipFile(output) as bundle:
             manifest = json.loads(bundle.read("manifest.json"))
@@ -153,6 +153,24 @@ class Public(unittest.TestCase):
             self.assertEqual(bundle.read(f"cases/{OTHER}/worktree/input/pkg_1.0-1.debian.tar.xz"),
                              b"original debian")
         self.assertIn(OTHER, printed.getvalue())  # not all 111: the cases are listed
+
+    def test_stage_selection_and_filling_from_a_baseline(self):
+        stages = {CASE: "test", OTHER: "compile"}
+        chosen = run_public.select(self.cases, stage="test",
+                                   classify=lambda log: stages[log.parent.parent.name])
+        self.assertEqual([c["case_id"] for c in chosen], [CASE])
+        dpkg, base = FakeDpkg(), self.root / "baseline"
+        for case_id, out in ((CASE, self.out), (CASE, base), (OTHER, base)):
+            row = run_public.run_one(self.case(case_id), out, out.name, self.agent,
+                                     Scripted(STOP), runner=dpkg)
+            run_public.append_jsonl(out / "runs.jsonl", row)
+        output = self.root / "mixed.zip"
+        with redirect_stdout(io.StringIO()) as printed:
+            run_public.cmd_bundle(SimpleNamespace(out=self.out, output=output, fill_from=base))
+        self.assertIn("1 cases filled in", printed.getvalue())
+        sheet = json.loads(output.with_suffix(".checks.json").read_text())
+        self.assertEqual(sorted((c["case_id"], c["run_id"].split("-")[0]) for c in sheet["checks"]),
+                         sorted([(OTHER, "baseline"), (CASE, "runs")]))
 
     def test_failures_still_bundle_the_original(self):
         row = run_public.run_one(self.case(CASE), self.out, "t", self.agent, Scripted(EDIT, STOP),

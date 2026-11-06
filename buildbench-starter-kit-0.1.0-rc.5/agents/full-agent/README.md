@@ -13,6 +13,20 @@ it has no build feedback, so edits are investigated and revised but submitted
 untested. Locally, `harness/run_case.py --agent full-agent` runs the same loop
 with real builds (Part D). Results: `docs/part5-findings.md` §9c.
 
+Version 0.4.0 (6 November), test-suite failures (`src/test_failures.py`):
+- 59 of the 200 public cases fail in the package's own tests, the largest
+  stage, and their diagnostics were wrapper lines (`dh_auto_test: error: ...
+  returned exit code 13`). When Part A classifies the failure as `test`, a block
+  after the errors now names each failing test and its message (Python
+  unittest and pytest, automake and Autotest, CTest and GoogleTest, go test,
+  cargo, TAP, Perl, meson, LLVM lit, Haskell), keeps crash, assertion and hang
+  lines, the end of the test output, and shows the test's source from the
+  worktree. Measured on the 200 public logs: 58 of 59 test-stage cases get a
+  block (33 with named failing tests), none of the other 141.
+- The block repeats the rules: no disabling, skipping or deleting a test, or
+  ignoring its failure (rules.html section 6); it lists the usual architecture
+  assumptions a test exposes.
+
 Version 0.3.3 (4 November), from the Demo 2 feedback; no change in behaviour:
 - `loop.py`: `run_loop` (634 lines, 68 `if`s) is now a thin wrapper around
   `_Loop`, one method per stage of a turn (budgets, request, model call, tool

@@ -43,7 +43,9 @@ def dsc_text(files: dict) -> str:
 
 def write_package(folder: Path, debian: bytes) -> None:
     folder.mkdir(parents=True, exist_ok=True)
-    files = {"pkg_1.0.orig.tar.gz": b"orig", "pkg_1.0-1.debian.tar.xz": debian}
+    # The signature is listed by the .dsc too (zvbi): a bundle without it is invalid.
+    files = {"pkg_1.0.orig.tar.gz": b"orig", "pkg_1.0.orig.tar.gz.asc": b"sig",
+             "pkg_1.0-1.debian.tar.xz": debian}
     for name, data in files.items():
         (folder / name).write_bytes(data)
     (folder / "pkg_1.0-1.dsc").write_text(dsc_text(files))

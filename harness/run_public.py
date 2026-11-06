@@ -59,7 +59,9 @@ TUNED_CASES = (
 # runs get theirs from task.json.
 PATCH_POLICY = {"allowed_paths": ["input/**"],
                 "forbidden_paths": ["manifest.json", "config/**", "dependencies/**"]}
-ARCHIVE = (".dsc", ".tar.gz", ".tar.xz", ".tar.bz2", ".tar.lzma", ".tar.zst", ".diff.gz")
+# Every file a .dsc can list: the archives and the upstream signatures
+# (<orig>.tar.gz.asc, as in zvbi), which the validator checks like the rest.
+ARCHIVE = (".dsc", ".tar.gz", ".tar.xz", ".tar.bz2", ".tar.lzma", ".tar.zst", ".diff.gz", ".asc")
 
 
 def _hash_names(path: Path) -> list[str]:

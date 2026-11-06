@@ -27,6 +27,7 @@ from .path_feedback import missing_prefix_feedback, uncapturable_feedback
 from .tools import run_tool
 from .types import CaseContext
 from .proposal_review import render_review, signature
+from . import ffi_analysis
 
 
 @dataclass
@@ -217,7 +218,10 @@ class _Loop:
         self.next_turn = next_turn
         self.build_feedback = build_feedback
         self.patch_policy = patch_policy
-        self.review_edits = review_edits
+        self.ffi = ffi_analysis.analyze(context.worktree) if ffi_analysis.enabled() else None
+        if self.ffi is not None and self.config.use_build_feedback and build_feedback is not None:
+            raise ValueError('BB_FFI_ANALYSIS requires BB_AGENT_USE_BUILD_FEEDBACK=0')
+        self.review_edits = review_edits or self.ffi is not None
         self.initial_diagnostics = initial_diagnostics
         self.log_path = log_path
         self.max_turns = max_turns
@@ -296,6 +300,10 @@ class _Loop:
         return self.finish("turn_budget", "The model-turn limit was reached.")
 
     def finish(self, reason: str, message: str) -> LoopResult:
+        if self.ffi is not None:
+            self.review_events.append({'event': 'ffi_final', 'analysis_mode': ffi_analysis.METHOD,
+                'coverage': self.ffi.report(ffi_analysis.index_sources(self.context.worktree),
+                                            'final worktree; not build validated')})
         return LoopResult(
             termination_reason=reason,
             message=message,
@@ -622,6 +630,10 @@ class _Loop:
         self.proposal_review, counts = render_review(
             snapshot, self.turn, diagnostics, patch_policy=self.patch_policy,
             historical=bool(self.attempts) and self.best_build is None)
+        if self.ffi is not None:
+            candidate = ffi_analysis.index_sources(self.context.worktree,
+                                                   simulate(snapshot, self.turn.edits))
+            self.proposal_review += '\n\n' + self.ffi.render(candidate, 'SIMULATED proposed source')
         self.review_turn = deepcopy(self.turn)
         self.review_key = current_key
         self.review_notes = notes
@@ -657,6 +669,11 @@ class _Loop:
             self.feedback += " " + " ".join(self.batch_notes)
         # Record the attempt before requesting a build.
         self._record_attempt(applied, list(self.turn.edits))
+        if self.ffi is not None:
+            current = ffi_analysis.index_sources(self.context.worktree)
+            self.feedback += '\n' + self.ffi.render(current, 'actual applied source')
+            self.review_events.append({'event': 'ffi_applied',
+                'coverage': self.ffi.report(current, 'actual applied source')})
         # Drop only the tool results the edit may have made outdated.
         self.tool_results[:] = _still_valid(self.tool_results, {e.path for e in self.turn.edits})
         return applied

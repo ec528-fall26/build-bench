@@ -16,8 +16,11 @@ The proposed diff is simulated; no edits in this batch have been written.
 Check the compiler's actual expectations, shared definitions, related callers,
 portability, omitted affected locations, and unintended behavior changes.
 Remaining literal matches are investigation hints, NOT mandatory replacements.
-Return {"action":"approve","reason":"why this batch is worth building"} to
-apply this exact batch and build. A partial but useful repair may be approved.
+Return {"action":"approve","reason":"why this batch is supported"} to
+apply this exact batch. A build happens only when build feedback is enabled.
+When FFI coverage is present, revise confirmed remaining obligations or explain
+why they cannot be resolved. Unknowns are not permission for broad replacements.
+A partial but useful repair may be approved.
 To revise, return action edit with hypothesis, evidence and the COMPLETE replacement
 batch. Each edit has path, old_text, new_text, and optional boolean replace_all.
 Never return only incremental corrections here: revisions replace the entire batch.

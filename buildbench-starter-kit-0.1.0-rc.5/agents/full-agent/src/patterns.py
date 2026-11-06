@@ -297,9 +297,11 @@ def debian_symbols(log_lines: Sequence[str], worktree: Path, target_arch: str) -
 
 
 def recognise(diagnostics: Sequence, log_path: Path | None, worktree: Path,
-              target_arch: str = "") -> str:
+              target_arch: str = "", *, skip_rust: bool = False) -> str:
     """One rendered block for the first recognised pattern, or ""."""
     for recogniser in (rust_char_signedness, x86_intrinsic_header):
+        if skip_rust and recogniser is rust_char_signedness:
+            continue
         try:
             block = recogniser(diagnostics, worktree, target_arch)
         except Exception:  # advice must never break a run

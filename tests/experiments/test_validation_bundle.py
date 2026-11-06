@@ -165,6 +165,17 @@ class Refused(Bundles):
         with self.assertRaises(vb.BundleError):
             vb.find_runs([self.root / "nowhere"])
 
+    def test_a_reused_run_id_matters_only_when_it_is_asked_for(self):
+        self.run_folder("r1", "case-a", True)
+        self.run_folder("r2", "case-a", True)
+        other = self.root / "full-history-off"
+        self.run_folder("r1", "case-b", True, runs_dir=other)
+        self.run_folder("r3", "case-b", True, runs_dir=other)
+        runs = vb.find_runs([self.runs_dir, other], ["r2", "r3"])
+        self.assertEqual(sorted(runs), ["r2", "r3"])
+        with self.assertRaises(vb.BundleError):
+            vb.find_runs([self.runs_dir, other], ["r1"])
+
 
 class Sampling(Bundles):
     def setUp(self):

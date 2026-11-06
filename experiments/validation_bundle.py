@@ -95,14 +95,21 @@ def source_package(run_dir: Path) -> list[Path]:
     return files
 
 
-def find_runs(runs_dirs: list[Path]) -> dict[str, tuple[dict, Path]]:
-    """Every recorded run, by run id, with the folder it was recorded in."""
+def find_runs(runs_dirs: list[Path], wanted: list[str] | None = None) -> dict[str, tuple[dict, Path]]:
+    """Every recorded run, by run id, with the folder it was recorded in.
+
+    With ``wanted``, only those run ids are read, so an id reused in another
+    case's folder (harness run ids are unique per bundle, not globally) does not
+    matter unless it is one of the runs asked for.
+    """
     runs = {}
     for runs_dir in runs_dirs:
         record = runs_dir / "runs.jsonl"
         if not record.is_file():
             raise BundleError(f"{runs_dir} has no runs.jsonl")
         for row in load_rows(record):
+            if wanted is not None and row["run_id"] not in wanted:
+                continue
             if row["run_id"] in runs:
                 raise BundleError(f"run id {row['run_id']} is recorded more than once")
             runs[row["run_id"]] = (row, runs_dir / row["run_id"])
@@ -215,7 +222,7 @@ def main(argv: list[str]) -> int:
     if not args.runs_dirs or not (args.run_id or args.sample):
         parser.error("give RUNS_DIR and either --run-id or --sample")
     try:
-        runs = find_runs(args.runs_dirs)
+        runs = find_runs(args.runs_dirs, args.run_id)
         run_ids = args.run_id or sample(runs, args.sample, args.seed)
         sheet = build_bundle(runs, run_ids, args.output, suite_id=args.suite_id, client=args.client)
     except BundleError as error:

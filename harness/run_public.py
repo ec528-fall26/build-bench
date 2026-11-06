@@ -277,8 +277,8 @@ def cmd_bundle(args) -> int:
         print(f"{filled} cases filled in from {base}")
     vb = _bundler()
     try:
-        sheet = vb.build_bundle(runs, sorted(runs), args.output.expanduser(),
-                                client=f"full-agent {next(iter(rows.values()))['agent_version']}")
+        # No "client" field: the website rejected a plain string there (6 November).
+        sheet = vb.build_bundle(runs, sorted(runs), args.output.expanduser())
     except vb.BundleError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

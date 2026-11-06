@@ -149,6 +149,7 @@ class Public(unittest.TestCase):
         self.assertEqual(code, 0, printed.getvalue())
         with zipfile.ZipFile(output) as bundle:
             manifest = json.loads(bundle.read("manifest.json"))
+            self.assertEqual(sorted(manifest), ["cases", "schema_version", "suite_id"])
             self.assertEqual(sorted(c["case_id"] for c in manifest["cases"]), [CASE, OTHER])
             self.assertEqual(bundle.read(f"cases/{CASE}/worktree/input/pkg_1.0-1.debian.tar.xz"),
                              b"rebuilt debian")

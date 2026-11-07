@@ -132,8 +132,9 @@ class Public(unittest.TestCase):
         dpkg = FakeDpkg()
         edited = run_public.run_one(self.case(CASE), self.out, "t", self.agent,
                                     Scripted(EDIT, STOP), runner=dpkg)
+        # 0.5.0 sends a stop with nothing changed back once.
         unchanged = run_public.run_one(self.case(OTHER), self.out, "t", self.agent,
-                                       Scripted(STOP), runner=dpkg)
+                                       Scripted(STOP, STOP), runner=dpkg)
         self.assertEqual((edited["termination_reason"], edited["bundled"], edited["edits_applied"]),
                          ("submitted", "rebuilt", 1))
         self.assertIn("+#define HAVE_FAST 0", (self.out / CASE / "repair.diff").read_text())

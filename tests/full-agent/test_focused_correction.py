@@ -50,7 +50,7 @@ class FocusedCorrectionTests(unittest.TestCase):
 
         return run_loop(
             self.context, next_turn=next_turn,
-            config=AgentConfig(use_build_feedback=False),
+            config=AgentConfig(use_no_build_control=False, use_build_feedback=False),
         )
 
     def stop(self):
@@ -212,7 +212,7 @@ class FocusedCorrectionTests(unittest.TestCase):
             )
 
         adapter = ModelAdapter(
-            complete, self.context, config=AgentConfig(), budget=Budget(),
+            complete, self.context, config=AgentConfig(use_no_build_control=False), budget=Budget(),
             diagnostics=[], log_path=None,
         )
         self.addCleanup(adapter.close)
@@ -238,7 +238,7 @@ class FocusedCorrectionTests(unittest.TestCase):
             )
 
         adapter = ModelAdapter(
-            complete, self.context, config=AgentConfig(use_tools=False), budget=Budget(),
+            complete, self.context, config=AgentConfig(use_no_build_control=False, use_tools=False), budget=Budget(),
             diagnostics=[], log_path=None,
         )
         self.addCleanup(adapter.close)

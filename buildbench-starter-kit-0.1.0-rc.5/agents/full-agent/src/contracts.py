@@ -87,6 +87,14 @@ class AgentConfig:                # the ablation switches
     use_tools: bool = True
     use_build_feedback: bool = True
     use_history: bool = True
+    # 0.5.0, effective only without build feedback (a submitted run): an
+    # investigation budget per run instead of tools switched off 6 turns after
+    # each edit, the model's own untested edits shown as a diff, at most 3
+    # attempts, and one refusal of a stop with nothing submitted.
+    use_no_build_control: bool = True
+    # 0.5.0: refuse edits that bypass tests (rules.html section 6) or edit .pc/
+    # or debian/patches/ (rules_guard.py).
+    use_rules_guard: bool = True
 
 
 @runtime_checkable

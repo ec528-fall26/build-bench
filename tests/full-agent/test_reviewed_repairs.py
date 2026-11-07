@@ -54,6 +54,7 @@ class ReviewedRepairs(unittest.TestCase):
             if callable(value):
                 value = value(request)
             return value, {"input_tokens": 2, "output_tokens": 1}
+        kwargs.setdefault("config", AgentConfig(use_no_build_control=False))  # pre-0.5.0 loop
         return run_loop(self.context, next_turn=next_turn, review_edits=True,
                         build_feedback=builder, **kwargs)
 
@@ -221,7 +222,7 @@ class ReviewedRepairs(unittest.TestCase):
             return '{"action":"approve","reason":"consistent repair"}', "stop", {"input_tokens": 3, "output_tokens": 2}
         with patch.dict(os.environ, {"BB_REPAIR_STRATEGY": "shared-cause", "BB_REVIEW_EDITS": "1"}):
             from src.loop import LoopRequest
-            adapter = ModelAdapter(complete, self.context, config=AgentConfig(), budget=Budget(),
+            adapter = ModelAdapter(complete, self.context, config=AgentConfig(use_no_build_control=False), budget=Budget(),
                 diagnostics=[diagnostic("initial error")], log_path=None)
             self.addCleanup(adapter.close)
             result = run_loop(self.context, next_turn=adapter, review_edits=True,
@@ -264,7 +265,7 @@ class ReviewedRepairs(unittest.TestCase):
         with patch.dict(os.environ, {"BB_REPAIR_STRATEGY": "shared-cause", "BB_REVIEW_EDITS": "1"}):
             result, adapter = run_agent(self.context, log, complete,
                 build_feedback=NS(request_build=lambda root: BuildResult(True, "packaging", [], 1)))
-        record = result_record(result, adapter, AgentConfig())
+        record = result_record(result, adapter, AgentConfig(use_no_build_control=False))
         self.assertTrue(result.current_build.succeeded)
         self.assertIn("wrong type", str(calls[1]))
         self.assertEqual([e["event"] for e in record["review_events"]], ["proposed", "approved"])

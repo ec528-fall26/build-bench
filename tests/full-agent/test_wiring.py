@@ -91,7 +91,10 @@ class Adapter(unittest.TestCase):
 
     def run_with(self, script, config=None, build=None, budget=None):
         context = CaseContext("rcran", self.worktree, "", {"target_arch": "aarch64"})
-        return run_agent(context, self.log, script, config=config or AgentConfig(),
+        # Tests written before 0.5.0 describe the loop without the no-build
+        # control; tests of the control pass a config that has it.
+        return run_agent(context, self.log, script,
+                         config=config or AgentConfig(use_no_build_control=False),
                          build_feedback=build, budget=budget)
 
     def test_first_turn_is_system_plus_the_evidence(self):
@@ -144,7 +147,7 @@ class Adapter(unittest.TestCase):
         wrong = "#define HAVE_MM_PREFETCH 1  // tried\n"
         script = Script(edit("#define HAVE_MM_PREFETCH 1\n", wrong, "wrong guess"),
                         reply(action="stop", reason="done"))
-        self.run_with(script, config=AgentConfig(use_history=False), build=FakeBuild())
+        self.run_with(script, config=AgentConfig(use_no_build_control=False, use_history=False), build=FakeBuild())
         second = script.user(1)
         self.assertNotIn("Earlier attempts on this case", second)
         self.assertNotIn("wrong guess", second)
@@ -320,7 +323,7 @@ class Adapter(unittest.TestCase):
         )
 
         with patch("src.model_adapter.run_tool") as automatic_search:
-            self.run_with(script, config=AgentConfig(use_tools=False))
+            self.run_with(script, config=AgentConfig(use_no_build_control=False, use_tools=False))
 
         automatic_search.assert_not_called()
         self.assertIn("unique surrounding context", script.user(1))
@@ -427,7 +430,7 @@ class Adapter(unittest.TestCase):
         script = Script(reply(action="tool", requests=[{"tool": "list_dir",
                                                         "args": {"path": "input"}}]),
                         reply(action="stop", reason="done"))
-        result, _ = self.run_with(script, config=AgentConfig(use_tools=False))
+        result, _ = self.run_with(script, config=AgentConfig(use_no_build_control=False, use_tools=False))
         self.assertEqual(result.malformed_count, 1)
         self.assertNotIn("find_files", script.sent[0][0]["content"])
 

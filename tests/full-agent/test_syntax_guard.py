@@ -151,6 +151,43 @@ class Files(unittest.TestCase):
                                       deadline=monotonic() + 30), [])
 
 
+@unittest.skipUnless(shutil.which("gcc") or shutil.which("cc"), "no C compiler")
+class TargetCompile(unittest.TestCase):
+    """xmbmon, 6 November: the edit made a macro void on ARM, and the file that
+    uses the macro failed with "void value not ignored". The header alone
+    compiles; only its includer, compiled for the target, shows the error."""
+
+    HEADER = ("#ifdef LINUX\nint iopl(int);\n#if defined(__x86_64__)\n#define SET_IOPL() iopl(3)\n"
+              "#else\n#define SET_IOPL() (0)\n#endif\n#endif\n")
+    USER = '#include "io_cpu.h"\nint probe(void) { if (SET_IOPL() < 0) return 1; return 0; }\n'
+    LOG = "gcc -c -g -O2 -I. -DHAVE_CONFIG_H -Wall -DLINUX getMBinfo.c\n"
+
+    def check(self, after, target):
+        import tempfile
+        from time import monotonic
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            (work / "input").mkdir()
+            (work / "input/io_cpu.h").write_text(self.HEADER)
+            (work / "input/io_static.c").write_text(self.USER)
+            (work / "log").write_text(self.LOG)
+            return problems("input/io_cpu.h", self.HEADER, after, worktree=work,
+                            deadline=monotonic() + 30, target=target, log_path=work / "log")
+
+    def test_a_void_macro_on_the_target_is_found_in_its_includer(self):
+        after = self.HEADER.replace("#define SET_IOPL() (0)", "#define SET_IOPL() ((void)0)")
+        found = self.check(after, "arm64")
+        self.assertTrue(any("void value not ignored" in m for m in found), found)
+
+    def test_the_same_edit_is_harmless_when_the_branch_is_not_the_targets(self):
+        after = self.HEADER.replace("#define SET_IOPL() (0)", "#define SET_IOPL() ((void)0)")
+        self.assertEqual(self.check(after, "amd64"), [])
+
+    def test_a_correct_edit_passes(self):
+        after = self.HEADER.replace("#define SET_IOPL() (0)", "#define SET_IOPL() (-1)")
+        self.assertEqual(self.check(after, "arm64"), [])
+
+
 class Loop(unittest.TestCase):
     setUp = test_wiring.Adapter.setUp
     run_with = test_wiring.Adapter.run_with

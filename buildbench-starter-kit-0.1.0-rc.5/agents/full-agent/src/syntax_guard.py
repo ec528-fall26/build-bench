@@ -50,6 +50,7 @@ import tempfile
 from time import monotonic
 import warnings
 
+from .archnames import debian
 from .edit_repair import simulate
 
 C_SUFFIXES = {".c", ".h"}
@@ -399,18 +400,196 @@ def _compiler(language: str) -> str | None:
     return next((found for found in map(shutil.which, names) if found), None)
 
 
-def _compile_errors(compiler, language, name, text, include_dirs, deadline):
-    """Errors from -fsyntax-only, with missing headers stubbed; None if unknown."""
+_X86_MACROS = ("__x86_64__", "__x86_64", "__amd64__", "__amd64", "__i386__", "__i386", "i386",
+               "__SSE__", "__SSE2__", "__SSE_MATH__", "__SSE2_MATH__", "__MMX__", "__FXSR__",
+               "__SSE3__", "__SSSE3__", "__SSE4_1__", "__SSE4_2__", "__AVX__", "__AVX2__",
+               "__POPCNT__", "__MMX_WITH_SSE__", "__SEG_FS", "__SEG_GS", "__k8", "__k8__")
+_ARM_MACROS = ("__aarch64__", "__ARM_64BIT_STATE", "__ARM_ARCH", "__ARM_NEON", "__arm__",
+               "__ARM_ARCH_8A", "__ARM_FP", "__AARCH64EL__", "__AARCH64_CMODEL_SMALL__")
+_RISCV_MACROS = ("__riscv", "__riscv_xlen", "__riscv_flen", "__riscv_atomic")
+_TARGET_FLAGS = {
+    "amd64": ["-D__x86_64__=1", "-D__x86_64=1", "-D__amd64__=1", "-D__amd64=1",
+              "-D__SSE__=1", "-D__SSE2__=1", "-fsigned-char"],
+    "arm64": ["-D__aarch64__=1", "-D__ARM_64BIT_STATE=1", "-D__ARM_ARCH=8",
+              "-D__AARCH64EL__=1", "-D__CHAR_UNSIGNED__=1", "-funsigned-char"],
+    "riscv64": ["-D__riscv=1", "-D__riscv_xlen=64", "-D__CHAR_UNSIGNED__=1", "-funsigned-char"],
+}
+_OWN = {"amd64": _X86_MACROS, "arm64": _ARM_MACROS, "riscv64": _RISCV_MACROS}
+
+
+def _arch_flags(target: str) -> list[str]:
+    """Flags that make this host's compiler take the target's #if branches.
+
+    Not a cross compiler: the system headers stay the host's, so their errors
+    are ignored and only the edited file and the files including it count.
+    """
+    import platform
+    from .archnames import debian
+    host = debian(platform.machine())
+    if target not in _TARGET_FLAGS or target == host:
+        return []
+    undef = [f"-U{m}" for name, macros in _OWN.items() if name != target for m in macros]
+    return undef + _TARGET_FLAGS[target]
+
+
+LOG_SCAN_BYTES = 64 * 1024 * 1024
+_COMPILERS = re.compile(rb"(?:^|[\s/'\"])(?:[\w.-]*-)?(?:gcc|g\+\+|cc|c\+\+|clang|clang\+\+)(?:-\d+)?\s")
+_flag_cache: dict[tuple, list[str]] = {}
+
+
+def _log_flags(log_path: Path | None, name: str, worktree: Path, source: Path) -> list[str]:
+    """-D/-U/-std flags (and resolvable -I) of the failing build's compile of ``name``.
+
+    The build's own macros decide which #if branch is compiled (xmbmon's
+    LINUX); without them the check reads a branch the build never compiles.
+    """
+    if log_path is None:
+        return []
+    key = (str(log_path), name)
+    if key not in _flag_cache:
+        # The file's own compile command; failing that (the build stopped
+        # before reaching it), the build's first one, whose defines most
+        # packages share.
+        _flag_cache[key] = []
+        needle, first = name.encode(), None
+        try:
+            with open(log_path, "rb") as handle:
+                scanned = 0
+                for raw in handle:
+                    scanned += len(raw)
+                    if scanned > LOG_SCAN_BYTES:
+                        break
+                    if (b" -c " not in raw and not raw.rstrip().endswith(b" -c")) \
+                            or not _COMPILERS.search(raw):
+                        continue
+                    if needle in raw:
+                        first = raw
+                        break
+                    if first is None:
+                        first = raw
+        except OSError:
+            pass
+        if first is not None:
+            _flag_cache[key] = _parse_flags(first.decode("utf-8", "replace"), name)
+    flags = []
+    for flag in _flag_cache[key]:
+        if flag.startswith("-I"):
+            relative = flag[2:]
+            for base in (source.parent, worktree / "input"):
+                candidate = (base / relative).resolve()
+                if candidate.is_dir() and (worktree / "input").resolve() in (candidate, *candidate.parents):
+                    flags.append(f"-I{candidate}")
+                    break
+        else:
+            flags.append(flag)
+    return flags
+
+
+def _parse_flags(line: str, name: str) -> list[str]:
+    import shlex
+    line = re.sub(r"^\[\s*\d+s\]\s*", "", line.strip())
+    try:
+        words = shlex.split(line)
+    except ValueError:
+        words = line.split()
+    kept, pending = [], None
+    for word in words:
+        if pending:
+            kept.append(pending + word)
+            pending = None
+        elif word in ("-D", "-U", "-I"):
+            pending = word
+        elif word.startswith(("-D", "-U")) or re.fullmatch(r"-std=\S+|-f(?:un)?signed-char", word):
+            kept.append(word)
+        elif word.startswith("-I") and not word[2:].startswith("/"):
+            kept.append(word)
+    return kept[:200]
+
+
+def _for_language(flags: list[str], language: str) -> list[str]:
+    """Drop a -std= that belongs to the other language (a C++ line borrowed for C)."""
+    def fits(flag):
+        if not flag.startswith("-std="):
+            return True
+        cxx = "++" in flag
+        return cxx == (language == "c++")
+    return [f for f in flags if fits(f)]
+
+
+_INCLUDE = re.compile(r'^\s*#\s*include\s*([<"])([^>"]+)[>"]', re.MULTILINE)
+_UNIT_SUFFIXES = {".c": "c", ".cc": "c++", ".cpp": "c++", ".cxx": "c++", ".C": "c++"}
+MAX_INCLUDERS = 2
+INCLUDER_SCAN_FILES = 4000
+
+
+def _includers(worktree: Path, path: str) -> list[tuple[Path, str, str]]:
+    """Up to MAX_INCLUDERS source files that #include the header: (file, spelling, language)."""
+    header = worktree / path
+    name = header.name
+    root = worktree / "input"
+    found, scanned = [], 0
+    candidates = sorted(header.parent.iterdir()) if header.parent.is_dir() else []
+    seen = set()
+    def consider(file):
+        if file in seen or file.suffix not in _UNIT_SUFFIXES or not file.is_file():
+            return None
+        seen.add(file)
+        try:
+            if file.stat().st_size > MAX_FILE_BYTES:
+                return None
+            text = file.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return None
+        for m in _INCLUDE.finditer(text):
+            spelled = m.group(2)
+            if PurePosixPath(spelled).name == name:
+                return (file, spelled, _UNIT_SUFFIXES[file.suffix])
+        return None
+    for file in candidates:
+        hit = consider(file)
+        if hit:
+            found.append(hit)
+            if len(found) >= MAX_INCLUDERS:
+                return found
+    for directory, dirs, files in os.walk(root):
+        dirs[:] = sorted(d for d in dirs if d not in {".pc", "debian", ".git"})
+        for filename in sorted(files):
+            scanned += 1
+            if scanned > INCLUDER_SCAN_FILES:
+                return found
+            hit = consider(Path(directory, filename))
+            if hit:
+                found.append(hit)
+                if len(found) >= MAX_INCLUDERS:
+                    return found
+    return found
+
+
+def _compile_errors(compiler, language, name, text, include_dirs, deadline, *,
+                    overlay: dict[str, str] | None = None, flags=(), watch=()):
+    """Errors from -fsyntax-only, with missing headers stubbed; None if unknown.
+
+    ``overlay`` maps include spellings to header texts that shadow the
+    worktree's (the edited header, before or after). Errors are kept for the
+    compiled file and for any file named in ``watch``.
+    """
     with tempfile.TemporaryDirectory(prefix="bb-syntax-") as tmp:
-        src_dir, stub_dir = Path(tmp, "src"), Path(tmp, "stubs")
-        src_dir.mkdir()
-        stub_dir.mkdir()
+        src_dir, stub_dir, over_dir = Path(tmp, "src"), Path(tmp, "stubs"), Path(tmp, "over")
+        for directory in (src_dir, stub_dir, over_dir):
+            directory.mkdir()
         source = src_dir / name
         source.write_text(text, encoding="utf-8")
+        for spelled, body in (overlay or {}).items():
+            target = (over_dir / spelled).resolve()
+            if over_dir.resolve() not in target.parents:
+                return None
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(body, encoding="utf-8")
         header = name.endswith((".h", ".hh", ".hpp", ".hxx", ".h++", ".H"))
         lang = {"c": "c-header" if header else "c",
                 "c++": "c++-header" if header else "c++"}[language]
-        args = [compiler, "-fsyntax-only", "-w", "-fmax-errors=50", "-x", lang,
+        args = [compiler, "-fsyntax-only", "-w", "-fmax-errors=5000", "-x", lang,
+                "-iquote", str(over_dir), "-I", str(over_dir), *flags,
                 "-iquote", str(stub_dir), "-I", str(stub_dir)]
         for directory in include_dirs:
             args += ["-I", str(directory)]
@@ -438,61 +617,137 @@ def _compile_errors(compiler, language, name, text, include_dirs, deadline):
             return None
         if re.search(r"fatal error:", done.stderr):
             return None
+        names = {name, *watch}
         errors = []
         for m in _DIAG.finditer(done.stderr):
-            if Path(m.group("file")).name == name:
-                errors.append((int(m.group("line")), m.group("msg").strip()))
+            if Path(m.group("file")).name in names:
+                errors.append((Path(m.group("file")).name, int(m.group("line")),
+                               m.group("msg").strip()))
         return errors
 
 
-def _changed_lines(before: str, after: str) -> set[int]:
+def _line_map(before: str, after: str) -> tuple[set[int], dict[int, tuple[int, int]]]:
+    """Changed lines of ``after`` (1-based), and for every line of ``after`` the
+    range of ``before`` lines it corresponds to."""
     import difflib
-    changed = set()
+    changed, where = set(), {}
     matcher = difflib.SequenceMatcher(None, before.split("\n"), after.split("\n"),
                                       autojunk=False)
-    for tag, _, _, j1, j2 in matcher.get_opcodes():
-        if tag != "equal":
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            for k in range(j2 - j1):
+                where[j1 + k + 1] = (i1 + k + 1, i1 + k + 1)
+        else:
             changed.update(range(j1 + 1, max(j2, j1 + 1) + 1))
-    return changed
+            for j in range(j1 + 1, max(j2, j1 + 1) + 1):
+                where[j] = (i1 + 1, max(i2, i1 + 1))
+    return changed, where
+
+
+def _changed_lines(before: str, after: str) -> set[int]:
+    return _line_map(before, after)[0]
+
+
+def _new_parse_error(old, new, edited: str, before: str, after: str):
+    """The first new parser-level error the edit causes, or None.
+
+    In the edited file it must be near a changed line; in an unchanged file
+    that includes an edited header it may be anywhere. Either way, a line that
+    already had an error before the edit (often an unknown type from a
+    dependency header this check cannot see) does not count, so files that
+    never parse cleanly here can still be judged on the lines the edit touched.
+    """
+    if old is None or new is None:
+        return None
+    changed, where = _line_map(before, after)
+    near = {k for line in changed for k in range(line - 2, line + 3)}
+    baseline = Counter((f, msg) for f, _, msg in old)
+    erring = {}
+    for f, line, _ in old:
+        erring.setdefault(f, set()).update(range(line - 3, line + 4))
+    for file, line, msg in new:
+        if baseline[(file, msg)] > 0:
+            baseline[(file, msg)] -= 1
+            continue
+        if not _PARSE_ERROR.search(msg):
+            continue
+        if file == edited:
+            if line not in near:
+                continue
+            low, high = where.get(line, (line, line))
+            if any(k in erring.get(file, ()) for k in range(low, high + 1)):
+                continue
+        elif line in erring.get(file, ()):
+            continue
+        return file, line, msg
+    return None
 
 
 def _compiled(worktree: Path, path: str, language: str, before: str, after: str,
-              deadline: float) -> list[Problem]:
+              deadline: float, *, target: str = "", log_path: Path | None = None) -> list[Problem]:
+    """Compile the edited file, and the files including an edited header, for the target.
+
+    Semantic errors (undeclared names, implicit declarations, wrong types)
+    depend on headers, macros and flags this check does not fully have, so
+    only parser-level errors are trusted, and only in a unit that parses
+    cleanly here before the edit.
+    """
     compiler = _compiler(language)
     if compiler is None or deadline - monotonic() < 2:
         return []
-    full = (worktree / path)
+    full = worktree / path
     root = worktree / "input"
-    include_dirs = [d for d in (full.parent, root, root / "include", root / "src")
-                    if d.is_dir()]
+    base_dirs = [d for d in (full.parent, root, root / "include", root / "src") if d.is_dir()]
     name = PurePosixPath(path).name
-    old = _compile_errors(compiler, language, name, before, include_dirs, deadline)
-    # Semantic errors (undeclared names, implicit declarations, wrong types)
-    # depend on headers, macros and flags this check does not have, so only
-    # parser-level errors are trusted, and only in a file that parses cleanly
-    # here before the edit.
-    if old is None or any(_PARSE_ERROR.search(msg) for _, msg in old):
-        return []
-    new = _compile_errors(compiler, language, name, after, include_dirs, deadline)
-    if not new:
-        return []
-    baseline = Counter(msg for _, msg in old)
-    changed = _changed_lines(before, after)
-    near = {k for line in changed for k in range(line - 2, line + 3)}
-    for line, msg in new:
-        if baseline[msg] > 0:
-            baseline[msg] -= 1
-            continue
-        if line in near and _PARSE_ERROR.search(msg):
-            return [Problem(path, f"{PurePosixPath(compiler).name} -fsyntax-only reports a new "
-                            f"error on an edited line: {msg[:300]}", line)]
+    arch = _arch_flags(target)
+    is_header = PurePosixPath(path).suffix in {".h", ".hh", ".hpp", ".hxx", ".h++", ".H"}
+
+    units = []   # (main name, main text, language, overlay before, overlay after, flags, dirs)
+    if is_header:
+        for unit, spelled, unit_lang in _includers(worktree, path):
+            try:
+                text = unit.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            dirs = [d for d in (unit.parent, *base_dirs) if d.is_dir()]
+            flags = arch + _for_language(_log_flags(log_path, unit.name, worktree, unit),
+                                         unit_lang)
+            units.append((unit.name, text, _compiler(unit_lang) or compiler, unit_lang,
+                          {spelled: before}, {spelled: after}, flags, dirs))
+    units.append((name, None, compiler, language, None, None,
+                  arch + _for_language(_log_flags(log_path, name, worktree, full), language),
+                  base_dirs))
+
+    for unit_name, text, unit_compiler, unit_lang, over_old, over_new, flags, dirs in units:
+        if deadline - monotonic() < 2:
+            break
+        if text is None:          # the edited file itself
+            old = _compile_errors(unit_compiler, unit_lang, unit_name, before, dirs, deadline,
+                                  flags=flags)
+            new = None if old is None else _compile_errors(
+                unit_compiler, unit_lang, unit_name, after, dirs, deadline, flags=flags)
+        else:                     # an unchanged file that includes the edited header
+            old = _compile_errors(unit_compiler, unit_lang, unit_name, text, dirs, deadline,
+                                  overlay=over_old, flags=flags, watch=(name,))
+            new = None if old is None else _compile_errors(
+                unit_compiler, unit_lang, unit_name, text, dirs, deadline,
+                overlay=over_new, flags=flags, watch=(name,))
+        hit = _new_parse_error(old, new, name, before, after)
+        if hit:
+            file, line, msg = hit
+            where = "" if file == name else f" (in {file}, which includes it)"
+            arch_note = f" compiled for {target}" if arch else ""
+            return [Problem(path, f"{PurePosixPath(unit_compiler).name} -fsyntax-only{arch_note} "
+                            f"reports a new error{where}: {msg[:300]}",
+                            line if file == name else None)]
     return []
 
 
 # --- the batch ---------------------------------------------------------------
 
 def file_problems(path: str, before: str, after: str, *, worktree: Path | None = None,
-                  deadline: float | None = None) -> list[Problem]:
+                  deadline: float | None = None, target: str = "",
+                  log_path: Path | None = None) -> list[Problem]:
     """Problems that ``after`` has and ``before`` does not, for one file."""
     if before == after or len(after.encode("utf-8", "replace")) > MAX_FILE_BYTES:
         return []
@@ -516,7 +771,8 @@ def file_problems(path: str, before: str, after: str, *, worktree: Path | None =
     if kind in {"c", "c++"}:
         found += [Problem(path, text) for text in _preprocessor_problems(before, after)]
         if not found and worktree is not None and deadline is not None:
-            found += _compiled(worktree, path, kind, before, after, deadline)
+            found += _compiled(worktree, path, kind, before, after, deadline,
+                               target=target, log_path=log_path)
     return found
 
 
@@ -544,7 +800,8 @@ def _culprit(snapshot, edits, path, originals, problems, after) -> int:
 
 
 def check_batch(snapshot, edits, *, worktree: Path | None = None,
-                allow: set | frozenset = frozenset(), seconds: float = COMPILE_BUDGET):
+                allow: set | frozenset = frozenset(), seconds: float = COMPILE_BUDGET,
+                target_arch: str = "", log_path: Path | None = None):
     """The first edit whose file the batch breaks, with its problems, or None.
 
     Returns (index, problems, after_text). ``allow`` holds edit signatures the
@@ -557,7 +814,8 @@ def check_batch(snapshot, edits, *, worktree: Path | None = None,
         if path not in originals:
             continue
         problems = file_problems(path, originals[path], finals[path],
-                                 worktree=worktree, deadline=deadline)
+                                 worktree=worktree, deadline=deadline,
+                                 target=debian(target_arch), log_path=log_path)
         if not problems:
             continue
         index = _culprit(snapshot, edits, path, originals, problems, finals[path])

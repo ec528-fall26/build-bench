@@ -37,10 +37,16 @@ Version 0.5.1 (7 November), syntax guard (`src/syntax_guard.py`):
   batch leaves it; only problems the batch adds count: Python compile, sh -n,
   JSON, brace/parenthesis and #if/#endif balance for C, C++, Rust and Go,
   ifeq/endif balance and space-indented recipe lines in Makefiles and
-  debian/rules, block balance in CMake, and `-fsyntax-only` parser errors on
-  edited lines when a compiler is on PATH (missing headers stubbed; only files
-  that parse cleanly before the edit). Compiler time is capped at 45 s per
-  batch and 120 s per run.
+  debian/rules, block balance in CMake, and, when a compiler is on PATH,
+  `-fsyntax-only` parser errors. The compiler check builds for the case's
+  target (macros switched so an x86 host takes the arm64 or riscv64 `#if`
+  branches), with the -D flags of the failing build's own compile command,
+  and for an edited header it also compiles up to two files that include it
+  (xmbmon: a macro made void on ARM fails only in its user, io_static.c).
+  Missing headers are stubbed; lines that already failed before the edit do
+  not count. Compiler time is capped at 45 s per batch and 120 s per run.
+- Measured without a model (`experiments/syntax_guard_stress.py`, 30 real
+  cases): 0 of 212 harmless edits flagged, 136 of 164 broken edits caught.
 - A finding sends that item back as a focused correction (`Reason:
   syntax_check`); an unchanged resend is applied, so a false alarm costs one
   correction turn and never blocks a repair. Switch: `BB_AGENT_USE_SYNTAX_GUARD`.

@@ -655,7 +655,11 @@ class _Loop:
         started = monotonic()
         found = syntax_guard.check_batch(snapshot, self.turn.edits,
                                          worktree=self.context.worktree,
-                                         allow=self.syntax_allowed, seconds=seconds)
+                                         allow=self.syntax_allowed, seconds=seconds,
+                                         target_arch=str((getattr(self.context, "task_metadata",
+                                                                  None) or {})
+                                                         .get("target_arch") or ""),
+                                         log_path=self.log_path)
         self.syntax_seconds_left = max(0.0, self.syntax_seconds_left - (monotonic() - started))
         if found is None:
             return None, ""

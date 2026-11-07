@@ -28,7 +28,7 @@ class FromEnvironment(unittest.TestCase):
             "BB_AGENT_USE_EVIDENCE_MANAGER", "BB_AGENT_USE_TOOLS",
             "BB_AGENT_USE_BUILD_FEEDBACK", "BB_AGENT_USE_HISTORY",
         "BB_AGENT_USE_NO_BUILD_CONTROL", "BB_AGENT_USE_RULES_GUARD",
-        "BB_AGENT_USE_SYNTAX_GUARD"])
+        "BB_AGENT_USE_SYNTAX_GUARD", "BB_AGENT_USE_SYMBOLS_DIFF"])
         for name in FIELDS:
             with self.subTest(field=name):
                 config = config_from_env({env_name(name): "0"})
@@ -61,7 +61,7 @@ class RoundTrip(unittest.TestCase):
                          {"use_evidence_manager": True, "use_tools": True,
                           "use_build_feedback": True, "use_history": False,
                           "use_no_build_control": True, "use_rules_guard": True,
-                          "use_syntax_guard": True})
+                          "use_syntax_guard": True, "use_symbols_diff": True})
 
 
 if __name__ == "__main__":

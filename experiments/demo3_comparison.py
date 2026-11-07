@@ -74,7 +74,7 @@ _ARCH = {"amd64": "x86_64", "arm64": "aarch64"}
 _ALL_ON = {"use_evidence_manager": True, "use_tools": True,
            "use_build_feedback": True, "use_history": True,
            "use_no_build_control": True, "use_rules_guard": True,
-           "use_syntax_guard": True}
+           "use_syntax_guard": True, "use_symbols_diff": True}
 
 
 @dataclass(frozen=True)

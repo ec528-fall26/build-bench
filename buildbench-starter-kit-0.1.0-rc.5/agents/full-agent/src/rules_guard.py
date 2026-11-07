@@ -62,6 +62,8 @@ _RULES_SUPPRESS = (
     (re.compile(r"\bexit\s+0\b", re.MULTILINE),
      'it adds "exit 0", which ends a step as successful whatever happened'),
 )
+_DH_TARGET = re.compile(r"^\t\s*dh\s+\$@", re.MULTILINE)
+_DH_BROKEN = re.compile(r"^\t\s*dh\s+(?:\$\$@|\$(?![@(]))", re.MULTILINE)
 _TEST_LIST = re.compile(
     r"\badd_test\s*\(|\bTESTS\s*\+?=|\bcheck_PROGRAMS\b|\btest\s*\(\s*['\"]|"
     r"\bAT_SETUP\b|\bm4_include\s*\(\s*\[?[\w./-]*test", re.IGNORECASE)
@@ -123,6 +125,13 @@ def check(path: str, old_text: str, new_text: str, replace_all: bool = False) ->
         return None
 
     if relative == "debian/rules" or relative.endswith("/debian/rules"):
+        # html-xml-utils, 7 November: an edit turned "dh $@" into "dh $", and
+        # "debian/rules clean" failed before anything was built.
+        if len(_DH_TARGET.findall(new_text)) < len(_DH_TARGET.findall(old_text)) \
+                and _DH_BROKEN.search(new_text):
+            return ('it breaks the "dh $@" call: make passes the target name only as "$@", '
+                    'so "dh $" or "dh $$@" runs no sequence and every build step fails. '
+                    'Keep "dh $@" exactly and put options after it')
         for regex, why in _RULES_SUPPRESS:
             if regex.search(added_text) and not regex.search(old_text):
                 return why + "; the rules forbid suppressing failures to obtain a build"

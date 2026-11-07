@@ -34,7 +34,7 @@ from pathlib import Path
 from time import monotonic
 from typing import Callable
 
-from . import patterns, prompts, test_failures, ffi_analysis
+from . import patterns, prompts, symbols_diff, test_failures, ffi_analysis
 from .contracts import AgentConfig, Budget, BuildResult, Diagnostic, ModelTurn, ToolRequest
 from .edit_applier import LOGGER as EDIT_LOGGER
 from .edit_preflight import FOCUSED_PREFIX
@@ -309,7 +309,11 @@ class ModelAdapter:
                                              skip_rust=self.ffi is not None)
             # A failure in the package's test suite: name the failing tests and why.
             tests = test_failures.render(log_path, worktree, arch)
-            self.pattern = "\n\n".join(block for block in (self.pattern, tests) if block)
+            # A dh_makeshlibs failure: dpkg-gensymbols's diff as prepared edits.
+            symbols = (symbols_diff.render(symbols_diff.prepare(log_path, worktree))
+                       if getattr(config, "use_symbols_diff", False) else "")
+            self.pattern = "\n\n".join(block for block in (self.pattern, tests, symbols)
+                                         if block)
         self.clock = clock
         self.started = clock()
         self.turns: list[dict] = []    # one summary per model call, for the run record

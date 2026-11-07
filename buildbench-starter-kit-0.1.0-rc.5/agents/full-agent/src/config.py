@@ -6,7 +6,7 @@ capability off without touching the code (docs/full-agent.md, "Ground rules"):
     BB_AGENT_USE_EVIDENCE_MANAGER   BB_AGENT_USE_TOOLS
     BB_AGENT_USE_BUILD_FEEDBACK     BB_AGENT_USE_HISTORY
     BB_AGENT_USE_NO_BUILD_CONTROL   BB_AGENT_USE_RULES_GUARD
-    BB_AGENT_USE_SYNTAX_GUARD
+    BB_AGENT_USE_SYNTAX_GUARD       BB_AGENT_USE_SYMBOLS_DIFF
 
 Unset or empty means on: the competition runs the agent with no variables set.
 A value that is not clearly on or off raises instead of falling back, because a

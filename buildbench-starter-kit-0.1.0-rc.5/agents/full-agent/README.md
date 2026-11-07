@@ -27,6 +27,19 @@ it has no build feedback, so edits are investigated and revised but submitted
 untested. Locally, `harness/run_case.py --agent full-agent` runs the same loop
 with real builds (Part D). Results: `docs/part5-findings.md` §9c.
 
+Version 0.5.2 (7 November), symbols files from dpkg-gensymbols's diff
+(`src/symbols_diff.py`, switch `BB_AGENT_USE_SYMBOLS_DIFF`):
+- 13 of the 200 public cases fail in dh_makeshlibs because a C++ library's
+  exported symbols differ on the target. The log carries dpkg-gensymbols's own
+  diff; each hunk becomes a prepared edit (a symbol that disappeared marked
+  `(optional)`, one that appeared added), shown in the opening message and
+  added to any batch that touches that symbols file, including in place of a
+  blanket `(optional)` edit the rules guard refuses (libbpp-core resent one
+  seven times in the 0.5.1 local run and failed). A refused edit resent
+  unchanged is called out as such.
+- The rules guard also refuses an edit that breaks `dh $@` in debian/rules
+  (html-xml-utils in the same run: `dh $`, so even `debian/rules clean` failed).
+
 Version 0.5.1 (7 November), syntax guard (`src/syntax_guard.py`):
 - In the 0.3.3 Development Validation run (111 small cases, 36 passed), about
   29 of the 69 failed cases ended on an error other than the original, several

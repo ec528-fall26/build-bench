@@ -27,7 +27,7 @@ from .path_feedback import missing_prefix_feedback, uncapturable_feedback
 from .tools import run_tool
 from .types import CaseContext
 from .proposal_review import render_review, signature
-from . import ffi_analysis, rules_guard, syntax_guard
+from . import ffi_analysis, rules_guard, symbols_diff, syntax_guard
 
 
 OWN_EDITS_CHARS = 6000
@@ -257,6 +257,12 @@ class _Loop:
         self.syntax_seconds_left = syntax_guard.RUN_BUDGET
         # What the model is told next turn
         self.tracker = DiffTracker(context.worktree)
+        # dpkg-gensymbols's diff as edits (symbols_diff); each file's set is
+        # added to a batch at most once.
+        self.prepared = (symbols_diff.prepare(log_path, context.worktree)
+                         if getattr(self.config, "use_symbols_diff", False) else [])
+        self.prepared_added: set[str] = set()
+        self.refused: set[tuple] = set()
         self.tool_results: list[ToolResult] = []
         self.feedback = ""
         self.latest_attempt_feedback = ""
@@ -576,7 +582,8 @@ class _Loop:
         worktree, policy = self.context.worktree, self.patch_policy
         snapshot = None
         reason = key = None
-        if getattr(self.config, "use_rules_guard", False):
+        if (getattr(self.config, "use_rules_guard", False)
+                or (self.prepared and getattr(self.config, "use_symbols_diff", False))):
             self._guard(notes)
         # Validate; mechanically repair what is unambiguous; and when the
         # model cannot fix one item, drop that item alone and apply the rest
@@ -672,18 +679,47 @@ class _Loop:
                                             self.turn.hypothesis)
 
     def _guard(self, notes: list[str]) -> None:
-        """Drop each edit the rules guard refuses, with its reason (rules_guard)."""
-        kept = []
+        """Drop each edit the rules guard refuses, with its reason (rules_guard).
+
+        A batch that touches a symbols file dpkg-gensymbols reported on gets
+        the prepared edits for that file (symbols_diff), once: they follow the
+        reported diff exactly, so they are not checked as a blanket change.
+        Libbpp-core, 7 November: the model resent one refused blanket
+        "(optional)" edit seven times and the case failed.
+        """
+        checking = getattr(self.config, "use_rules_guard", False)
+        prepared = {(e.path, e.old_text, e.new_text) for e in self.prepared}
+        kept, touched = [], set()
         for position, edit in enumerate(self.turn.edits, 1):
-            why = rules_guard.check(edit.path, edit.old_text, edit.new_text,
-                                    replace_all=bool(getattr(edit, "replace_all", False)))
+            key = (edit.path, edit.old_text, edit.new_text)
+            why = None if key in prepared or not checking else rules_guard.check(
+                edit.path, edit.old_text, edit.new_text,
+                replace_all=bool(getattr(edit, "replace_all", False)))
+            if any(p.path == edit.path for p in self.prepared):
+                touched.add(edit.path)
             if why is None:
                 kept.append(edit)
-            else:
-                notes.append(f"Refused edit {position} ({edit.path}): {why}.")
-                self.review_events.append({"event": "rules_guard", "path": edit.path,
-                                           "reason": why})
-        if len(kept) != len(self.turn.edits):
+                continue
+            if key in self.refused:
+                why += ("; this exact edit was refused before, so do not propose it again")
+            self.refused.add(key)
+            notes.append(f"Refused edit {position} ({edit.path}): {why}.")
+            self.review_events.append({"event": "rules_guard", "path": edit.path,
+                                       "reason": why})
+        for path in sorted(touched - self.prepared_added):
+            self.prepared_added.add(path)
+            present = {(e.old_text, e.new_text) for e in kept if e.path == path}
+            extra = [deepcopy(e) for e in self.prepared
+                     if e.path == path and (e.old_text, e.new_text) not in present]
+            if extra:
+                kept.extend(extra)
+                notes.append(
+                    f"Added {len(extra)} prepared edit(s) to {path}: the update "
+                    "dpkg-gensymbols's diff in the log asks for (a symbol that disappeared "
+                    "marked (optional), a symbol that appeared added).")
+                self.review_events.append({"event": "symbols_diff", "path": path,
+                                           "added": len(extra)})
+        if kept != self.turn.edits:
             self.turn = deepcopy(self.turn)
             self.turn.edits = kept
 

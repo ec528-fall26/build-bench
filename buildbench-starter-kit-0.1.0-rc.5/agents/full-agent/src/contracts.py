@@ -100,6 +100,10 @@ class AgentConfig:                # the ablation switches
     # compiler -fsyntax-only when a compiler exists) before it is written
     # (syntax_guard.py).
     use_syntax_guard: bool = True
+    # 0.5.2: a dh_makeshlibs failure is repaired from dpkg-gensymbols's own diff
+    # in the log: prepared edits are shown, and substituted for a symbols edit
+    # the rules guard refuses (symbols_diff.py).
+    use_symbols_diff: bool = True
 
 
 @runtime_checkable

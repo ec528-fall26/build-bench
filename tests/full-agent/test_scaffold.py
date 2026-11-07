@@ -60,7 +60,7 @@ class Contracts(unittest.TestCase):
         self.assertEqual(fields(AgentConfig), ["use_evidence_manager", "use_tools",
                                                "use_build_feedback", "use_history",
                                                "use_no_build_control", "use_rules_guard",
-                                               "use_syntax_guard"])
+                                               "use_syntax_guard", "use_symbols_diff"])
 
     def test_an_attempt_holds_part4_edits_and_a_build(self):
         diagnostic = Diagnostic("fatal error: xmmintrin.h: No such file or directory",

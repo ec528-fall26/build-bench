@@ -675,7 +675,8 @@ class _Loop:
         """Drop each edit the rules guard refuses, with its reason (rules_guard)."""
         kept = []
         for position, edit in enumerate(self.turn.edits, 1):
-            why = rules_guard.check(edit.path, edit.old_text, edit.new_text)
+            why = rules_guard.check(edit.path, edit.old_text, edit.new_text,
+                                    replace_all=bool(getattr(edit, "replace_all", False)))
             if why is None:
                 kept.append(edit)
             else:

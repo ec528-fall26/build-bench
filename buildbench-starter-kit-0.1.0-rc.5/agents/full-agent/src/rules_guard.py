@@ -83,7 +83,15 @@ def _removed(old: str, new: str) -> list[str]:
     return [line for line in _lines(old) if line not in after]
 
 
-def check(path: str, old_text: str, new_text: str) -> str | None:
+# A symbols file: marking a few symbols the build reports as missing is a repair;
+# marking them all switches the check off (libbpp-core, 0.5.0 locally, 7
+# November: a replace_all made all 4,129 symbols "(optional)", three times over).
+_SYMBOLS_FILE = re.compile(r"(?:^|/)debian/[^/]+\.symbols(?:\.[\w-]+)?$")
+_OPTIONAL = re.compile(r"\(\s*(?:[\w=!|-]+\s*\|\s*)*optional\b")
+MAX_OPTIONAL_MARKS = 40
+
+
+def check(path: str, old_text: str, new_text: str, replace_all: bool = False) -> str | None:
     """Why this edit is refused, or None when it may be applied."""
     relative = path[len("input/"):] if path.startswith("input/") else path
     if relative.startswith(".pc/") or "/.pc/" in relative:
@@ -96,6 +104,23 @@ def check(path: str, old_text: str, new_text: str) -> str | None:
     added = _added(old_text, new_text)
     removed = _removed(old_text, new_text)
     added_text = "\n".join(added)
+
+    if _SYMBOLS_FILE.search(relative):
+        marked = len(_OPTIONAL.findall(new_text)) - len(_OPTIONAL.findall(old_text))
+        # A replace_all on a family of symbols is fine (libleidenalg's " _ZNSt", the C++
+        # standard-library instantiations, passed); on a bare prefix such as " _" or
+        # " _Z" it matches every symbol (jsonnet, libbpp-core).
+        generic = len(re.sub(r"[\s()]|optional", "", old_text)) <= 4
+        if marked > 0 and replace_all and generic:
+            return ("a replace_all that adds (optional) to a bare prefix marks every symbol optional, "
+                    "which switches the symbols check off; the rules forbid suppressing "
+                    "failures. Mark only the symbols dpkg-gensymbols lists as missing (its "
+                    "diff lines starting with '-'), one edit per symbol or block")
+        if marked > MAX_OPTIONAL_MARKS:
+            return (f"it marks {marked} symbols (optional) at once, which switches the symbols "
+                    "check off; the rules forbid suppressing failures. Mark only the symbols "
+                    "dpkg-gensymbols lists as missing (its diff lines starting with '-')")
+        return None
 
     if relative == "debian/rules" or relative.endswith("/debian/rules"):
         for regex, why in _RULES_SUPPRESS:

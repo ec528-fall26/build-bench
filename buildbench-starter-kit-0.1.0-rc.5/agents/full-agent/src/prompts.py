@@ -38,6 +38,7 @@ from .contracts import (AgentConfig, Attempt, Budget, BuildResult, Diagnostic, M
 from .model_client import SOURCE_FILES, build_messages as baseline_messages, render_source_files
 from .tools import MAX_OUTPUT_CHARS, run_tool
 from .types import CaseContext
+from . import archnames
 
 
 # Research settings, to be calibrated on rcran with the budgets. Every turn
@@ -214,14 +215,27 @@ Common causes of cross-architecture build failures
 These are frequent patterns, not answers: confirm one against the evidence
 before you use it, and prefer the narrowest change that fixes the cause.
 - CPU-specific code: x86-only vector headers, cpuid.h, __builtin_ia32_*
-  builtins or inline x86 assembly compiled on ARM, or NEON (arm_neon.h) on
-  x86. Guard the code with the compiler's architecture macros (__x86_64__,
-  __i386__, __aarch64__, __arm__) and keep or add a portable fallback path.
+  builtins, sys/io.h port I/O or inline x86 assembly compiled on ARM or
+  RISC-V, or NEON (arm_neon.h) on x86. Guard the code with the compiler's
+  architecture macros (__x86_64__, __i386__, __aarch64__, __arm__, __riscv)
+  and keep or add a portable fallback path; every #if needs its #endif and
+  every function its closing brace.
 - CPU-specific compiler flags: -msse*, -mavx*, -mfpmath=sse, -march=... or
   -mcpu=... hard-coded in a build file. Add them only on the architectures
   that accept them (for example a DEB_HOST_ARCH or uname -m check, or %ifarch
   in an RPM spec), not unconditionally.
-- char signedness: plain char is unsigned on ARM and signed on x86. In C,
+- Architecture names: the case metadata uses the GNU names (aarch64, x86_64,
+  riscv64), but Debian files use arm64, amd64 and riscv64: DEB_HOST_ARCH
+  comparisons, Architecture fields, Build-Depends [arch] lists and symbols tags
+  such as (arch=!arm64). A Debian file that names aarch64 or x86_64 matches
+  nothing. Multiarch paths use the GNU triplet (aarch64-linux-gnu).
+- long double and __float128: long double is 80-bit on x86 and 128-bit on
+  arm64 and riscv64, and __float128 and the quadmath x86 types do not exist
+  there. Use long double or _Float128 behind an architecture check, and fix a
+  test's numeric expectation (tolerance or printed digits) rather than skip it.
+- RISC-V: 1- and 2-byte __atomic_* operations and some 8-byte ones need
+  -latomic; there is no outline-atomics flag.
+- char signedness: plain char is unsigned on ARM and RISC-V and signed on x86. In C,
   comparisons such as c < 0 or c == EOF on a char behave differently. In Rust,
   C strings are *const c_char (std::ffi::c_char or std::os::raw::c_char),
   which is u8 on ARM and i8 on x86. Replace the hard-coded i8 (or u8) C-string
@@ -255,6 +269,10 @@ before you use it, and prefer the narrowest change that fixes the cause.
   aarch64 or arm64 written into debian/rules, *.install files, a spec file or
   a configure script. Use the multiarch variables (DEB_HOST_MULTIARCH,
   %{_libdir}) or patterns that match every architecture.
+- Build dependencies are a fixed set resolved for each case before the build:
+  a package newly added to Build-Depends is not installed, so it cannot fix
+  the build. Repair the package's own files instead (a missing x86-only
+  dependency is handled by guarding the code that needs it).
 - Architecture lists: Architecture fields in debian/control, ExclusiveArch or
   ExcludeArch in a spec, or a configure or CMake check that only knows some
   CPUs. Add the target where the code supports it.
@@ -653,6 +671,9 @@ def opening_message(
         if package:
             header += f"Package: {package}\n"
         header += f"Target architecture: {arch}\n"
+        names = archnames.describe(arch)
+        if names:
+            header += names + "\n"
         files = CONTEXT_FILES if config.use_tools else SOURCE_FILES
         window = ""
         if diagnostics and log_path is not None:

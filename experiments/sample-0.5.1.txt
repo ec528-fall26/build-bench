@@ -1,0 +1,28 @@
+# 20-case check of full-agent 0.5.1 (syntax guard, architecture names).
+# Chosen from the 0.3.3 Development Validation run (DV-20261106T071522Z-fddee6cd).
+# Not a pass-rate estimate: 20 cases cannot resolve a change of a few points.
+# It checks that the new code fires where it should and breaks nothing.
+#
+# A. Failed in 0.3.3 on an error the agent's own edit introduced (the guard's target)
+launchpad-noble-amd64-arm64-xmbmon-a78a68bcce2f
+launchpad-questing-amd64-arm64-xmbmon-ad2ecb4e1183
+launchpad-resolute-amd64-arm64-sphde-591617b87ae9
+launchpad-plucky-amd64-arm64-pam-tmpdir-4c7f2d6dc2cc
+launchpad-noble-amd64-arm64-obs-time-source-04ee01f2e706
+launchpad-jammy-amd64-arm64-libmbim-32c606c4686e
+launchpad-jammy-arm64-amd64-libbpp-seq-3d3d20403502
+launchpad-questing-arm64-amd64-jsonnet-81bc3ec2306c
+# B. Passed in 0.3.3: must still pass (regression check)
+launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f
+launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84
+launchpad-mantic-amd64-arm64-libjodycode-10d297329e6a
+launchpad-resolute-amd64-arm64-efibootmgr-31ac9a9f7d3c
+launchpad-plucky-amd64-arm64-harec-2765b2c0fbdc
+launchpad-jammy-amd64-arm64-rust-blake3-56acd64f65be
+launchpad-hirsute-arm64-amd64-python-pyaudio-7eb839e5dc46
+launchpad-focal-arm64-amd64-libinsane-d2cacbf5f310
+# C. Failed in 0.3.3 on an architecture difference the new playbook names
+launchpad-resolute-amd64-arm64-asmixer-f901ce1ff1a4
+launchpad-plucky-amd64-arm64-libcrypt-xxhash-perl-9fa2d60e7af5
+launchpad-jammy-amd64-arm64-liboqs-df7b6ca57151
+launchpad-resolute-amd64-arm64-libelas-8f3152c7b0d2

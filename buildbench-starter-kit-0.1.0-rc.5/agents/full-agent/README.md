@@ -27,6 +27,45 @@ it has no build feedback, so edits are investigated and revised but submitted
 untested. Locally, `harness/run_case.py --agent full-agent` runs the same loop
 with real builds (Part D). Results: `docs/part5-findings.md` §9c.
 
+Version 0.5.1 (7 November), syntax guard (`src/syntax_guard.py`):
+- In the 0.3.3 Development Validation run (111 small cases, 36 passed), about
+  29 of the 69 failed cases ended on an error other than the original, several
+  introduced by the agent's own untested edit (xmbmon "void value not
+  ignored", sphde "expected primary-expression", pam-tmpdir, libmbim), and
+  seven failed at an earlier stage than the original log.
+- Before a batch is written, each edited file is checked as it was and as the
+  batch leaves it; only problems the batch adds count: Python compile, sh -n,
+  JSON, brace/parenthesis and #if/#endif balance for C, C++, Rust and Go,
+  ifeq/endif balance and space-indented recipe lines in Makefiles and
+  debian/rules, block balance in CMake, and, when a compiler is on PATH,
+  `-fsyntax-only` parser errors. The compiler check builds for the case's
+  target (macros switched so an x86 host takes the arm64 or riscv64 `#if`
+  branches), with the -D flags of the failing build's own compile command,
+  and for an edited header it also compiles up to two files that include it
+  (xmbmon: a macro made void on ARM fails only in its user, io_static.c).
+  Missing headers are stubbed; lines that already failed before the edit do
+  not count. Compiler time is capped at 45 s per batch and 120 s per run.
+- Measured without a model (`experiments/syntax_guard_stress.py`, 30 real
+  cases): 0 of 212 harmless edits flagged, 136 of 164 broken edits caught.
+- A finding sends that item back as a focused correction (`Reason:
+  syntax_check`); an unchanged resend is applied, so a false alarm costs one
+  correction turn and never blocks a repair. Switch: `BB_AGENT_USE_SYNTAX_GUARD`.
+- Measure it on a recorded run without a model or a build:
+  `experiments/syntax_guard_audit.py <run_public out> --cases-root <cases>`.
+- Debian symbols files: a line dpkg-gensymbols cannot parse (libbpp-seq on
+  6 November: "... is not a valid version") or an `(arch=...)` tag with a GNU
+  name such as aarch64, which never matches, is sent back the same way.
+
+Version 0.5.1, architecture names (`src/archnames.py`):
+- The case header now gives the target's Debian name, GNU triplet, compiler
+  macro and the facts that usually decide a failure (char signedness, long
+  double, atomics). The symbols advice in `patterns.py` wrote
+  `(arch=!aarch64)` for an aarch64 target; it now writes `(arch=!arm64)`.
+- The playbook covers riscv64, which the competition lists among the
+  evaluated architectures (task.html) although no development case has it:
+  unsigned char, 128-bit long double, no __float128, -latomic for small
+  atomics, the __riscv macro.
+
 Version 0.4.0 (6 November), test-suite failures (`src/test_failures.py`):
 - 59 of the 200 public cases fail in the package's own tests, the largest
   stage, and their diagnostics were wrapper lines (`dh_auto_test: error: ...

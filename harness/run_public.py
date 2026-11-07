@@ -181,6 +181,10 @@ def run_one(case: dict, out: Path, tag: str, agent, model, *, keep_work=False,
                        agent_message=record["termination_message"], attempts=record["attempts"],
                        turns=record["turns"], malformed_count=record["malformed_count"],
                        usage=result.usage)
+            # 0.5.1: each edit the syntax guard sent back, and why (empty before 0.5.1).
+            row["syntax_guard"] = [
+                {"path": e.get("path"), "problems": e.get("problems")}
+                for e in record.get("review_events") or [] if e.get("event") == "syntax_guard"]
             row["edits_proposed"] = sum(len(a.edits) for a in result.attempts)
             row["edits_applied"] = sum(a.applied for a in result.attempts
                                        if a.number in result.kept_attempts)
@@ -312,6 +316,12 @@ def cmd_status(args) -> int:
     print(f"{len(rows)} cases recorded; {tokens:,} tokens")
     for reason, n in sorted(reasons.items(), key=lambda kv: -kv[1]):
         print(f"  {reason}: {n}")
+    guarded = {cid: r["syntax_guard"] for cid, r in rows.items() if r.get("syntax_guard")}
+    if guarded:
+        print(f"syntax guard sent edits back in {len(guarded)} cases:")
+        for cid, events in sorted(guarded.items()):
+            print(f"  {cid}: " + "; ".join(f"{e['path']}: {(e['problems'] or ['?'])[0][:90]}"
+                                          for e in events))
     return 0
 
 

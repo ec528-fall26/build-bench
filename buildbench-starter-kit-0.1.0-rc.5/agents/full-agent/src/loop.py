@@ -27,7 +27,7 @@ from .path_feedback import missing_prefix_feedback, uncapturable_feedback
 from .tools import run_tool
 from .types import CaseContext
 from .proposal_review import render_review, signature
-from . import ffi_analysis, rules_guard
+from . import ffi_analysis, rules_guard, syntax_guard
 
 
 OWN_EDITS_CHARS = 6000
@@ -252,6 +252,9 @@ class _Loop:
         self.empty_edit_streak = 0
         self.empty_stop_refused = False
         self.controller_note = ""
+        # Edits the syntax guard sent back once; resent unchanged, they apply.
+        self.syntax_allowed: set[tuple] = set()
+        self.syntax_seconds_left = syntax_guard.RUN_BUDGET
         # What the model is told next turn
         self.tracker = DiffTracker(context.worktree)
         self.tool_results: list[ToolResult] = []
@@ -595,6 +598,8 @@ class _Loop:
                 if self.turn.edits:
                     self.pending_index, feedback = focused_feedback(
                         snapshot, self.turn.edits, self.turn.hypothesis)
+                if self.turn.edits and not feedback:
+                    self.pending_index, feedback = self._syntax_check(snapshot)
             self.edit_validation_feedback = feedback
             if not self.turn.edits or not feedback:
                 break
@@ -636,6 +641,35 @@ class _Loop:
             self.feedback = " ".join(self.batch_notes)
             return None
         return snapshot
+
+    def _syntax_check(self, snapshot):
+        """Send back an edit that would leave its file unparseable (syntax_guard).
+
+        Returns (index, feedback), or (None, "") when the batch may be applied.
+        Each finding is sent back once; an unchanged resend is applied.
+        """
+        if not getattr(self.config, "use_syntax_guard", False):
+            return None, ""
+        seconds = min(syntax_guard.COMPILE_BUDGET, self.syntax_seconds_left,
+                      max(0.0, self.work_deadline - self.clock() - 60))
+        started = monotonic()
+        found = syntax_guard.check_batch(snapshot, self.turn.edits,
+                                         worktree=self.context.worktree,
+                                         allow=self.syntax_allowed, seconds=seconds,
+                                         target_arch=str((getattr(self.context, "task_metadata",
+                                                                  None) or {})
+                                                         .get("target_arch") or ""),
+                                         log_path=self.log_path)
+        self.syntax_seconds_left = max(0.0, self.syntax_seconds_left - (monotonic() - started))
+        if found is None:
+            return None, ""
+        index, problems, after = found
+        edit = self.turn.edits[index]
+        self.syntax_allowed.add(syntax_guard.edit_signature(edit))
+        self.review_events.append({"event": "syntax_guard", "path": edit.path,
+                                   "problems": [p.message for p in problems]})
+        return index, syntax_guard.feedback(index, self.turn.edits, problems, after,
+                                            self.turn.hypothesis)
 
     def _guard(self, notes: list[str]) -> None:
         """Drop each edit the rules guard refuses, with its reason (rules_guard)."""

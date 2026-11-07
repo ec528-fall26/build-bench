@@ -269,6 +269,10 @@ before you use it, and prefer the narrowest change that fixes the cause.
   aarch64 or arm64 written into debian/rules, *.install files, a spec file or
   a configure script. Use the multiarch variables (DEB_HOST_MULTIARCH,
   %{_libdir}) or patterns that match every architecture.
+- Build dependencies are a fixed set resolved for each case before the build:
+  a package newly added to Build-Depends is not installed, so it cannot fix
+  the build. Repair the package's own files instead (a missing x86-only
+  dependency is handled by guarding the code that needs it).
 - Architecture lists: Architecture fields in debian/control, ExclusiveArch or
   ExcludeArch in a spec, or a configure or CMake check that only knows some
   CPUs. Add the target where the code supports it.

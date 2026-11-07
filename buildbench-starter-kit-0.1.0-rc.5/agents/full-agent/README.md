@@ -27,6 +27,26 @@ it has no build feedback, so edits are investigated and revised but submitted
 untested. Locally, `harness/run_case.py --agent full-agent` runs the same loop
 with real builds (Part D). Results: `docs/part5-findings.md` §9c.
 
+Version 0.5.1 (7 November), syntax guard (`src/syntax_guard.py`):
+- In the 0.3.3 Development Validation run (111 small cases, 36 passed), about
+  29 of the 69 failed cases ended on an error other than the original, several
+  introduced by the agent's own untested edit (xmbmon "void value not
+  ignored", sphde "expected primary-expression", pam-tmpdir, libmbim), and
+  seven failed at an earlier stage than the original log.
+- Before a batch is written, each edited file is checked as it was and as the
+  batch leaves it; only problems the batch adds count: Python compile, sh -n,
+  JSON, brace/parenthesis and #if/#endif balance for C, C++, Rust and Go,
+  ifeq/endif balance and space-indented recipe lines in Makefiles and
+  debian/rules, block balance in CMake, and `-fsyntax-only` parser errors on
+  edited lines when a compiler is on PATH (missing headers stubbed; only files
+  that parse cleanly before the edit). Compiler time is capped at 45 s per
+  batch and 120 s per run.
+- A finding sends that item back as a focused correction (`Reason:
+  syntax_check`); an unchanged resend is applied, so a false alarm costs one
+  correction turn and never blocks a repair. Switch: `BB_AGENT_USE_SYNTAX_GUARD`.
+- Measure it on a recorded run without a model or a build:
+  `experiments/syntax_guard_audit.py <run_public out> --cases-root <cases>`.
+
 Version 0.4.0 (6 November), test-suite failures (`src/test_failures.py`):
 - 59 of the 200 public cases fail in the package's own tests, the largest
   stage, and their diagnostics were wrapper lines (`dh_auto_test: error: ...

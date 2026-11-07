@@ -95,6 +95,11 @@ class AgentConfig:                # the ablation switches
     # 0.5.0: refuse edits that bypass tests (rules.html section 6) or edit .pc/
     # or debian/patches/ (rules_guard.py).
     use_rules_guard: bool = True
+    # 0.5.1: send back an edit that leaves its file unparseable (unbalanced
+    # braces or #if, Python/shell/JSON syntax, make recipe without a TAB,
+    # compiler -fsyntax-only when a compiler exists) before it is written
+    # (syntax_guard.py).
+    use_syntax_guard: bool = True
 
 
 @runtime_checkable

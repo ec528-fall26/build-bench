@@ -46,6 +46,19 @@ Version 0.5.1 (7 November), syntax guard (`src/syntax_guard.py`):
   correction turn and never blocks a repair. Switch: `BB_AGENT_USE_SYNTAX_GUARD`.
 - Measure it on a recorded run without a model or a build:
   `experiments/syntax_guard_audit.py <run_public out> --cases-root <cases>`.
+- Debian symbols files: a line dpkg-gensymbols cannot parse (libbpp-seq on
+  6 November: "... is not a valid version") or an `(arch=...)` tag with a GNU
+  name such as aarch64, which never matches, is sent back the same way.
+
+Version 0.5.1, architecture names (`src/archnames.py`):
+- The case header now gives the target's Debian name, GNU triplet, compiler
+  macro and the facts that usually decide a failure (char signedness, long
+  double, atomics). The symbols advice in `patterns.py` wrote
+  `(arch=!aarch64)` for an aarch64 target; it now writes `(arch=!arm64)`.
+- The playbook covers riscv64, which the competition lists among the
+  evaluated architectures (task.html) although no development case has it:
+  unsigned char, 128-bit long double, no __float128, -latomic for small
+  atomics, the __riscv macro.
 
 Version 0.4.0 (6 November), test-suite failures (`src/test_failures.py`):
 - 59 of the 200 public cases fail in the package's own tests, the largest

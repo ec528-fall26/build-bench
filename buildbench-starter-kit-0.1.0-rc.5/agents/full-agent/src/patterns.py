@@ -20,6 +20,7 @@ from pathlib import Path, PurePosixPath
 import re
 
 from .tools import collect_files
+from . import archnames
 
 MAX_LOG_BYTES = 64 * 1024 * 1024
 MAX_FILE_BYTES = 1024 * 1024
@@ -286,8 +287,10 @@ def debian_symbols(log_lines: Sequence[str], worktree: Path, target_arch: str) -
         lines.extend(missing[:MAX_DIFF_LINES])
         if len(missing) > MAX_DIFF_LINES:
             lines.append(f"... and {len(missing) - MAX_DIFF_LINES} more in the log.")
+    # Symbols tags take Debian names (arm64, amd64): (arch=!aarch64) never matches.
+    tag_arch = archnames.debian(target_arch) or "arm64"
     lines.append("Repair: in the symbols file, mark each missing entry as architecture-"
-                 "specific or optional, for example `(arch=!" + (target_arch or "arm64") + ")`"
+                 "specific or optional, for example `(arch=!" + tag_arch + ")`"
                  " or `(optional)` before the symbol name, following the file's existing "
                  "tag style; use a wildcard pattern such as `(c++)\"typeinfo for ...@Base\" "
                  "1.0` only if the file already uses them. Do not delete the file, and do "

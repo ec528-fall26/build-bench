@@ -95,6 +95,25 @@ class Files(unittest.TestCase):
         ok = after + "endif()\n"
         self.assertEqual(problems("input/CMakeLists.txt", before, ok), [])
 
+    def test_symbols_line_without_a_version_is_found(self):
+        # libbpp-seq, 6 November: "... is not a valid version" after the edit.
+        before = "libbpp-seq12 libbpp-seq12 #MINVER#\n _ZN3bpp3Seq4sizeEv@Base 2.4.1\n"
+        after = before + " (arch=!arm64)_ZNSt6vectorIiSaIiEE12emplace_backIJS5_EEEvDpOT_@Base\n"
+        found = problems("input/debian/libbpp-seq12.symbols", before, after)
+        self.assertTrue(any("cannot parse" in m for m in found), found)
+
+    def test_symbols_tag_with_a_gnu_name_is_found(self):
+        before = "libx1 libx1 #MINVER#\n _Z1fv@Base 1.0\n"
+        after = before.replace(" _Z1fv", " (arch=!aarch64)_Z1fv")
+        found = problems("input/debian/libx1.symbols", before, after)
+        self.assertTrue(any("arch=aarch64" in m for m in found), found)
+
+    def test_symbols_tags_with_debian_names_pass(self):
+        before = "libx1 libx1 #MINVER#\n _Z1fv@Base 1.0\n"
+        after = before + (' (c++|arch=!arm64 !riscv64)"foo::bar()@Base" 1.0\n'
+                          " (optional=templinst|arch=amd64 i386)_Z1gv@Base 1.0~rc1 1\n")
+        self.assertEqual(problems("input/debian/libx1.symbols", before, after), [])
+
     def test_json(self):
         self.assertTrue(problems("input/package.json", '{"a": 1}', '{"a": 1,}'))
 
@@ -172,6 +191,28 @@ class Loop(unittest.TestCase):
         result, _ = self.run_with(script, config=NEW)
         self.assertNotIn("syntax_check", script.user(1))
         self.assertEqual(result.attempts[0].applied, 1)
+
+
+class ArchNames(unittest.TestCase):
+    def test_debian_names(self):
+        from src import archnames
+        self.assertEqual([archnames.debian(a) for a in ("aarch64", "x86_64", "riscv64", "arm64", "?")],
+                         ["arm64", "amd64", "riscv64", "arm64", ""])
+        line = archnames.describe("aarch64")
+        self.assertIn("Debian name arm64", line)
+        self.assertIn("aarch64-linux-gnu", line)
+        self.assertIn("UNSIGNED", line)
+
+    def test_symbols_advice_uses_the_debian_name(self):
+        from src import patterns
+        import tempfile
+        log = ["dpkg-gensymbols: error: some symbols or patterns disappeared in the symbols file",
+               "dpkg-gensymbols: warning: debian/libx1/DEBIAN/symbols doesn't match completely debian/libx1.symbols",
+               "- _Z1fv@Base 1.0"]
+        with tempfile.TemporaryDirectory() as tmp:
+            block = patterns.debian_symbols(log, Path(tmp), "aarch64")
+        self.assertIn("(arch=!arm64)", block)
+        self.assertNotIn("(arch=!aarch64)", block)
 
 
 if __name__ == "__main__":

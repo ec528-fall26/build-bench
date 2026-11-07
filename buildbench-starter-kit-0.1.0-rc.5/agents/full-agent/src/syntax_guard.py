@@ -77,6 +77,8 @@ class Problem:
 def _kind(path: str, text: str) -> str | None:
     pure = PurePosixPath(path)
     name, suffix = pure.name, pure.suffix
+    if pure.parent.name == "debian" and re.fullmatch(r"(?:.+\.)?symbols(?:\.[a-z0-9-]+)?", name):
+        return "symbols"
     if name in MAKE_NAMES and (name != "rules" or pure.parent.name == "debian"):
         return "make"
     if suffix in MAKE_SUFFIXES or name.startswith("Makefile."):
@@ -298,6 +300,55 @@ def _make(before: str, after: str, path: str) -> list[Problem]:
     return found
 
 
+_SYMBOL_LINE = re.compile(
+    r"^ (?:\((?P<tags>[^)]*)\))?(?P<symbol>\"(?:[^\"\\]|\\.)*\"|\S+)\s+(?P<version>\S+)")
+_DEB_VERSION = re.compile(r"^(?:\d+:)?[0-9][A-Za-z0-9.+~-]*$")
+
+
+def _symbols_issues(text: str) -> Counter:
+    """Lines dpkg-gensymbols rejects or tags that can never match."""
+    from .archnames import DEBIAN_NAMES
+    issues = Counter()
+    for line in text.split("\n"):
+        if not line.startswith(" ") or not line.strip():
+            continue
+        m = _SYMBOL_LINE.match(line)
+        if m is None or (m.group("version") != "#MINVER#"
+                         and not _DEB_VERSION.match(m.group("version"))):
+            issues[("format", line.strip()[:160])] += 1
+            continue
+        for tag in (m.group("tags") or "").split("|"):
+            key, _, value = tag.partition("=")
+            if key.strip() != "arch":
+                continue
+            for name in value.split():
+                bare = name.lstrip("!")
+                if bare not in DEBIAN_NAMES and not re.fullmatch(r"[a-z0-9]+-any|any-[a-z0-9]+", bare):
+                    issues[("arch", bare)] += 1
+    return issues
+
+
+def _symbols(before: str, after: str, path: str) -> list[Problem]:
+    old, new = _symbols_issues(before), _symbols_issues(after)
+    found = []
+    for (kind, detail), count in new.items():
+        if count <= old.get((kind, detail), 0):
+            continue
+        if kind == "format":
+            line = next((n for n, l in enumerate(after.split("\n"), 1) if l.strip()[:160] == detail),
+                        None)
+            found.append(Problem(path, "a symbols line that dpkg-gensymbols cannot parse "
+                                 "(expected ' [(tags)]symbol@VERSION minimal-version', with a "
+                                 f"C++ name in quotes after a (c++) tag): {detail}", line))
+        else:
+            found.append(Problem(path, f"the tag arch={detail} names no Debian architecture, "
+                                 "so it never matches: symbols tags take Debian names such as "
+                                 "arm64, amd64, riscv64 (not aarch64 or x86_64)"))
+        if len(found) >= 3:
+            break
+    return found
+
+
 _CMAKE_BLOCKS = (("if", "endif"), ("foreach", "endforeach"), ("while", "endwhile"),
                  ("function", "endfunction"), ("macro", "endmacro"))
 
@@ -458,6 +509,8 @@ def file_problems(path: str, before: str, after: str, *, worktree: Path | None =
         return _make(before, after, path)
     if kind == "cmake":
         return _cmake(before, after, path)
+    if kind == "symbols":
+        return _symbols(before, after, path)
     found = [Problem(path, text) for text in _balance_problems(
         path, before, after, backtick=PurePosixPath(path).suffix == ".go")]
     if kind in {"c", "c++"}:

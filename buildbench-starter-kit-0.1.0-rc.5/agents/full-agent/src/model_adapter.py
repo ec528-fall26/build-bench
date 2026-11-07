@@ -34,7 +34,7 @@ from pathlib import Path
 from time import monotonic
 from typing import Callable
 
-from . import patterns, prompts, test_failures
+from . import patterns, prompts, test_failures, ffi_analysis
 from .contracts import AgentConfig, Budget, BuildResult, Diagnostic, ModelTurn, ToolRequest
 from .edit_applier import LOGGER as EDIT_LOGGER
 from .edit_preflight import FOCUSED_PREFIX
@@ -279,11 +279,13 @@ class ModelAdapter:
         self.log_path = log_path
         self.package = package
         self.pattern = ""
+        self.ffi = ffi_analysis.analyze(context.worktree) if ffi_analysis.enabled() else None
         worktree = getattr(context, "worktree", None)
         if config.use_evidence_manager and worktree is not None:
             metadata = getattr(context, "task_metadata", None) or {}
             arch = str(metadata.get("target_arch") or "")
-            self.pattern = patterns.recognise(diagnostics, log_path, worktree, arch)
+            self.pattern = patterns.recognise(diagnostics, log_path, worktree, arch,
+                                             skip_rust=self.ffi is not None)
             # A failure in the package's test suite: name the failing tests and why.
             tests = test_failures.render(log_path, worktree, arch)
             self.pattern = "\n\n".join(block for block in (self.pattern, tests) if block)
@@ -422,6 +424,9 @@ class ModelAdapter:
             package=self.package, history=request.history,
             kept=request.kept_attempts if config.use_history else None,
             note=strategy_note, pattern=self.pattern))]
+        if self.ffi is not None:
+            parts.append(self.ffi.render(ffi_analysis.index_sources(context.worktree),
+                                         'current worktree; no build performed'))
 
         if request.edit_validation_feedback:
             parts.append(request.edit_validation_feedback)

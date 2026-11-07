@@ -5,6 +5,20 @@ The project's full agent: it reads the failure, investigates the package with
 read-only tools, proposes a repair with a stated hypothesis, tests it when build
 feedback is available, and revises. Plan: `docs/full-agent.md`.
 
+Experimental Rust FFI coverage: set `BB_FFI_ANALYSIS=1` and
+`BB_AGENT_USE_BUILD_FEEDBACK=0` to trace C-char parameters and simple pointer
+returns, resolve explicit aliases/imports, recognize `CStr::from_ptr`, review
+simulated repairs, and record coverage of actual edits (`ffi-contracts-v2`). This automatically
+enables edit review and replaces broad Rust signedness pattern advice. It is a
+bounded source analysis, not a compiler or proof of build success. Default is off.
+Implementation scope and evaluation instructions: `docs/ffi-contract-analysis.md`
+in the project repository. The environment flag must reach the agent process;
+local exports do not change a hosted submission's defaults.
+For an offline JSON coverage report without edits, models or builds, run
+`python3 -m src.ffi_analysis --worktree /path/to/work/repo` from this agent directory.
+The worktree must contain the unpacked source under `input/`. Macros, generics,
+method dispatch and missing generated declarations remain unresolved.
+
 ## Status: wired; repaired rcran in 4 of 4 live runs (14 October)
 All parts are connected (14 October): `main.py` diagnoses the failure log (Part A),
 runs Part C's loop with Part E's prompts and parser, and writes

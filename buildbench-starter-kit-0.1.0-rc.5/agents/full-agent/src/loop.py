@@ -27,7 +27,17 @@ from .path_feedback import missing_prefix_feedback, uncapturable_feedback
 from .tools import run_tool
 from .types import CaseContext
 from .proposal_review import render_review, signature
-from . import ffi_analysis
+from . import ffi_analysis, rules_guard
+
+
+OWN_EDITS_CHARS = 6000
+EMPTY_STOP = (
+    "You stopped without changing any file. An unchanged package always fails: the "
+    "platform rejects a run with no change under input/, so stopping now cannot be "
+    "better than your best-supported repair. Using what you have read, propose the "
+    "edit most likely to fix the failure (investigate further first if a specific "
+    "file is still needed). Stop again only if you are certain that no edit under "
+    "input/ can repair this build.")
 
 
 @dataclass
@@ -46,6 +56,10 @@ class LoopRequest:
     # What the controller changed or dropped in the latest batch before
     # applying it (edit_repair): shown with the attempt's result.
     notes: list[str] = field(default_factory=list)
+    # Without builds (no-build control): the model's own edits so far as a diff
+    # against the original package, and a one-off message from the controller.
+    own_edits: str = ""
+    controller_note: str = ""
 
 @dataclass
 class LoopResult:
@@ -236,6 +250,8 @@ class _Loop:
         self.known_usage = {"input_tokens": 0, "output_tokens": 0}
         self.malformed_count = 0
         self.empty_edit_streak = 0
+        self.empty_stop_refused = False
+        self.controller_note = ""
         # What the model is told next turn
         self.tracker = DiffTracker(context.worktree)
         self.tool_results: list[ToolResult] = []
@@ -282,6 +298,8 @@ class _Loop:
                 self._malformed()
                 continue
             if action == "stop":
+                if self._refuse_empty_stop():
+                    continue
                 return self.finish("model_stop", self.turn.reason)
             if self.clock() >= self.work_deadline:
                 return self.finish("time_budget", "The time reserved for graceful shutdown was reached.")
@@ -336,6 +354,45 @@ class _Loop:
         self.correction_responses = 0
         self.rejected_texts.clear()
 
+    # --- without builds (no-build control) ----------------------------------
+
+    def _no_build_control(self) -> bool:
+        return (getattr(self.config, "use_no_build_control", False)
+                and not (self.config.use_build_feedback and self.build_feedback is not None))
+
+    def _own_edits(self) -> str:
+        """The model's own edits so far, as a diff against the original files.
+
+        Every turn is rebuilt from the evidence, and the model's earlier
+        reasoning is not in it, so without builds it read its own edit as part
+        of the package, saw the original error still in the original log and
+        concluded the edit had failed (libmbim, 6 November: "they set
+        GTKDOCIZE ... but still error", eight stacked attempts).
+        """
+        if not self._no_build_control() or not any(a.applied for a in self.attempts):
+            return ""
+        try:
+            diff, truncated = self.tracker.current_diff(max_chars=OWN_EDITS_CHARS)
+        except (OSError, ValueError):
+            return ""
+        if not diff.strip():
+            return ""
+        return diff + ("\n[diff truncated]" if truncated else "")
+
+    def _refuse_empty_stop(self) -> bool:
+        """Once per run, send back a stop that would submit nothing.
+
+        An unchanged worktree always fails (the platform marks it invalid:
+        "Agent made no allowed input change"); 8 of 111 baseline runs stopped
+        with nothing, most saying the evidence was insufficient.
+        """
+        if (not self._no_build_control() or self.empty_stop_refused
+                or any(a.applied for a in self.attempts)):
+            return False
+        self.empty_stop_refused = True
+        self.controller_note = EMPTY_STOP
+        return True
+
     # --- before the model is asked ------------------------------------------
 
     def _exhausted(self) -> LoopResult | None:
@@ -363,11 +420,15 @@ class _Loop:
             edit_validation_feedback=self.edit_validation_feedback,
             proposal_review=self.proposal_review,
             notes=list(self.batch_notes),
+            own_edits=self._own_edits(),
+            controller_note=self.controller_note,
         )
 
     def _ask_model(self) -> LoopResult | None:
         try:
-            self.turn, reported = self.next_turn(self._request())
+            request = self._request()
+            self.controller_note = ""  # delivered with this request
+            self.turn, reported = self.next_turn(request)
         except (OSError, RuntimeError, ValueError) as exc:
             self.usage = _add_usage(self.usage, {"input_tokens": None, "output_tokens": None})
             return self.finish("model_error", f"Model request failed: {type(exc).__name__}: {exc}")
@@ -512,6 +573,8 @@ class _Loop:
         worktree, policy = self.context.worktree, self.patch_policy
         snapshot = None
         reason = key = None
+        if getattr(self.config, "use_rules_guard", False):
+            self._guard(notes)
         # Validate; mechanically repair what is unambiguous; and when the
         # model cannot fix one item, drop that item alone and apply the rest
         # (without builds an unapplied batch is a certain failure:
@@ -573,6 +636,21 @@ class _Loop:
             self.feedback = " ".join(self.batch_notes)
             return None
         return snapshot
+
+    def _guard(self, notes: list[str]) -> None:
+        """Drop each edit the rules guard refuses, with its reason (rules_guard)."""
+        kept = []
+        for position, edit in enumerate(self.turn.edits, 1):
+            why = rules_guard.check(edit.path, edit.old_text, edit.new_text)
+            if why is None:
+                kept.append(edit)
+            else:
+                notes.append(f"Refused edit {position} ({edit.path}): {why}.")
+                self.review_events.append({"event": "rules_guard", "path": edit.path,
+                                           "reason": why})
+        if len(kept) != len(self.turn.edits):
+            self.turn = deepcopy(self.turn)
+            self.turn.edits = kept
 
     def _retarget(self, failing, reason: str, notes: list[str]) -> bool:
         """Move an edit to the one file that holds its text (edit_repair)."""

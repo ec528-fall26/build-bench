@@ -26,7 +26,8 @@ class FromEnvironment(unittest.TestCase):
     def test_one_variable_per_contract_field(self):
         self.assertEqual([env_name(name) for name in FIELDS], [
             "BB_AGENT_USE_EVIDENCE_MANAGER", "BB_AGENT_USE_TOOLS",
-            "BB_AGENT_USE_BUILD_FEEDBACK", "BB_AGENT_USE_HISTORY"])
+            "BB_AGENT_USE_BUILD_FEEDBACK", "BB_AGENT_USE_HISTORY",
+        "BB_AGENT_USE_NO_BUILD_CONTROL", "BB_AGENT_USE_RULES_GUARD"])
         for name in FIELDS:
             with self.subTest(field=name):
                 config = config_from_env({env_name(name): "0"})
@@ -57,7 +58,8 @@ class RoundTrip(unittest.TestCase):
     def test_record_is_the_switches_by_field_name(self):
         self.assertEqual(config_record(AgentConfig(use_history=False)),
                          {"use_evidence_manager": True, "use_tools": True,
-                          "use_build_feedback": True, "use_history": False})
+                          "use_build_feedback": True, "use_history": False,
+                          "use_no_build_control": True, "use_rules_guard": True})
 
 
 if __name__ == "__main__":

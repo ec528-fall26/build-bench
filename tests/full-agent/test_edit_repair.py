@@ -288,7 +288,7 @@ class _Salvage(unittest.TestCase):
             return next(proposals), {"input_tokens": 1, "output_tokens": 1}
 
         return run_loop(SimpleNamespace(worktree=self.root), next_turn=next_turn,
-                        config=AgentConfig(use_build_feedback=False))
+                        config=AgentConfig(use_no_build_control=False, use_build_feedback=False))
 
 
 class LoopSalvage(_Salvage):
@@ -362,7 +362,7 @@ class LoopSalvage(_Salvage):
             return next(proposals), {"input_tokens": 1, "output_tokens": 1}
 
         result = run_loop(SimpleNamespace(worktree=self.root), next_turn=next_turn,
-                          config=AgentConfig(use_build_feedback=False), max_turns=13)
+                          config=AgentConfig(use_no_build_control=False, use_build_feedback=False), max_turns=13)
         self.assertEqual(result.termination_reason, "turn_budget")
         self.assertEqual([a.applied for a in result.attempts], [1])
         self.assertEqual(self.source.read_text(), "int c;\n\t\t\tfoo(x);\nint b;\n")
@@ -396,10 +396,10 @@ class LoopSalvage(_Salvage):
 
         context = SimpleNamespace(worktree=self.root, case_id="c", log_tail="",
                                   task_metadata={"target_arch": "arm64"})
-        adapter = ModelAdapter(complete, context, config=AgentConfig(use_build_feedback=False),
+        adapter = ModelAdapter(complete, context, config=AgentConfig(use_no_build_control=False, use_build_feedback=False),
                                budget=Budget(), diagnostics=[], log_path=None)
         self.addCleanup(adapter.close)
-        result = run_loop(context, next_turn=adapter, config=AgentConfig(use_build_feedback=False))
+        result = run_loop(context, next_turn=adapter, config=AgentConfig(use_no_build_control=False, use_build_feedback=False))
         self.assertEqual(result.attempts[0].applied, 1)
         user = sent[1][1]["content"]
         self.assertIn("=== Changes the controller made to this batch before applying it ===", user)
@@ -440,7 +440,7 @@ class LoopSalvage(_Salvage):
             return next(proposals), {"input_tokens": 1, "output_tokens": 1}
 
         result = run_loop(SimpleNamespace(worktree=self.root), next_turn=next_turn,
-                          config=AgentConfig(use_build_feedback=False), review_edits=True)
+                          config=AgentConfig(use_no_build_control=False, use_build_feedback=False), review_edits=True)
         self.assertEqual(result.attempts[0].applied, 1)
         self.assertTrue(requests[1].proposal_review)
         self.assertIn("Dropped edit 1 (input/a.c): its old_text and new_text are identical",

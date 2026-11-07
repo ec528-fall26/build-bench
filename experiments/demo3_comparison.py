@@ -72,7 +72,8 @@ _REPEAT = re.compile(r"--r(\d+)$")
 _DIRECTION = re.compile(r"^[a-z]+-[a-z]+-(amd64|arm64)-(amd64|arm64)-")
 _ARCH = {"amd64": "x86_64", "arm64": "aarch64"}
 _ALL_ON = {"use_evidence_manager": True, "use_tools": True,
-           "use_build_feedback": True, "use_history": True}
+           "use_build_feedback": True, "use_history": True,
+           "use_no_build_control": True, "use_rules_guard": True}
 
 
 @dataclass(frozen=True)

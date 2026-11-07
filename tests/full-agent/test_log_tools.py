@@ -88,7 +88,7 @@ class Wiring(unittest.TestCase):
     def test_without_build_feedback_the_prompts_say_edits_are_not_built(self):
         # A submitted run: the switch is on but no adapter exists.
         script = Script(reply(action="stop", reason="done"))
-        self.run_with(script, config=AgentConfig())
+        self.run_with(script, config=AgentConfig(use_no_build_control=False))
         system, user = script.sent[0]
         self.assertIn("not test-built", system["content"])
         self.assertIn("once your edits form a complete repair", system["content"])
@@ -110,7 +110,7 @@ class Wiring(unittest.TestCase):
 
 class LogWindow(unittest.TestCase):
     def test_tools_off_prompt_does_not_name_the_log_tools(self):
-        text = prompts.system_prompt(AgentConfig(use_tools=False))
+        text = prompts.system_prompt(AgentConfig(use_no_build_control=False, use_tools=False))
         self.assertNotIn("read_log", text)
         self.assertNotIn("search_log", text)
 

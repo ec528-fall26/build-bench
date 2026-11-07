@@ -461,7 +461,10 @@ def render(log_path: Path | None, worktree: Path | None, target_arch: str = "") 
     if worktree is not None and (Path(worktree) / "input").is_dir():
         try:
             found, _ = collect_files(Path(worktree) / "input")
-            files = sorted(p.relative_to(worktree).as_posix() for p in found)
+            # .pc/ holds quilt's copies of files before patching: never the file to read
+            # or edit, and a second match would make the real test file ambiguous.
+            files = sorted(rel for rel in (p.relative_to(worktree).as_posix() for p in found)
+                           if "/.pc/" not in rel)
         except OSError:
             files = []
 

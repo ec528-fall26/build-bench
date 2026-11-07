@@ -79,6 +79,27 @@ FOLLOW_UP = ("Your reply ended without the JSON object. "
 TOOLS_OFF_FOLLOW_UP = ("Tools are switched off until your next edit. Reply now with only "
                        "the JSON object for an edit or a stop.")
 
+# Without builds (no-build control, 0.5.0). The limit of 6 tool turns since the
+# last edit made sense when every edit was built; without builds it forced an
+# edit before the model had read what it needed, the edit reset the count, and
+# the cycle repeated: 46 of 111 baseline runs hit it, 34 used all 8 attempts
+# (20% passed), and libevtx and mlmmj stopped with nothing because tools went off
+# while they still needed one file. Instead: one investigation budget per run.
+NO_BUILD_TOOL_TURNS = 24
+NO_BUILD_NUDGE_AFTER = 10
+NO_BUILD_TOOLS_OFF = ("You have used all {n} investigation turns for this case. Propose "
+                      "your best-supported repair now from what you have read; an "
+                      "unchanged package always fails.")
+OWN_EDITS = ("=== Your own edits so far (untested; diff against the original package) ===\n"
+             "{diff}\n"
+             "These changes are YOURS, not the package's: when you read these files you "
+             "see them in place. Nothing has been rebuilt since you made them, so the log "
+             "and errors above still show the original failure and say nothing about "
+             "whether these edits work. Do not undo, redo or rework an edit because the "
+             "original error still appears. Reply stop if these edits address the cause; "
+             "add a targeted edit only for a concrete omission you can name.\n"
+             "=== End of your own edits ===")
+
 
 def client_completion(client) -> Complete:
     """One chat completion through Part 3's ModelClient settings.
@@ -301,6 +322,7 @@ class ModelAdapter:
         self._tokens: int | None = 0
         self._known_tokens = 0
         self._investigating = 0  # tool turns since the last edit
+        self._tool_turns = 0     # tool turns in the whole run
         self._rejections = _Rejections()
         EDIT_LOGGER.addHandler(self._rejections)
 
@@ -309,6 +331,16 @@ class ModelAdapter:
 
     def _tool_turn_limit(self) -> int:
         return 2 if self.repair_strategy == "small-group" else TOOL_TURN_LIMIT
+
+    def _no_build_control(self) -> bool:
+        return (getattr(self.config, "use_no_build_control", False)
+                and not self.config.use_build_feedback)
+
+    def _tools_left(self) -> bool:
+        """Whether a tool request may be answered this turn."""
+        if self._no_build_control():
+            return self._tool_turns < NO_BUILD_TOOL_TURNS
+        return self._investigating < self._tool_turn_limit()
 
     def _record_known_usage(self, usage: dict) -> None:
         for name in ("input_tokens", "output_tokens"):
@@ -322,8 +354,7 @@ class ModelAdapter:
         text, finish, usage = self.complete(messages)
         self._record_known_usage(usage)
         correcting = request.edit_validation_feedback.startswith(FOCUSED_PREFIX)
-        allow_tools = self.config.use_tools and (
-            correcting or self._investigating < self._tool_turn_limit())
+        allow_tools = self.config.use_tools and (correcting or self._tools_left())
         turn = parse_turn(text, finish_reason=finish, allow_tools=allow_tools,
                               allow_review=bool(request.proposal_review))
         # One same-turn follow-up for a reply with no JSON action, or for a tool
@@ -354,6 +385,7 @@ class ModelAdapter:
         self._last_turn = turn
         if turn.action == "tool" and not correcting:
             self._investigating += 1
+            self._tool_turns += 1
         elif turn.action == "edit":
             self._investigating = 0
         counts = [usage.get("input_tokens"), usage.get("output_tokens")]
@@ -442,7 +474,16 @@ class ModelAdapter:
         if self._last_turn is not None and self._last_turn.action == "malformed":
             parts.append(_body(prompts.malformed_message(self._last_turn, config)))
         parts.append(self._tool_results_block(request).strip("\n"))
-        if self._investigating >= self._tool_turn_limit():
+        if request.own_edits:
+            parts.append(OWN_EDITS.format(diff=request.own_edits))
+        if request.controller_note:
+            parts.append(request.controller_note)
+        if self._no_build_control():
+            if not self._tools_left():
+                parts.append(NO_BUILD_TOOLS_OFF.format(n=self._tool_turns))
+            elif self._investigating >= NO_BUILD_NUDGE_AFTER:
+                parts.append(NUDGE_NO_BUILD.format(n=self._investigating))
+        elif self._investigating >= self._tool_turn_limit():
             # The nudge alone was ignored: libmceliece read for 11 more turns.
             parts.append(TOOLS_OFF.format(n=self._investigating))
         elif self._investigating >= NUDGE_AFTER:

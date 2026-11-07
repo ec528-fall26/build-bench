@@ -24,6 +24,10 @@ from src.types import CaseContext, Edit
 from src.edit_applier import apply_edits
 
 
+# Tests written before 0.5.0: the loop without the no-build control.
+LEGACY = AgentConfig(use_no_build_control=False)
+
+
 class RepairLoop(unittest.TestCase):
     def test_stop_preserves_worktree_and_records_usage(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -57,7 +61,7 @@ class RepairLoop(unittest.TestCase):
                 usage = {"input_tokens": 20, "output_tokens": 10}
                 return turn, usage
 
-            result = run_loop(context, next_turn=next_turn)
+            result = run_loop(context, next_turn=next_turn, config=LEGACY)
 
 
             self.assertEqual(len(calls), 1)
@@ -141,7 +145,7 @@ class RepairLoop(unittest.TestCase):
                     {"input_tokens": 30, "output_tokens": 5},
                 )
 
-            result = run_loop(context, next_turn=next_turn)
+            result = run_loop(context, next_turn=next_turn, config=LEGACY)
 
             self.assertEqual(call_count, 2)
             self.assertEqual(result.termination_reason, "model_stop")
@@ -247,7 +251,7 @@ class RepairLoop(unittest.TestCase):
                     {"input_tokens": 30, "output_tokens": 5},
                 )
 
-            result = run_loop(context, next_turn=next_turn)
+            result = run_loop(context, next_turn=next_turn, config=LEGACY)
 
             self.assertEqual(call_count, 2)
             self.assertEqual(result.termination_reason, "model_stop")
@@ -316,7 +320,7 @@ class RepairLoop(unittest.TestCase):
                     {"input_tokens": 30, "output_tokens": 5},
                 )
 
-            result = run_loop(context, next_turn=next_turn)
+            result = run_loop(context, next_turn=next_turn, config=LEGACY)
 
             self.assertEqual(result.termination_reason, "model_stop")
             self.assertEqual(len(result.attempts), 1)
@@ -416,7 +420,7 @@ class RepairLoop(unittest.TestCase):
                     usage,
                 )
 
-            result = run_loop(context, next_turn=next_turn)
+            result = run_loop(context, next_turn=next_turn, config=LEGACY)
 
             self.assertEqual(call_count, 3)
             self.assertEqual(result.termination_reason, "model_stop")
@@ -722,7 +726,7 @@ class RepairLoop(unittest.TestCase):
                     result = run_loop(
                         context,
                         next_turn=next_turn,
-                        config=AgentConfig(use_history=enabled),
+                        config=AgentConfig(use_no_build_control=False, use_history=enabled),
                     )
 
                     self.assertEqual(len(result.attempts), 1)
@@ -823,7 +827,7 @@ class RepairLoop(unittest.TestCase):
             result = run_loop(
                 context,
                 next_turn=next_turn,
-                config=AgentConfig(use_build_feedback=False),
+                config=AgentConfig(use_no_build_control=False, use_build_feedback=False),
                 budget=Budget(max_attempts=1),
                 build_feedback=ForbiddenBuildFeedback(),
             )
@@ -955,7 +959,7 @@ class RepairLoop(unittest.TestCase):
                 result = run_loop(
                     context,
                     next_turn=next_turn,
-                    config=AgentConfig(use_tools=False),
+                    config=AgentConfig(use_no_build_control=False, use_tools=False),
                 )
                 dispatch.assert_not_called()
 
@@ -1000,7 +1004,7 @@ class RepairLoop(unittest.TestCase):
                 )
 
             with patch("src.loop.apply_edits") as apply:
-                result = run_loop(context, next_turn=next_turn)
+                result = run_loop(context, next_turn=next_turn, config=LEGACY)
                 apply.assert_not_called()
 
             self.assertEqual(result.termination_reason, "no_edits")
@@ -1837,7 +1841,7 @@ class RepairLoop(unittest.TestCase):
             result = run_loop(
                 context,
                 next_turn=next_turn,
-                config=AgentConfig(use_history=False),
+                config=AgentConfig(use_no_build_control=False, use_history=False),
                 build_feedback=adapter,
             )
 

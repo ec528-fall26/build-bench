@@ -38,6 +38,7 @@ TAIL_LINES = 500  # Part 2's tail: the evidence when Part A finds no error
 # limits are not yet announced. Stop well inside it (the loop also keeps
 # Budget.reserve_seconds back), and no request may run past this point.
 HOSTED_SECONDS = 1_020
+NO_BUILD_MAX_ATTEMPTS = 3
 
 
 def _failure_stage(log_path: Path) -> FailureStage:
@@ -61,6 +62,11 @@ def run_agent(
     """Diagnose the failure log, then run the repair loop until it stops."""
     config = config if config is not None else config_from_env()
     budget = budget or Budget()
+    if build_feedback is None and config.use_no_build_control:
+        # Without builds an attempt is a guess that nothing checks: 34 of 111
+        # baseline runs used all 8 and 20% of those passed, against 52% for a
+        # single attempt. Fewer, deliberate attempts (0.5.0).
+        budget = replace(budget, max_attempts=min(budget.max_attempts, NO_BUILD_MAX_ATTEMPTS))
     if os.environ.get("BB_REPAIR_STRATEGY") == "small-group" and build_feedback is None:
         raise ValueError("small-group requires an actual build-feedback adapter")
     review_setting = os.environ.get("BB_REVIEW_EDITS", "0")

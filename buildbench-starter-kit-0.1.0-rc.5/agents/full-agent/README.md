@@ -1,43 +1,5 @@
 # Full Build-Bench Agent
 
-## Version 0.6.0-rc.1 — output-verification experiment
-
-Prerelease based on agent 0.5.1. The full-case evaluation is still in progress;
-this version is not a claim of a completed release or broad repair improvement.
-
-Changes include optional packaging and CMake source context, optional full-log
-context and repair guidance, clearer edit rejection feedback, a narrow build-step
-no-op guard, review protocol and repetition handling, fresh review context,
-and refactoring of context collection and edit validation.
-
-The experimental output gate checks complete batches editing `input/debian/rules`
-before ordinary review. It supplies a structured assessment of required outputs
-and their producers. Unsupported assessments persist across subsequent repair
-turns. Revisions are checked again; a supported assessment still requires explicit
-review approval before application. Verification uses model calls and consumes
-existing budgets; it does not run package builds or supply iterative build feedback.
-
-The gate defaults **off**. Enable it with:
-
-```text
-BB_REVIEW_EDITS=1
-BB_EXPERIMENT_PACKAGING_CONTEXT=1
-BB_EXPERIMENT_OUTPUT_VERIFICATION=1
-```
-
-The evaluated configuration also enables `BB_EXPERIMENT_FRESH_REVIEW=1` and sets
-`BB_AGENT_USE_BUILD_FEEDBACK=0`. Full-log context, CMake context, and general repair
-guidance remain disabled in the current all-case campaign. Other existing defaults
-are unchanged; see the experiment document for the complete configuration.
-
-Validation so far: 664 tests passed on EC2 with fresh review off and on; gate tests
-exercise enabled behavior. The updated agent repaired python-intbitset in a fresh
-end-to-end run with zero loop builds. Other case outcomes remain pending.
-
-See [experiment history, settings, and results](../../../docs/full-agent-output-verification-experiment.md).
-The ongoing campaign uses a saved source snapshot whose agent metadata remains
-0.5.1. This prerelease label is being prepared separately on the Mac checkout.
-
 ## Purpose
 The project's full agent: it reads the failure, investigates the package with
 read-only tools, proposes a repair with a stated hypothesis, tests it when build
@@ -64,6 +26,53 @@ runs Part C's loop with Part E's prompts and parser, and writes
 it has no build feedback, so edits are investigated and revised but submitted
 untested. Locally, `harness/run_case.py --agent full-agent` runs the same loop
 with real builds (Part D). Results: `docs/part5-findings.md` §9c.
+
+Version 0.6.0-rc.1 (7 November), output-verification experiment:
+- Prerelease based on 0.5.1. Earlier python-intbitset repairs replaced the
+  documentation build with a no-op or a helper that did not create the HTML
+  files required by the package. The new optional gate checks whether a
+  proposed repair preserves those required outputs before ordinary review.
+- `src/output_verification.py`: a separate model call assesses each complete
+  batch editing `input/debian/rules`, using the original failure, source
+  evidence, command references and exact pending edits. It identifies required
+  outputs, their producers and unsupported assumptions; it runs no builds.
+  Enable with `BB_EXPERIMENT_OUTPUT_VERIFICATION=1`; it also requires
+  `BB_REVIEW_EDITS=1` and `BB_EXPERIMENT_PACKAGING_CONTEXT=1`. Default is off.
+- `src/loop.py`, `src/proposal_review.py`, `src/model_adapter.py`: verification
+  precedes ordinary review. A supported assessment still requires explicit
+  approval of the displayed batch. Revisions replace the complete pending
+  batch and are checked again; rejected assessments remain in subsequent
+  repair prompts. Repetition and verification failures are bounded, and model
+  calls consume the existing budgets. No iterative build feedback is added.
+- `src/source_context.py`, `src/evidence_support.py`, `src/command_evidence.py`:
+  context collection is separated from diagnostic parsing and supplies bounded
+  packaging or CMake source evidence without requiring a tool request.
+  Switches: `BB_EXPERIMENT_PACKAGING_CONTEXT` and `BB_EXPERIMENT_CMAKE_CONTEXT`;
+  both default off. Command references distinguish documentation producers
+  from packaging helpers.
+- `src/prompts.py`, `src/model_adapter.py`: optional fresh review presents the
+  original failure, relevant evidence and pending patch without the failed
+  attempt narrative (`BB_EXPERIMENT_FRESH_REVIEW=1`, default off). Optional
+  full initial-log context and repair guidance remain separate experiments:
+  `BB_EXPERIMENT_LOG_MODE=full` and `BB_EXPERIMENT_REPAIR_GUIDANCE=1`.
+- `src/rules_guard.py`, `src/loop.py`: a narrow guard rejects replacing a
+  build-producing command with a no-op. Rejection feedback now distinguishes
+  controller refusals from text-matching failures; edit validation is split
+  into smaller helpers. The guard alone does not establish output preservation.
+- Validation: 664 tests passed on EC2 with fresh review off and on, including
+  tests exercising the enabled gate. On Mac, 662 passed and two unchanged
+  syntax-guard compiler tests failed under Apple Clang because diagnostic
+  handling expects GCC messages; this portability limitation remains open.
+- A fresh end-to-end run repaired python-intbitset with one applied edit,
+  five model turns and zero loop builds; the harness's final build passed.
+  The full-case rerun is still in progress, so broader improvement is not yet
+  established. Its configuration enables packaging context, fresh review and
+  output verification, with build feedback off; full-log context, CMake
+  context and general repair guidance are disabled.
+- The running campaign uses a saved source snapshot still labelled 0.5.1;
+  this prerelease label is prepared separately. Settings, experiment history
+  and result provenance:
+  [output-verification experiment](../../../docs/full-agent-output-verification-experiment.md).
 
 Version 0.5.1 (7 November), syntax guard (`src/syntax_guard.py`):
 - In the 0.3.3 Development Validation run (111 small cases, 36 passed), about

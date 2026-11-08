@@ -1,8 +1,8 @@
 # Full agent: output-verification experiment
 
-**Status:** Experimental implementation; full-case rerun in progress.
-**Evidence cutoff:** Successful intbitset end-to-end run started at `2026-11-08T02:21:36Z`; subsequent campaign results are not yet included.
-**Purpose:** Record what changed, why it changed, and what has actually been demonstrated before assigning a new release version.
+**Status:** Experimental; initial campaign complete and three follow-up intbitset trials passed.
+**Evidence cutoff:** Three completed reliability trials on 8 November 2026; see the follow-up section.
+**Purpose:** Record implementation changes, configurations, validation results and limitations.
 
 ## Version and source provenance
 
@@ -227,3 +227,60 @@ The Mac checkout ran 664 tests: 662 passed and two existing syntax-guard
 compiler tests failed under Apple Clang. Both syntax_guard.py and its tests
 are unchanged from HEAD. The failures expose GCC-specific diagnostic handling.
 On EC2, all 664 tests passed with fresh review disabled and enabled.
+
+## Reliability follow-up: 8 November 2026 (0.6.0-rc.2)
+
+This section supersedes earlier pending-campaign statements. The initial
+`output-gate-all-20261108T024354Z` campaign repaired rcran, libbpp-qt,
+libunwind and rust-subversion: the same four successes as the baseline.
+Six cases were unrepaired; html-xml-utils already built. Ectrans stopped in
+ordinary review, while intbitset and pybigwig stopped in output verification.
+There was no aggregate repair gain or loss in that single campaign.
+
+The follow-up separates malformed verifier responses from semantic rejection,
+adds one globally bounded format-correction retry, broadens producer evidence
+beyond optional packaging manifests, and records paired exact requests and raw
+responses when `BB_MODEL_TRACE` is configured. Explicit approval, existing global
+budgets and experimental defaults remain unchanged. These changes do not
+establish that ectrans's ordinary review stall has been fixed.
+
+### Fresh autonomous intbitset trials
+
+Results directory:
+`/home/ubuntu/buildbench-experiments/intbitset-reliability-20261108T043648Z`.
+
+| Trial | Verdict | Applied edits | Attempts | Model turns | Loop builds | Total seconds |
+| --- | --- | --- | --- | --- | --- | --- |
+| intbitset-reliability-01 | build_succeeded | 1/1 | 2 | 9 | 0 | 1014.9 |
+| intbitset-reliability-02 | build_succeeded | 1/1 | 2 | 11 | 0 | 1011.2 |
+| intbitset-reliability-03 | build_succeeded | 1/1 | 2 | 13 | 0 | 1036.2 |
+
+Each trial used a fresh source tree and new model calls, with the saved original
+failure log and final harness validation. No candidate was replayed and no
+iterative build feedback was supplied. The first trial's patch replaced
+`python3 setup.py build_sphinx` with `$(MAKE) -C docs html`; the final verdicts
+for all three trials were independently reported as repaired. This section does
+not claim that all three diffs are identical without inspecting them.
+
+Configuration: review, packaging context, fresh review and output verification
+were enabled; build feedback, CMake context, full-log mode, repair guidance and
+FFI analysis were disabled. Tools, history, evidence manager, no-build control,
+rules guard and syntax guard were enabled. Repair strategy was `default`, log
+mode `selected`, and log byte limit 200000. Per-run request trace paths were
+configured. Preserve `settings.json`, records, console logs, diffs, build logs
+and paired traces with the source snapshot.
+
+All 670 tests passed on EC2 with fresh review off and on. The earlier two Mac
+syntax-guard compatibility failures remain a separate known limitation; no new
+Mac full-suite pass is claimed. Bootstrap Python dependency warnings also
+occurred in earlier successful runs; the harness's dependency recovery allowed
+validation to proceed. They were not terminal failures in these trials.
+
+Three successes demonstrate repeatability on this case under these settings,
+not a reliable population success rate. Multiple changes were tested together;
+these results do not isolate their causal contribution. Next: inspect saved
+traces and evaluate pybigwig and other failures before promoting the gate.
+
+The experiments used EC2 source before this Mac metadata update. The rc.2 label
+identifies the prepared code/docs revision; it does not relabel historical
+records. No stable release or Git tag is implied.

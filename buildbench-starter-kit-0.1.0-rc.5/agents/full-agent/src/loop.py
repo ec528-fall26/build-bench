@@ -62,6 +62,7 @@ class LoopRequest:
     controller_note: str = ""
     output_verification: list = field(default_factory=list)
     output_verification_feedback: str = ""
+    verification_format_feedback: str = ""
 
 @dataclass
 class LoopResult:
@@ -243,6 +244,8 @@ class _Loop:
             raise ValueError("Output verification requires BB_REVIEW_EDITS=1")
         self.verification_pending = False
         self.verification_failures = 0
+        self.verification_format_failures = 0
+        self.verification_format_feedback = ""
         self.verified_key = None
         self.output_verification_feedback = ""
         self.initial_diagnostics = initial_diagnostics
@@ -412,6 +415,9 @@ class _Loop:
     # --- before the model is asked ------------------------------------------
 
     def _exhausted(self) -> LoopResult | None:
+        if self.verification_format_failures >= 2:
+            return self.finish("output_verification_format_failed",
+                               "Two malformed verification responses; no approval inferred.")
         if self.verification_failures >= 3:
             return self.finish("output_verification_stalled",
                                "Three output checks failed; the pending batch was not applied.")
@@ -446,6 +452,7 @@ class _Loop:
             own_edits=self._own_edits(),
             controller_note=self.controller_note,
             output_verification_feedback=self.output_verification_feedback,
+            verification_format_feedback=self.verification_format_feedback,
             output_verification=(deepcopy(self.review_turn.edits)
                                  if self.verification_pending and self.review_turn else []),
         )
@@ -557,6 +564,16 @@ class _Loop:
                      and checked["verdict"] == "supported")
         self.review_events.append({"event": "output_verification",
                                    "signature": self.review_key, "assessment": checked})
+        if checked["verdict"] == "invalid_response":
+            self.verification_format_failures += 1
+            self.verification_format_feedback = (
+                "Your previous assessment could not be parsed. Return the complete required "
+                "assessment JSON for the SAME pending batch. This is a format correction, "
+                "not a request for a supported verdict. Parser feedback (data): "
+                + self.turn.reason[:2000])
+            self.verification_pending = True
+            return False
+        self.verification_format_feedback = ""
         if supported:
             self.verified_key = self.review_key
             self.output_verification_feedback = (

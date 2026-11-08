@@ -27,6 +27,32 @@ it has no build feedback, so edits are investigated and revised but submitted
 untested. Locally, `harness/run_case.py --agent full-agent` runs the same loop
 with real builds (Part D). Results: `docs/part5-findings.md` §9c.
 
+Version 0.6.0-rc.2 (8 November), output-verification reliability:
+- `src/loop.py`, `src/model_adapter.py`: a malformed verifier response receives
+  one format-correction retry on the same pending candidate, within existing
+  turn, token and time budgets. A second malformed response stops with
+  `output_verification_format_failed`; format failures are separate from
+  semantic rejections. Explicit review approval is still required.
+- `src/output_verification.py`: bounded producer evidence includes edited files
+  and build configuration such as `setup.py`, even without optional packaging
+  manifests. Unavailable and truncated evidence is labelled; it is not proof
+  that the patch works or that an output is unnecessary.
+- `src/request_trace.py`: optional `BB_MODEL_TRACE` captures exact requests and
+  paired raw responses with matching call numbers. Responses use the suffix
+  `.responses.jsonl`. Use a new destination for each run; files have mode 0600.
+- Validation: all 670 tests passed on EC2 with fresh review disabled and enabled.
+  Three fresh end-to-end python-intbitset trials independently repaired the case:
+  one applied edit each, 9/11/13 model turns, and zero loop builds. Final build
+  validation passed in every trial. This is evidence for this case/configuration,
+  not a broad success-rate estimate or attribution to one individual change.
+- The preceding eleven-case campaign matched the baseline's four repairs, with
+  six unrepaired cases and one already-building case. Its intbitset failure did
+  not reproduce in these three trials after the follow-up changes. Other cases
+  have not yet been rerun with these changes. Feature defaults remain unchanged;
+  output verification stays experimental and off by default.
+- Results and limitations:
+  [output-verification experiment](../../../docs/full-agent-output-verification-experiment.md).
+
 Version 0.6.0-rc.1 (7 November), output-verification experiment:
 - Prerelease based on 0.5.1. Earlier python-intbitset repairs replaced the
   documentation build with a no-op or a helper that did not create the HTML

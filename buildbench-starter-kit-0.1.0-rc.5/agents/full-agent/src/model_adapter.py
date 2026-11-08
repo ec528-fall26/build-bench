@@ -423,6 +423,8 @@ class ModelAdapter:
         started = self.clock()
         messages = output_verification.messages(
             self.context, request.output_verification, self.diagnostics)
+        if request.verification_format_feedback:
+            messages.append({"role": "user", "content": request.verification_format_feedback})
         text, finish, usage = self.complete(messages)
         self._record_known_usage(usage)
         counts = [usage.get("input_tokens"), usage.get("output_tokens")]

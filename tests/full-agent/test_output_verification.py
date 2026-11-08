@@ -99,9 +99,9 @@ class OutputVerificationTests(unittest.TestCase):
     def test_insufficient_malformed_and_approval_cannot_bypass_gate(self):
         result = self.run_script([edit('dh_auto_build'), check('insufficient_evidence'),
                                   APPROVE, 'not JSON', APPROVE, APPROVE])
-        self.assertEqual(result.termination_reason, 'output_verification_stalled')
+        self.assertEqual(result.termination_reason, 'output_verification_format_failed')
         self.assertEqual(self.rules.read_text(), self.original)
-        self.assertEqual(len(self.calls), 6)
+        self.assertEqual(len(self.calls), 5)
         self.assertFalse(result.attempts)
 
     def test_turn_limit_before_verification_leaves_source_untouched(self):

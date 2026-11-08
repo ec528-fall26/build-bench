@@ -4,7 +4,9 @@ import os
 import re
 from .contracts import Diagnostic
 from .command_evidence import command_evidence
-from .source_context import _packaging_source_context
+from .source_context import _packaging_source_context, _read_packaging_source
+from .evidence_support import _file_index
+from pathlib import Path
 
 FLAG = "BB_EXPERIMENT_OUTPUT_VERIFICATION"
 
@@ -27,7 +29,8 @@ SYSTEM = 'You verify whether a proposed build-recipe change preserves required o
 def messages(context, edits, diagnostics):
     item = Diagnostic("", "unknown", None, None, [], None, 0)
     _packaging_source_context([item], context.worktree)
-    source = item.compiler_details or "Packaging producer evidence unavailable."
+    source = (item.compiler_details or "No packaging-manifest context collected; this does not prove outputs are absent.")
+    source += "\n" + producer_context(context.worktree, edits)
     candidate = [{"path": e.path, "old_text": e.old_text, "new_text": e.new_text,
                   "replace_all": e.replace_all} for e in edits]
     failure = "\n".join(d.message for d in diagnostics)[:4000]
@@ -77,3 +80,38 @@ def assessment(text, finish):
         return value
     except (ValueError, TypeError) as exc:
         return {"verdict": "invalid_response", "reason": str(exc)}
+
+
+def producer_context(worktree, edits):
+    """Bounded on-disk producer context, independent of optional manifests.
+
+    Only indexed, non-symlink source files may be read. Missing producers remain
+    unknown; this collector does not claim that any command will work.
+    """
+    available = {p for paths in _file_index(worktree).values() for p in paths}
+    paths = list(dict.fromkeys([e.path for e in edits] + [
+        "input/debian/rules", "input/setup.py", "input/setup.cfg",
+        "input/pyproject.toml", "input/Makefile", "input/CMakeLists.txt"]))
+    lines = ["Affected source and producer configuration (quoted data):"]
+    remaining = 12000
+    for relative in paths[:12]:
+        if relative not in available:
+            lines.append(f"{relative}: unavailable in indexed source")
+            continue
+        text, cut = _read_packaging_source(Path(worktree) / relative)
+        if text is None:
+            lines.append(f"{relative}: unreadable")
+            continue
+        excerpt = "\n".join(f"{relative}:{n}: {line}" for n, line in
+                            enumerate(text.splitlines(), 1))
+        limit = min(4000, remaining)
+        lines.append(excerpt[:limit])
+        if cut or len(excerpt) > limit:
+            lines.append("[Producer source truncated; further evidence may be needed.]")
+        remaining -= min(len(excerpt), limit)
+        if remaining <= 0:
+            lines.append("[Producer context limit reached.]")
+            break
+    if len(paths) > 12:
+        lines.append("[Producer file limit reached.]")
+    return "\n".join(lines)

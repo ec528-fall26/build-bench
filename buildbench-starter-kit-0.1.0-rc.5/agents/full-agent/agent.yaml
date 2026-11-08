@@ -2,7 +2,7 @@ schema_version: "0.1"
 
 agent:
   name: "full-agent"
-  version: "0.5.1"
+  version: "0.6.0-rc.2"
 
 runtime:
   type: "managed"

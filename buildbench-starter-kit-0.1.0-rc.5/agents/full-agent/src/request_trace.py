@@ -18,9 +18,12 @@ def trace_completion(complete):
 
     path = Path(destination).expanduser()
     calls = 0
+    response_path = path.with_name(path.name + ".responses.jsonl")
 
     def traced(messages):
         nonlocal calls
+        if calls == 0 and (response_path.exists() or response_path.is_symlink()):
+            raise FileExistsError(response_path)
         record = {
             "call": calls + 1,
             "messages": messages,
@@ -36,6 +39,13 @@ def trace_completion(complete):
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             stream.write(serialized)
         calls += 1
-        return complete(messages)
+        result = complete(messages)
+        response_flags = os.O_WRONLY | os.O_NOFOLLOW
+        response_flags |= (os.O_CREAT | os.O_EXCL) if calls == 1 else os.O_APPEND
+        fd = os.open(response_path, response_flags, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(json.dumps({"call": calls, "response": result},
+                                    ensure_ascii=True) + "\n")
+        return result
 
     return traced

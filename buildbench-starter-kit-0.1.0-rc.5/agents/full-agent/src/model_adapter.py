@@ -28,6 +28,8 @@ Standard library only.
 from __future__ import annotations
 
 import json
+from . import output_verification
+import os
 import logging
 import re
 from pathlib import Path
@@ -43,7 +45,7 @@ from .model_client import MODEL_ID, ModelCallFailed, request_completion
 from .reply import extract_action_json, parse_turn
 from .request_trace import trace_completion
 from . import repair_strategy
-from .proposal_review import REVIEW_INSTRUCTIONS
+from .proposal_review import REVIEW_INSTRUCTIONS, malformed_review_message
 from .types import CaseContext
 from .tools import run_tool
 
@@ -290,6 +292,10 @@ class ModelAdapter:
         self.complete = trace_completion(complete)
         self.context = context
         self.config = config
+        fresh_setting = os.environ.get("BB_EXPERIMENT_FRESH_REVIEW", "0")
+        if fresh_setting not in {"0", "1"}:
+            raise ValueError("BB_EXPERIMENT_FRESH_REVIEW must be 0 or 1")
+        self.fresh_review = fresh_setting == "1"
         self.repair_strategy = repair_strategy.configured_strategy()
         if self.repair_strategy in {"small-group", "shared-cause"} and not (
             config.use_evidence_manager and config.use_build_feedback
@@ -349,6 +355,8 @@ class ModelAdapter:
                 self._known_tokens += count
 
     def __call__(self, request: LoopRequest) -> tuple[ModelTurn, dict]:
+        if request.output_verification:
+            return self._verify_outputs(request)
         messages = self.messages(request)
         started = self.clock()
         text, finish, usage = self.complete(messages)
@@ -402,6 +410,7 @@ class ModelAdapter:
             "follow_up": follow_up,
             "edit_validation_feedback": request.edit_validation_feedback,
             "proposal_review": request.proposal_review,
+            "fresh_review": self.fresh_review and bool(request.proposal_review),
             "attempt_feedback": (
                 self._attempt_note if request.latest_attempt is not None else ""
             ),
@@ -409,7 +418,39 @@ class ModelAdapter:
         })
         return turn, usage
 
+    def _verify_outputs(self, request: LoopRequest) -> tuple[ModelTurn, dict]:
+        """One independent call, counted as a normal loop turn; never run tools."""
+        started = self.clock()
+        messages = output_verification.messages(
+            self.context, request.output_verification, self.diagnostics)
+        text, finish, usage = self.complete(messages)
+        self._record_known_usage(usage)
+        counts = [usage.get("input_tokens"), usage.get("output_tokens")]
+        if self._tokens is not None and all(type(c) is int for c in counts):
+            self._tokens += sum(counts)
+        else:
+            self._tokens = None
+        checked = output_verification.assessment(text, finish)
+        action = "output_verified" if checked["verdict"] == "supported" else "output_rejected"
+        turn = ModelTurn(action, [], "", [], [], json.dumps(checked))
+        number = len(self.turns) + 1
+        self.replies.append({"turn": number, "follow_up": False, "reply": text})
+        self.turns.append({"turn": number, "action": action, "tools": [], "edits": 0,
+                           "reason": turn.reason, "finish_reason": finish, "usage": dict(usage),
+                           "follow_up": False, "output_verification": checked,
+                           "seconds": round(self.clock() - started, 1)})
+        self._last_turn = turn
+        return turn, usage
+
     def messages(self, request: LoopRequest) -> list[dict]:
+        messages = self._repair_messages(request)
+        if request.output_verification_feedback:
+            # Controller state, not attempt history: retain it even in fresh
+            # review, malformed-response recovery, and focused edit correction.
+            messages.append({"role": "user", "content": request.output_verification_feedback})
+        return messages
+
+    def _repair_messages(self, request: LoopRequest) -> list[dict]:
         config = self.config
         if request.edit_validation_feedback.startswith(FOCUSED_PREFIX):
             return [
@@ -432,6 +473,8 @@ class ModelAdapter:
                     + self._tool_results_block(request),
                 },
             ]
+        if self.fresh_review and request.proposal_review:
+            return self._fresh_review_messages(request)
         small_group = self.repair_strategy in {"small-group", "shared-cause"}
         strategy_instructions = repair_strategy.instructions_for(self.repair_strategy)
         context, diagnostics, log_path = request.context, self.diagnostics, self.log_path
@@ -471,14 +514,28 @@ class ModelAdapter:
                 repair_strategy.attempt_summary(latest, request.current_build)
                 if small_group else self._attempt_note
             )
-        if self._last_turn is not None and self._last_turn.action == "malformed":
+        if (not request.proposal_review and self._last_turn is not None
+                and self._last_turn.action == "malformed"):
             parts.append(_body(prompts.malformed_message(self._last_turn, config)))
         parts.append(self._tool_results_block(request).strip("\n"))
         if request.own_edits:
-            parts.append(OWN_EDITS.format(diff=request.own_edits))
+            if request.proposal_review:
+                parts.append("Previously applied edits (not the pending proposal):\n" + request.own_edits)
+            else:
+                parts.append(OWN_EDITS.format(diff=request.own_edits))
         if request.controller_note:
             parts.append(request.controller_note)
-        if self._no_build_control():
+        if request.proposal_review:
+            parts.append(
+                "PENDING REVIEW: the proposed batch is not yet applied. "
+                'To accept this exact batch, return {"action":"approve","reason":"<evidence-supported reason>"}. '
+                "Return edit only to CHANGE the pending batch; do not resubmit it unchanged. "
+                "Return stop to leave it unapplied. "
+                + ("Read-only tools remain available for missing evidence."
+                   if config.use_tools and self._tools_left() else
+                   "Tools are unavailable; use the supplied evidence, revise, or stop.")
+            )
+        elif self._no_build_control():
             if not self._tools_left():
                 parts.append(NO_BUILD_TOOLS_OFF.format(n=self._tool_turns))
             elif self._investigating >= NO_BUILD_NUDGE_AFTER:
@@ -496,14 +553,61 @@ class ModelAdapter:
             builds_used=self._builds, tokens_used=self._tokens,
             seconds_used=self.clock() - self.started,
             builds=config.use_build_feedback))
-        parts.append(prompts._NEXT)
+        if not request.proposal_review:
+            parts.append(prompts._NEXT)
         if request.proposal_review:
             parts.append(request.proposal_review)
             parts.append(REVIEW_INSTRUCTIONS)
+            if self._last_turn is not None and self._last_turn.action == "malformed":
+                parts.append(malformed_review_message(self._last_turn.reason))
         return [
-            {"role": "system", "content": prompts.system_prompt(config, self.budget)
-             + (strategy_instructions if small_group else "")
-             + ("\n" + REVIEW_INSTRUCTIONS if request.proposal_review else "")},
+            {"role": "system", "content": prompts.system_prompt(
+                config, self.budget,
+                review_instructions=REVIEW_INSTRUCTIONS if request.proposal_review else "")
+             + (strategy_instructions if small_group and not request.proposal_review else "")},
+            {"role": "user", "content": "\n\n".join(p for p in parts if p.strip()) + "\n"},
+        ]
+
+    def _fresh_review_messages(self, request: LoopRequest) -> list[dict]:
+        """Review current source and pending diff without failed-attempt narrative.
+
+        This changes messages only. The loop still owns validation, revision,
+        explicit approval, and retry limits. Current tool observations and
+        parser errors remain available, but cached proposal-stage tools do not.
+        """
+        parts = [_body(prompts.opening_message(
+            request.context, self.config, diagnostics=self.diagnostics,
+            log_path=self.log_path, package=self.package, history=[], kept=[],
+            pattern=self.pattern,
+            note="Fresh pending-patch review. The original failure is historical evidence; "
+                 "source excerpts describe the current files. No new build was performed."))]
+        if request.own_edits:
+            parts.append("Already applied source changes (not the pending proposal):\n"
+                         + request.own_edits)
+        if request.tool_results:
+            parts.append(_body(prompts.tool_results_message(request.tool_results)))
+        if request.controller_note:
+            parts.append(request.controller_note)
+        parts.append(request.proposal_review)
+        parts.append(REVIEW_INSTRUCTIONS)
+        parts.append(
+            "PENDING REVIEW: the proposed batch is not yet applied. "
+            "Approval accepts only the displayed pending diff. "
+            "A valid edit revises the complete batch and must be reviewed again. "
+            "Return edit only to CHANGE the pending batch; do not resubmit it unchanged. "
+            + ("Read-only tools are available for missing evidence."
+               if self.config.use_tools and self._tools_left() else
+               "Tools are unavailable; use the supplied evidence, revise, or stop."))
+        if self._last_turn is not None and self._last_turn.action == "malformed":
+            parts.append(malformed_review_message(self._last_turn.reason))
+        parts.append(prompts.budget_note(
+            self.budget, attempts_used=request.latest_attempt.number if request.latest_attempt else 0,
+            builds_used=self._builds,
+            tokens_used=self._tokens, seconds_used=self.clock() - self.started,
+            builds=self.config.use_build_feedback))
+        return [
+            {"role": "system", "content": prompts.system_prompt(
+                self.config, self.budget, review_instructions=REVIEW_INSTRUCTIONS)},
             {"role": "user", "content": "\n\n".join(p for p in parts if p.strip()) + "\n"},
         ]
 

@@ -26,8 +26,8 @@ from .edit_repair import prune_batch, retarget_path, simulate, static_warnings
 from .path_feedback import missing_prefix_feedback, uncapturable_feedback
 from .tools import run_tool
 from .types import CaseContext
-from .proposal_review import render_review, signature
-from . import ffi_analysis, rules_guard, syntax_guard
+from .proposal_review import render_review, signature, edit_identity
+from . import ffi_analysis, rules_guard, syntax_guard, output_verification
 
 
 OWN_EDITS_CHARS = 6000
@@ -60,6 +60,8 @@ class LoopRequest:
     # against the original package, and a one-off message from the controller.
     own_edits: str = ""
     controller_note: str = ""
+    output_verification: list = field(default_factory=list)
+    output_verification_feedback: str = ""
 
 @dataclass
 class LoopResult:
@@ -236,6 +238,13 @@ class _Loop:
         if self.ffi is not None and self.config.use_build_feedback and build_feedback is not None:
             raise ValueError('BB_FFI_ANALYSIS requires BB_AGENT_USE_BUILD_FEEDBACK=0')
         self.review_edits = review_edits or self.ffi is not None
+        self.output_gate = output_verification.enabled()
+        if self.output_gate and not self.review_edits:
+            raise ValueError("Output verification requires BB_REVIEW_EDITS=1")
+        self.verification_pending = False
+        self.verification_failures = 0
+        self.verified_key = None
+        self.output_verification_feedback = ""
         self.initial_diagnostics = initial_diagnostics
         self.log_path = log_path
         self.max_turns = max_turns
@@ -278,6 +287,7 @@ class _Loop:
         self.pending_position = 0          # that item's number in the model's list
         # A batch awaiting the model's approval (review mode)
         self.review_turn = None
+        self.review_repeat_count = 0
         self.review_key = None
         self.review_notes: list[str] = []
         self.review_events: list[dict] = []
@@ -297,6 +307,9 @@ class _Loop:
             if result is not None:
                 return result
             action = self.turn.action
+            if (self.verification_pending and
+                    sum(self.known_usage.values()) >= self.budget.max_tokens):
+                return self.finish("token_budget", "Output verification exhausted the token budget; no pending edit applied.")
             if action == "malformed":
                 self._malformed()
                 continue
@@ -399,6 +412,13 @@ class _Loop:
     # --- before the model is asked ------------------------------------------
 
     def _exhausted(self) -> LoopResult | None:
+        if self.verification_failures >= 3:
+            return self.finish("output_verification_stalled",
+                               "Three output checks failed; the pending batch was not applied.")
+        if self.review_repeat_count >= 3:
+            return self.finish("review_stalled",
+                               "The same pending patch was resubmitted three times without revision; "
+                               "it was not approved or applied.")
         if self._out_of_time():
             return self.finish("time_budget", "The time reserved for graceful shutdown was reached.")
         if len(self.attempts) >= self.budget.max_attempts:
@@ -425,6 +445,9 @@ class _Loop:
             notes=list(self.batch_notes),
             own_edits=self._own_edits(),
             controller_note=self.controller_note,
+            output_verification_feedback=self.output_verification_feedback,
+            output_verification=(deepcopy(self.review_turn.edits)
+                                 if self.verification_pending and self.review_turn else []),
         )
 
     def _ask_model(self) -> LoopResult | None:
@@ -481,22 +504,82 @@ class _Loop:
         approved signature, None for an ordinary edit, or False to skip the
         turn (nothing to approve)."""
         turn = self.turn
+        if self.verification_pending:
+            return self._resolve_output_verification()
         if turn.action == "approve":
             if self.review_turn is None:
                 self.feedback = "No pending diff is available to approve. Propose an edit or stop."
                 return False
+            if (self.output_gate and output_verification.applies(self.review_turn.edits)
+                    and self.verified_key != self.review_key):
+                self.verification_pending = True
+                self.review_events.append({"event": "output_verification_requested",
+                                           "signature": self.review_key,
+                                           "approval_reason": turn.reason})
+                return False
+            self.review_repeat_count = 0
             approved_key = self.review_key
             self.review_events.append(
                 {"event": "approved", "signature": self.review_key, "reason": turn.reason})
             self.turn = deepcopy(self.review_turn)
             self.review_turn = None
             self.proposal_review = ""
+            self.output_verification_feedback = ""
             return approved_key
         if turn.action == "edit" and self.review_turn is not None:
+            if edit_identity(turn) == edit_identity(self.review_turn):
+                self.review_repeat_count += 1
+                self.review_events.append({"event": "repeated_proposal",
+                                           "signature": self.review_key,
+                                           "count": self.review_repeat_count})
+                self.controller_note = (
+                    "This exact patch is already pending review; changing the hypothesis "
+                    "does not revise it. No files were changed. Inspect evidence with tools, "
+                    "approve explicitly only if supported, revise the actual edits, or stop. "
+                    f"Unchanged resubmissions: {self.review_repeat_count}/3; at 3 the run "
+                    "ends without applying this pending patch.")
+                return False
+            self.review_repeat_count = 0
+            if self.verified_key is not None:
+                # A supported assessment applies only to its exact batch/source.
+                self.output_verification_feedback = ""
+            self.verified_key = None
             self.review_events.append({"event": "revised", "signature": self.review_key})
             self.review_turn = None
             self.proposal_review = ""
         return None
+
+    def _resolve_output_verification(self):
+        """Verify before review; support is evidence, never implicit approval."""
+        self.verification_pending = False
+        checked = output_verification.assessment(self.turn.reason, "stop")
+        supported = (self.turn.action == "output_verified"
+                     and checked["verdict"] == "supported")
+        self.review_events.append({"event": "output_verification",
+                                   "signature": self.review_key, "assessment": checked})
+        if supported:
+            self.verified_key = self.review_key
+            self.output_verification_feedback = (
+                "OUTPUT VERIFICATION SUPPORTS THE CURRENT PENDING BATCH. "
+                f"Batch signature: {self.review_key}. "
+                "No edit or build occurred. This independent static assessment is evidence, "
+                "not build success or permission to apply. Review the exact displayed diff "
+                "for correctness and unintended changes. Explicit approval is still required. "
+                "If you revise it, the replacement batch must be verified again. "
+                "Assessment (quoted data): " + self.turn.reason[:12000])
+            return False
+        self.verified_key = None
+        self.verification_failures += 1
+        self.output_verification_feedback = (
+            "OUTPUT VERIFICATION WITHHELD APPLICATION. No edit or build occurred. "
+            "This is a static model assessment, not build feedback. Inspect missing evidence "
+            "with tools, revise the complete pending batch, or stop. Approval alone cannot "
+            "bypass this check. This assessment concerns the previously checked batch "
+            f"({self.review_key}); a revised batch is not yet verified. Keep its unresolved "
+            "output requirement in view while correcting edits or gathering evidence. "
+            "Assessment (quoted data): " + self.turn.reason[:12000] +
+            f"\nFailed output checks: {self.verification_failures}/3.")
+        return False
 
     # --- an edit batch -------------------------------------------------------
 
@@ -569,37 +652,13 @@ class _Loop:
         return _CONTINUE
 
     def _validate(self, notes: list[str]):
-        """Preflight the batch, repair it mechanically, and decide what the
-        model must correct. Returns the snapshot of a batch ready to apply, or
-        None when the turn ends here (an item goes back to the model, or
-        nothing applicable is left)."""
-        worktree, policy = self.context.worktree, self.patch_policy
+        """Return an applicable snapshot, or defer/finish this edit batch."""
         snapshot = None
         reason = key = None
         if getattr(self.config, "use_rules_guard", False):
             self._guard(notes)
-        # Validate; mechanically repair what is unambiguous; and when the
-        # model cannot fix one item, drop that item alone and apply the rest
-        # (without builds an unapplied batch is a certain failure:
-        # rust-subversion, 26 edits, none written).
         while True:
-            self.pending_index, feedback = missing_prefix_feedback(
-                worktree, self.turn.edits, patch_policy=policy)
-            if not feedback:
-                self.pending_index, feedback = uncapturable_feedback(
-                    worktree, self.turn.edits, patch_policy=policy)
-            if not feedback:
-                snapshot = CandidateSnapshot.capture(
-                    worktree, [edit.path for edit in self.turn.edits], patch_policy=policy)
-                kept, more, _ = prune_batch(snapshot, self.turn.edits)
-                notes.extend(more)
-                self.turn = deepcopy(self.turn)
-                self.turn.edits = kept
-                if self.turn.edits:
-                    self.pending_index, feedback = focused_feedback(
-                        snapshot, self.turn.edits, self.turn.hypothesis)
-                if self.turn.edits and not feedback:
-                    self.pending_index, feedback = self._syntax_check(snapshot)
+            snapshot, feedback = self._preflight_batch(snapshot, notes)
             self.edit_validation_feedback = feedback
             if not self.turn.edits or not feedback:
                 break
@@ -612,35 +671,75 @@ class _Loop:
             why = self._drop_reason(failing, reason)
             if why is None:
                 break
-            preview = failing.old_text[:60].replace("\n", "\\n")
-            notes.append(
-                f"Dropped edit {self.pending_position} ({failing.path}, old_text starting "
-                f"{preview!r}) because {why}{' (' + reason + ')' if reason else ''}; "
-                "the rest of the batch continued.")
-            del self.turn.edits[self.pending_index]
-            self.repeated = False
-            self.rejected_texts.clear()
+            self._drop_failed_edit(failing, reason, why, notes)
         if self.turn.edits and self.edit_validation_feedback:
-            if notes:
-                self.edit_validation_feedback += "\n\nBefore this check: " + " ".join(notes)
-            self.pending_turn = deepcopy(self.turn)
-            self.pending_notes = list(notes)
-            if reason in _ANCHOR_REASONS:
-                # Only a rejected anchor makes a repeat hopeless; a new_text
-                # problem can be fixed with the same old_text.
-                self.rejected_texts.add(key)
+            self._defer_batch(notes, reason, key)
             return None
         self._clear_pending()
         if not self.turn.edits:
-            # Nothing left that can be applied: the batch is over, and it costs
-            # an attempt so a run cannot loop on empty batches.
-            self._record_attempt(0, [])
-            self.edit_validation_feedback = ""
-            self.batch_notes = notes + ["No edit of that batch could be applied, so no "
-                                        "file changed. Propose a new batch or stop."]
-            self.feedback = " ".join(self.batch_notes)
+            self._record_inapplicable_batch(notes)
             return None
         return snapshot
+
+    def _preflight_batch(self, snapshot, notes: list[str]):
+        """Check paths, prune redundant edits, then validate anchors and syntax.
+
+        Keep the previous snapshot on early path failure, as the retry loop did
+        before extraction. No files are written at this stage.
+        """
+        worktree, policy = self.context.worktree, self.patch_policy
+        self.pending_index, feedback = missing_prefix_feedback(
+            worktree, self.turn.edits, patch_policy=policy)
+        if feedback:
+            return snapshot, feedback
+        self.pending_index, feedback = uncapturable_feedback(
+            worktree, self.turn.edits, patch_policy=policy)
+        if feedback:
+            return snapshot, feedback
+        snapshot = CandidateSnapshot.capture(
+            worktree, [edit.path for edit in self.turn.edits], patch_policy=policy)
+        kept, more, _ = prune_batch(snapshot, self.turn.edits)
+        notes.extend(more)
+        self.turn = deepcopy(self.turn)
+        self.turn.edits = kept
+        if not self.turn.edits:
+            return snapshot, feedback
+        self.pending_index, feedback = focused_feedback(
+            snapshot, self.turn.edits, self.turn.hypothesis)
+        if feedback:
+            return snapshot, feedback
+        self.pending_index, feedback = self._syntax_check(snapshot)
+        return snapshot, feedback
+
+    def _drop_failed_edit(self, failing, reason: str, why: str,
+                          notes: list[str]) -> None:
+        """Discard only the exhausted item, retaining the rest of the batch."""
+        preview = failing.old_text[:60].replace("\n", "\\n")
+        notes.append(
+            f"Dropped edit {self.pending_position} ({failing.path}, old_text starting "
+            f"{preview!r}) because {why}{' (' + reason + ')' if reason else ''}; "
+            "the rest of the batch continued.")
+        del self.turn.edits[self.pending_index]
+        self.repeated = False
+        self.rejected_texts.clear()
+
+    def _defer_batch(self, notes: list[str], reason, key) -> None:
+        """Save the batch for one focused model correction, without applying it."""
+        if notes:
+            self.edit_validation_feedback += "\n\nBefore this check: " + " ".join(notes)
+        self.pending_turn = deepcopy(self.turn)
+        self.pending_notes = list(notes)
+        if reason in _ANCHOR_REASONS:
+            # New-text errors can be fixed with the same old-text anchor.
+            self.rejected_texts.add(key)
+
+    def _record_inapplicable_batch(self, notes: list[str]) -> None:
+        """Charge an empty batch as an attempt so it cannot retry indefinitely."""
+        self._record_attempt(0, [])
+        self.edit_validation_feedback = ""
+        self.batch_notes = notes + ["No edit of that batch could be applied, so no "
+                                    "file changed. Propose a new batch or stop."]
+        self.feedback = " ".join(self.batch_notes)
 
     def _syntax_check(self, snapshot):
         """Send back an edit that would leave its file unparseable (syntax_guard).
@@ -751,6 +850,11 @@ class _Loop:
         self.review_notes = notes
         self.review_events.append({"event": "proposed", "signature": current_key,
                                    "counts": counts, "feedback": self.proposal_review})
+        if self.output_gate and output_verification.applies(self.review_turn.edits):
+            self.verified_key = None
+            self.verification_pending = True
+            self.review_events.append({"event": "output_verification_requested",
+                                       "signature": current_key, "phase": "before_review"})
         return True
 
     def _capture_failed(self, exc: Exception) -> None:

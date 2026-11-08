@@ -17,6 +17,9 @@ from pathlib import Path, PurePosixPath
 import re
 
 from .contracts import Diagnostic
+from .evidence_support import (RUST_DETAIL_CHARS, _append_rust_detail,
+                               _append_detail, _file_index)
+from .source_context import enrich_diagnostics
 
 _ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 # The local validator (OBS build) starts every log line with elapsed time: "[   12s] ".
@@ -91,34 +94,6 @@ _BUILD_ROOTS = tuple(re.compile(p) for p in (
 ))
 
 
-RUST_DETAIL_CHARS = 8000
-_RUST_DETAIL_CUT = "\n[Compiler details truncated.]"
-
-
-def _append_rust_detail(item: Diagnostic, text: str) -> None:
-    """Preserve compiler continuation lines, with an explicit size safeguard."""
-    if item.compiler_details.endswith(_RUST_DETAIL_CUT):
-        return
-    line = text.rstrip()
-    if not line.strip():
-        return
-    combined = (
-        item.compiler_details + "\n" + line
-        if item.compiler_details else line
-    )
-    if len(combined) > RUST_DETAIL_CHARS:
-        combined = (
-            combined[:RUST_DETAIL_CHARS - len(_RUST_DETAIL_CUT)]
-            + _RUST_DETAIL_CUT
-        )
-    item.compiler_details = combined
-
-
-def _append_detail(item: Diagnostic, text: str) -> None:
-    """Add a line of Part A context to compiler_details, within the same bound."""
-    _append_rust_detail(item, text)
-
-
 def _command_text(text: str) -> str:
     text = " ".join(text.split())
     return text if len(text) <= COMMAND_CHARS else text[:COMMAND_CHARS - 1] + "\u2026"
@@ -186,27 +161,6 @@ def _producer_context(item: Diagnostic, index: dict[str, list[str]], worktree: P
             _append_detail(item, f"No file named '{name}' exists under input/: it is expected "
                            "from the compiler, the system or a build dependency, or generated "
                            "during the build.")
-
-
-def _file_index(worktree: Path) -> dict[str, list[str]]:
-    """Index source files under input, excluding root quilt backups and symlinks."""
-    root = Path(worktree) / "input"
-    if root.is_symlink() or not root.is_dir():
-        return {}
-    index: dict[str, list[str]] = {}
-    for directory, dirs, files in os.walk(root, followlinks=False):
-        dirs[:] = sorted(
-            d for d in dirs
-            if not (Path(directory) / d).is_symlink()
-            and not (Path(directory) == root and d == ".pc")
-        )
-        for name in sorted(files):
-            path = Path(directory) / name
-            if path.is_symlink() or not path.is_file():
-                continue
-            relative = "input/" + path.relative_to(root).as_posix()
-            index.setdefault(name, []).append(relative)
-    return index
 
 
 def _resolve(printed: str, index: dict[str, list[str]]) -> list[str]:
@@ -459,4 +413,5 @@ def diagnose(log_path: Path, worktree: Path) -> list[Diagnostic]:
     if build_start is not None:
         # Environment preparation succeeded, so its messages are not the failure.
         unique = [item for item in unique if item.log_offset >= build_start]
+    enrich_diagnostics(unique, worktree)
     return unique

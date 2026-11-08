@@ -83,6 +83,40 @@ def _removed(old: str, new: str) -> list[str]:
     return [line for line in _lines(old) if line not in after]
 
 
+
+# Match explicit build producers, not arbitrary recipe commands or clean steps.
+_BUILD_PRODUCER = re.compile(
+    r"^(?:python[\w.]*\s+setup\.py\s+(?:build_sphinx|build|build_ext)\b|"
+    r"(?:sphinx-build|dh_auto_build|cmake\s+--build)\b|"
+    r"(?:\$\(MAKE\)|make|ninja)\s+(?:-C\s+\S+\s+)?(?:html|all|build)\b)")
+_NOOP = re.compile(r"^(?::|true|/bin/true)(?:\s*;)?(?:\s+#.*)?$")
+
+
+def _recipe_commands(text: str) -> list[str]:
+    """Read simple edit fragments; leave ambiguous shell/make syntax alone."""
+    commands = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if re.fullmatch(r"[\w%.-]+:[ \t]*", line):
+            continue
+        commands.append(line.lstrip("@"))
+    return commands
+
+
+def _build_step_bypass(old_text: str, new_text: str) -> str | None:
+    before = _recipe_commands(old_text)
+    after = _recipe_commands(new_text)
+    if not after or not all(_NOOP.fullmatch(line) for line in after):
+        return None
+    if not any(_BUILD_PRODUCER.match(line) for line in before):
+        return None
+    return ("it replaces a build-producing command with a no-op. Preserve the "
+            "required outputs: inspect the packaging manifests and build configuration, "
+            "then repair or replace the producer with a working equivalent")
+
+
 def check(path: str, old_text: str, new_text: str) -> str | None:
     """Why this edit is refused, or None when it may be applied."""
     relative = path[len("input/"):] if path.startswith("input/") else path
@@ -98,6 +132,9 @@ def check(path: str, old_text: str, new_text: str) -> str | None:
     added_text = "\n".join(added)
 
     if relative == "debian/rules" or relative.endswith("/debian/rules"):
+        bypass = _build_step_bypass(old_text, new_text)
+        if bypass:
+            return bypass
         for regex, why in _RULES_SUPPRESS:
             if regex.search(added_text) and not regex.search(old_text):
                 return why + "; the rules forbid suppressing failures to obtain a build"

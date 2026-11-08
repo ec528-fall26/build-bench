@@ -1,5 +1,43 @@
 # Full Build-Bench Agent
 
+## Version 0.6.0-rc.1 — output-verification experiment
+
+Prerelease based on agent 0.5.1. The full-case evaluation is still in progress;
+this version is not a claim of a completed release or broad repair improvement.
+
+Changes include optional packaging and CMake source context, optional full-log
+context and repair guidance, clearer edit rejection feedback, a narrow build-step
+no-op guard, review protocol and repetition handling, fresh review context,
+and refactoring of context collection and edit validation.
+
+The experimental output gate checks complete batches editing `input/debian/rules`
+before ordinary review. It supplies a structured assessment of required outputs
+and their producers. Unsupported assessments persist across subsequent repair
+turns. Revisions are checked again; a supported assessment still requires explicit
+review approval before application. Verification uses model calls and consumes
+existing budgets; it does not run package builds or supply iterative build feedback.
+
+The gate defaults **off**. Enable it with:
+
+```text
+BB_REVIEW_EDITS=1
+BB_EXPERIMENT_PACKAGING_CONTEXT=1
+BB_EXPERIMENT_OUTPUT_VERIFICATION=1
+```
+
+The evaluated configuration also enables `BB_EXPERIMENT_FRESH_REVIEW=1` and sets
+`BB_AGENT_USE_BUILD_FEEDBACK=0`. Full-log context, CMake context, and general repair
+guidance remain disabled in the current all-case campaign. Other existing defaults
+are unchanged; see the experiment document for the complete configuration.
+
+Validation so far: 664 tests passed on EC2 with fresh review off and on; gate tests
+exercise enabled behavior. The updated agent repaired python-intbitset in a fresh
+end-to-end run with zero loop builds. Other case outcomes remain pending.
+
+See [experiment history, settings, and results](../../../docs/full-agent-output-verification-experiment.md).
+The ongoing campaign uses a saved source snapshot whose agent metadata remains
+0.5.1. This prerelease label is being prepared separately on the Mac checkout.
+
 ## Purpose
 The project's full agent: it reads the failure, investigates the package with
 read-only tools, proposes a repair with a stated hypothesis, tests it when build

@@ -95,6 +95,42 @@ What you may change
   removed is not a repair.
 """
 
+
+# Experimental guidance is read once when each agent process starts.
+_REPAIR_GUIDANCE = """
+Evidence-based repair checks
+- Before editing, connect the observed failure to the responsible source or
+  build configuration. Distinguish fatal diagnostics from optional dependency
+  notices and downstream consequences.
+- Inspect related uses or targets for the same cause. Change multiple sites
+  only when evidence establishes that they share the defect; do not assume
+  similarly named targets are interchangeable.
+- Preserve required languages, features, tests, public interfaces and package
+  outputs. Do not switch a feature off merely because its configuration fails.
+  An architecture-specific change must retain the required functionality.
+- For a missing dependency path, distinguish incorrect metadata from missing
+  files. Do not create empty include/module directories to satisfy a path check.
+  Do not delete include paths merely to suppress an error: establish whether
+  their contents are required and how the build will obtain them.
+- Do not invent replacement paths, compiler versions or installed files.
+  Dependency files outside input/ cannot be inspected with your tools.
+  Use available log and source evidence, and identify unresolved assumptions.
+- Prefer a narrow source/configuration correction within input/. A workaround
+  must explain why it preserves the dependency's required behavior, not just
+  why a configuration check might accept it.
+- Use the existing hypothesis and evidence fields to explain the causal link.
+  Before stopping, review the current diff for unsupported changes and required
+  functionality that was removed. Do not add speculative edits.
+- The initial log predates your edits. It cannot validate them. Describe an
+  unbuilt repair as proposed, and state any material uncertainty.
+"""
+
+_repair_guidance_mode = os.environ.get("BB_EXPERIMENT_REPAIR_GUIDANCE", "0")
+if _repair_guidance_mode not in {"0", "1"}:
+    raise ValueError("BB_EXPERIMENT_REPAIR_GUIDANCE must be 0 or 1")
+if _repair_guidance_mode == "1":
+    _CHANGES += _REPAIR_GUIDANCE
+
 _READING = """\
 Reading the failure
 - Errors are given in the order the build printed them. The first is usually
@@ -292,7 +328,8 @@ def _bullet(text: str) -> str:
     return textwrap.fill(text, width=79, initial_indent="- ", subsequent_indent="  ") + "\n"
 
 
-def system_prompt(config: AgentConfig | None = None, budget: Budget | None = None) -> str:
+def system_prompt(config: AgentConfig | None = None, budget: Budget | None = None,
+                  *, review_instructions: str = "") -> str:
     """The instructions for one case, containing only the enabled capabilities."""
     config = config or AgentConfig()
     budget = budget or Budget()
@@ -341,10 +378,13 @@ def system_prompt(config: AgentConfig | None = None, budget: Budget | None = Non
     if config.use_tools:
         sections.append(_TOOLS.format(limit=MAX_OUTPUT_CHARS))
     builds = config.use_build_feedback
-    sections.append(_REPLY.format(
-        tool_format=_TOOL_FORMAT if config.use_tools else "",
-        stop=_STOP_BUILDS if builds else _STOP_NO_BUILDS,
-        stop_rule=_STOP_RULE_BUILDS if builds else _STOP_RULE_NO_BUILDS))
+    if review_instructions:
+        sections.append(review_instructions)
+    else:
+        sections.append(_REPLY.format(
+            tool_format=_TOOL_FORMAT if config.use_tools else "",
+            stop=_STOP_BUILDS if builds else _STOP_NO_BUILDS,
+            stop_rule=_STOP_RULE_BUILDS if builds else _STOP_RULE_NO_BUILDS))
     sections.append(run)
     return "\n".join(sections)
 
@@ -788,9 +828,9 @@ def attempt_result_message(
         lines.extend(f"- {_clip(reason, MESSAGE_CHARS)}" for reason in rejections)
     errors = ""
     if attempt.applied == 0:
-        lines.append("Nothing was changed, so nothing was built. The usual cause is an "
-                     "old_text that is not found exactly once, or a path that is not a real "
-                     "file under input/.")
+        lines.append("Nothing was changed, so nothing was built. Inspect the rejection "
+                     "reasons and controller notes below or above for the actual cause. "
+                     "A refused or pruned batch is not necessarily a path or text-match error.")
     elif attempt.build is None:
         lines.append("No build was run for this attempt, so it is untested. Its edits are "
                      "in the files. The errors and log shown above are still those of the "

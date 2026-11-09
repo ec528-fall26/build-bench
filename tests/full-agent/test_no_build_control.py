@@ -69,6 +69,51 @@ class Guard(unittest.TestCase):
                 self.assertIsNotNone(reason)
                 self.assertIn(why, reason)
 
+    def test_marking_every_symbol_optional_is_refused(self):
+        # libbpp-core, 0.5.0 locally (7 November): a replace_all over the whole file.
+        path = "input/debian/libbpp-core4.symbols.amd64"
+        self.assertIn("replace_all", rules_guard.check(
+            path, " _Z", " (optional)_Z", replace_all=True))
+        self.assertIn("replace_all", rules_guard.check(       # jsonnet, 0.3.3
+            "input/debian/libjsonnet0.symbols.amd64", " _", " (optional) _", replace_all=True))
+        old = "".join(f" _ZN3bpp{n}E@Base 2.4.1\n" for n in range(60))
+        new = "".join(f" (optional)_ZN3bpp{n}E@Base 2.4.1\n" for n in range(60))
+        self.assertIn("tags 60 symbols", rules_guard.check(path, old, new))
+
+    def test_marking_the_reported_symbols_optional_is_allowed(self):
+        # libbpp-qt and libbpp-core, 0.3.3: passed Development Validation.
+        old = (" _ZN5QListIP15QAbstractButtonE6detachEv@Base 2.4.1\n"
+               " _ZN9QtPrivate8RefCount5derefEv@Base 2.4.1\n")
+        new = (" (optional) _ZN5QListIP15QAbstractButtonE6detachEv@Base 2.4.1\n"
+               " (optional) _ZN9QtPrivate8RefCount5derefEv@Base 2.4.1\n")
+        self.assertIsNone(rules_guard.check("input/debian/libbpp-qt2t64.symbols.amd64", old, new))
+        # libleidenalg, 0.3.3 (passed): the C++ standard-library instantiations only.
+        self.assertIsNone(rules_guard.check("input/debian/liblibleidenalg1.symbols.amd64",
+                                            " _ZNSt", " (optional) _ZNSt", replace_all=True))
+        self.assertIsNone(rules_guard.check("input/debian/libfoo1.symbols",
+                                            " old@Base 1\n", " (arch=amd64)old@Base 1\n"))
+
+    def test_tagging_every_symbol_with_an_arch_tag_is_refused(self):
+        path = "input/debian/libbpp-core4.symbols.amd64"
+        old = "".join(f" _Zsym{i}@Base 1\n" for i in range(100))
+        new = "".join(f"(arch=!amd64) _Zsym{i}@Base 1\n" for i in range(100))
+        self.assertIn("tags 100 symbols", rules_guard.check(path, old, new))
+        self.assertIn("bare prefix", rules_guard.check(path, " _", " (arch=!amd64)_", replace_all=True))
+
+    def test_tagging_the_reported_symbols_with_an_arch_tag_is_allowed(self):
+        path = "input/debian/libbpp-core4.symbols.amd64"
+        self.assertIsNone(rules_guard.check(path, " _Zsym@Base 1\n", " (arch=!amd64)_Zsym@Base 1\n"))
+
+    def test_the_symbols_macro_passes_the_guard(self):
+        self.assertIsNone(rules_guard.check("input/debian/x.symbols.amd64",
+                                            "@@tag-missing-symbols@@", "optional"))
+
+    def test_a_broken_dh_call_is_refused(self):
+        for new in ("%:\n\tdh $\n", "%:\n\tdh $$@ --with autoreconf\n"):
+            self.assertIn('"dh $@"', rules_guard.check("input/debian/rules", "%:\n\tdh $@\n", new))
+        self.assertIsNone(rules_guard.check("input/debian/rules", "%:\n\tdh $@\n",
+                                            "%:\n\tdh $@ --with autoreconf\n"))
+
     def test_legitimate_repairs_are_allowed(self):
         cases = [
             # an expected value corrected, the check kept
@@ -95,6 +140,16 @@ class Guard(unittest.TestCase):
                 self.assertIsNone(self.refused(path, old, new))
 
 
+class CompilerSwitch(unittest.TestCase):
+    def test_the_compiler_check_can_be_switched_off(self):
+        import os
+        from unittest.mock import patch
+        from src import syntax_guard
+        with patch.dict(os.environ, {"BB_SYNTAX_GUARD_COMPILER": "0"}):
+            self.assertIsNone(syntax_guard._compiler("c"))
+            self.assertIsNone(syntax_guard._compiler("c++"))
+
+
 class Control(unittest.TestCase):
     setUp = test_wiring.Adapter.setUp
     run_with = test_wiring.Adapter.run_with
@@ -109,6 +164,24 @@ class Control(unittest.TestCase):
         self.assertIn("HAVE_MM_PREFETCH 0", (self.worktree / CONFIG).read_text())
         self.assertIn("Refused edit 1 (input/.pc/x/", script.user(1))
         self.assertIn("quilt's record", script.user(1))
+
+    def test_a_refused_symbols_edit_becomes_the_macro(self):
+        path = "input/debian/libx1.symbols.amd64"
+        (self.worktree / "input/debian").mkdir()
+        (self.worktree / path).write_text("libx.so.1 libx1 #MINVER#\n _Zgone@Base 1\n _Zkept@Base 1\n")
+        self.log.write_text("dpkg-gensymbols: error: some symbols or patterns disappeared in the symbols file\n"
+                            "--- debian/libx1.symbols.amd64 (libx1_1_amd64)\n+++ dpkg-gensymbolsX\n"
+                            "@@ -1,3 +1,3 @@\n libx.so.1 libx1 #MINVER#\n- _Zgone@Base 1\n"
+                            "+#MISSING: 1# _Zgone@Base 1\n _Zkept@Base 1\n"
+                            "dh_makeshlibs: error: failing due to earlier errors\n")
+        blanket = {"path": path, "old_text": " _", "new_text": " (optional)_", "replace_all": True}
+        script = Script(reply(action="edit", hypothesis="h", evidence=["e"], edits=[blanket]), STOP, STOP)
+        result, _ = self.run_with(script, config=NEW)
+        text = (self.worktree / path).read_text()
+        self.assertIn(" (optional)_Zgone@Base 1", text)
+        self.assertIn("\n _Zkept@Base 1", text)
+        self.assertEqual(result.attempts[0].applied, 1)
+        self.assertIn("rules_guard", [e["event"] for e in result.review_events])
 
     def test_the_guard_can_be_switched_off(self):
         (self.worktree / "input/tests").mkdir()

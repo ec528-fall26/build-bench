@@ -474,6 +474,12 @@ _PARSE_ERROR = re.compile(
 
 
 def _compiler(language: str) -> str | None:
+    # BB_SYNTAX_GUARD_COMPILER=0: no compiler check, as in a sandbox without one.
+    # The kit's managed runtime (python:3.11 slim) has no compiler, so a local or
+    # Development Validation run on a host with gcc measures more than the
+    # submitted agent does unless this is off.
+    if os.environ.get("BB_SYNTAX_GUARD_COMPILER", "1").strip() == "0":
+        return None
     names = ("g++", "c++", "clang++") if language == "c++" else ("gcc", "cc", "clang")
     return next((found for found in map(shutil.which, names) if found), None)
 

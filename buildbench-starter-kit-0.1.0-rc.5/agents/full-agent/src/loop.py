@@ -26,7 +26,7 @@ from .edit_repair import expand_macros, prune_batch, retarget_path, simulate, st
 from .path_feedback import missing_prefix_feedback, uncapturable_feedback
 from . import arch_model, patterns, verify
 from .tools import run_tool
-from .types import CaseContext
+from .types import CaseContext, Edit
 from .proposal_review import render_review, signature, edit_identity
 from . import ffi_analysis, rules_guard, syntax_guard, output_verification
 
@@ -273,6 +273,9 @@ class _Loop:
         self.syntax_seconds_left = syntax_guard.RUN_BUDGET
         # What the model is told next turn
         self.tracker = DiffTracker(context.worktree)
+        # Edits the rules guard refused; files whose refused edit became the symbols macro.
+        self.refused: set[tuple] = set()
+        self.symbols_macro_added: set[str] = set()
         self.tool_results: list[ToolResult] = []
         self.feedback = ""
         self.latest_attempt_feedback = ""
@@ -818,17 +821,35 @@ class _Loop:
                                             self.turn.hypothesis)
 
     def _guard(self, notes: list[str]) -> None:
-        """Drop each edit the rules guard refuses, with its reason (rules_guard)."""
+        """Drop each edit the rules guard refuses, with its reason (rules_guard).
+
+        A refused edit of a symbols file becomes the symbols macro, once per
+        file, when the log reports missing symbols: the agent then tags exactly
+        those (edit_repair.expand_macros). libbpp-core, 7 November: the model
+        resent one refused blanket "(optional)" edit seven times and failed.
+        """
         kept = []
         for position, edit in enumerate(self.turn.edits, 1):
-            why = rules_guard.check(edit.path, edit.old_text, edit.new_text)
+            why = rules_guard.check(edit.path, edit.old_text, edit.new_text,
+                                    replace_all=bool(getattr(edit, "replace_all", False)))
             if why is None:
                 kept.append(edit)
-            else:
-                notes.append(f"Refused edit {position} ({edit.path}): {why}.")
-                self.review_events.append({"event": "rules_guard", "path": edit.path,
-                                           "reason": why})
-        if len(kept) != len(self.turn.edits):
+                continue
+            key = (edit.path, edit.old_text, edit.new_text)
+            if key in self.refused:
+                why += "; this exact edit was refused before, so do not propose it again"
+            self.refused.add(key)
+            notes.append(f"Refused edit {position} ({edit.path}): {why}.")
+            self.review_events.append({"event": "rules_guard", "path": edit.path,
+                                       "reason": why})
+            if (rules_guard.is_symbols_file(edit.path)
+                    and edit.path not in self.symbols_macro_added
+                    and patterns.missing_symbols(patterns._log_lines(self.log_path))):
+                self.symbols_macro_added.add(edit.path)
+                kept.append(Edit(edit.path, patterns.SYMBOLS_MACRO, "optional"))
+                notes.append(f"In its place the controller tags, in {edit.path}, only the "
+                             "symbols dpkg-gensymbols reported missing.")
+        if len(kept) != len(self.turn.edits) or any(a is not b for a, b in zip(kept, self.turn.edits)):
             self.turn = deepcopy(self.turn)
             self.turn.edits = kept
 

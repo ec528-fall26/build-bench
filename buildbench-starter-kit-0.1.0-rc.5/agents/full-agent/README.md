@@ -27,6 +27,16 @@ it has no build feedback, so edits are investigated and revised but submitted
 untested. Locally, `harness/run_case.py --agent full-agent` runs the same loop
 with real builds (Part D). Results: `docs/part5-findings.md` §9c.
 
+Version 0.6.0-rc.4 (9 November), rc.3 with the guard rules of 0.5.2:
+- `src/rules_guard.py`: refuses tagging a whole symbols file (`(optional)` or
+  `(arch=...)`: libbpp-core's degenerate pass in rc.3) and breaking `dh $@`
+  (html-xml-utils in a 0.5.1 run). The compiler check of `src/syntax_guard.py`
+  can be switched off with `BB_SYNTAX_GUARD_COMPILER=0`, as in a hosted run
+  that has no compiler.
+- `src/loop.py`: a refused symbols edit becomes the symbols macro, once per
+  file, so only the symbols the log reports missing are tagged. A refused edit
+  resent unchanged is called out as such.
+
 Version 0.6.0-rc.3 (8 November): an architecture model instead of a bare loop
 (`docs/architecture-model.md`):
 - `arch_model.py`: what differs between the source and target architecture,

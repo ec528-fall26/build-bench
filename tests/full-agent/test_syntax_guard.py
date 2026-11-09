@@ -114,6 +114,19 @@ class Files(unittest.TestCase):
                           " (optional=templinst|arch=amd64 i386)_Z1gv@Base 1.0~rc1 1\n")
         self.assertEqual(problems("input/debian/libx1.symbols", before, after), [])
 
+    def test_symbols_tag_followed_by_a_space_is_found_with_the_glued_line(self):
+        # libbpp-qt, 8 November: ' (optional) sym' was accepted and dpkg dropped it.
+        before = "libx1 libx1 #MINVER#\n _Z1fv@Base 1.0\n"
+        after = before.replace(" _Z1fv", " (optional) _Z1fv")
+        found = problems("input/debian/libx1.symbols", before, after)
+        self.assertTrue(any("file has 1 unparseable lines: 2" in m and "(optional)_Z1fv@Base 1.0" in m
+                            for m in found), found)
+
+    def test_symbols_findings_are_hard(self):
+        found = syntax_guard.file_problems("input/debian/libx1.symbols", "libx1 libx1 #MINVER#\n",
+                                           "libx1 libx1 #MINVER#\n _Z1fv@Base 1.0 (optional)\n")
+        self.assertTrue(found and all(p.hard for p in found))
+
     def test_json(self):
         self.assertTrue(problems("input/package.json", '{"a": 1}', '{"a": 1,}'))
 
@@ -202,7 +215,7 @@ class Loop(unittest.TestCase):
         return reply(action="edit", hypothesis="h", evidence=["e"], edits=[item])
 
     def test_a_breaking_edit_is_sent_back_and_its_correction_applied(self):
-        script = Script(self.edit(self.BROKEN), self.edit(self.FIXED), STOP)
+        script = Script(self.edit(self.BROKEN), self.edit(self.FIXED), STOP, STOP)
         result, _ = self.run_with(script, config=NEW)
         self.assertIn("Reason: syntax_check", script.user(1))
         self.assertIn("unmatched #if", script.user(1))
@@ -211,20 +224,20 @@ class Loop(unittest.TestCase):
         self.assertEqual(sum(a.applied for a in result.attempts), 1)
 
     def test_an_unchanged_resend_is_applied(self):
-        script = Script(self.edit(self.BROKEN), self.edit(self.BROKEN), STOP)
+        script = Script(self.edit(self.BROKEN), self.edit(self.BROKEN), STOP, STOP)
         result, _ = self.run_with(script, config=NEW)
         self.assertIn("Reason: syntax_check", script.user(1))
         self.assertIn("#if defined(__x86_64__)", (self.worktree / CONFIG).read_text())
         self.assertEqual(sum(a.applied for a in result.attempts), 1)
 
     def test_the_guard_can_be_switched_off(self):
-        script = Script(self.edit(self.BROKEN), STOP)
+        script = Script(self.edit(self.BROKEN), STOP, STOP)
         self.run_with(script, config=AgentConfig(use_syntax_guard=False))
         self.assertNotIn("syntax_check", script.user(1))
         self.assertIn("#if defined(__x86_64__)", (self.worktree / CONFIG).read_text())
 
     def test_a_well_formed_edit_is_not_held(self):
-        script = Script(self.edit(self.FIXED), STOP)
+        script = Script(self.edit(self.FIXED), STOP, STOP)
         result, _ = self.run_with(script, config=NEW)
         self.assertNotIn("syntax_check", script.user(1))
         self.assertEqual(result.attempts[0].applied, 1)

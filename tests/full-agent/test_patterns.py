@@ -118,6 +118,8 @@ class OutlineAtomics(Worktree):
         self.assertIn("Failing links: .libs/Lperf-simple.", block)
         self.assertIn("export DEB_CFLAGS_MAINT_APPEND += -mno-outline-atomics", block)
         self.assertIn("do not split it", block)
+        self.assertIn('"old_text":"@@recipe:arch-flags@@","new_text":""', block)
+        self.assertLess(block.index("@@recipe:arch-flags@@"), block.index("Repair:"))
 
     def test_undefined_reference_form(self):
         log = self.write("build.log", "foo.o: undefined reference to `__aarch64_ldadd4_acq_rel'\n")
@@ -140,6 +142,19 @@ class SymbolsFile(Worktree):
         self.assertIn("debian/libbpp-core4.symbols.amd64", block)
         self.assertIn("-#MISSING: 2.4.1# (c++)\"bpp::B::b()@Base\" 2.4.1", block)
         self.assertIn("(arch=!amd64)", block)
+
+
+    def test_the_invocation_line_leads_the_repair_and_the_warning_alone_is_not_enough(self):
+        lines = ["dpkg-gensymbols: warning: some new symbols appeared in the symbols file: see diff output below",
+                 "dpkg-gensymbols: error: some symbols or patterns disappeared in the symbols file: see diff output below",
+                 "dpkg-gensymbols: warning: debian/libfoo1/DEBIAN/symbols doesn't match completely debian/libfoo1.symbols",
+                 "-#MISSING: 1.0# _ZN3foo3barEv@Base 1.0"]
+        block = patterns.debian_symbols(lines, self.root, "arm64")
+        self.assertIn('"old_text":"@@recipe:symbols-tag@@","new_text":""', block)
+        self.assertIn("input/debian/libfoo1.symbols", block[:block.index("Repair:")].split("To apply exactly")[1])
+        self.assertLess(block.index("@@recipe:symbols-tag@@"), block.index("(optional=templinst)"))
+        self.assertEqual(patterns.debian_symbols(lines[:1] + lines[2:], self.root, "arm64"), "")
+        self.assertEqual(patterns.debian_symbols(lines[:1], self.root, "arm64"), "")
 
 
 class Rendering(Worktree):
@@ -190,7 +205,10 @@ class CMakeImportedTarget(Worktree):
         self.assertEqual(set(facts["siblings"]), {"parkind_dp", "parkind_sp"})
         self.assertEqual(facts["find_package"][:2], ("input/CMakeLists.txt", 3))
         block = patterns.cmake_imported_target(self.LOG, self.root, "aarch64")
-        self.assertIn("foreach( _dep_target fiat parkind_dp parkind_sp )", block)
+        self.assertIn("foreach(_dep_target fiat parkind_dp parkind_sp)", block)
+        self.assertIn("@@recipe:cmake-redirect-imported-dirs@@", block)
+        self.assertLess(block.index("@@recipe:"), block.index("By hand"))
+        self.assertIn("/usr/include/${_dep_triplet}/fortran/gfortran-mod-*/${_dep_leaf}", block)
         self.assertIn("input/CMakeLists.txt immediately after line 3", block)
         self.assertIn("Clearing the property is not enough", block)
         self.assertNotIn("trans_dp", block)  # the package's own targets are not imported ones

@@ -1,0 +1,12 @@
+dpkg-buildpackage: info: host architecture amd64
+[...]
+Get:69 http://ftpmaster.internal/ubuntu resolute/universe amd64 libbigwig0t64 amd64 0.4.8+dfsg-2 [3066 B]
+Get:70 http://ftpmaster.internal/ubuntu resolute/universe amd64 libbigwig-dev amd64 0.4.8+dfsg-2 [40.7 kB]
+[...]
+      |            ^~~~~~~~~~~~~~~~~~~~~
+x86_64-linux-gnu-gcc -shared -Wl,-O1 -Wl,-Bsymbolic-functions -Wl,-Bsymbolic-functions -Wl,-z,relro -g -fwrapv -O2 -Wl,-Bsymbolic-functions -Wl,--package-metadata={%22type%22:%22deb%22%2C%22os%22:%22ubuntu%22%2C%22name%22:%22pybigwig%22%2C%22version%22:%220.3.23+dfsg-1build6%22%2C%22architecture%22:%22amd64%22} -flto=auto -ffat-lto-objects -Wl,-z,relro -Wl,-z,now -g -O2 -Werror=implicit-function-d
+/usr/bin/ld: /usr/lib/x86_64-linux-gnu/libBigWig.a(io.o): warning: relocation against `stderr@@GLIBC_2.2.5' in read-only section `.text'
+/usr/bin/ld: /usr/lib/x86_64-linux-gnu/libBigWig.a(bwValues.o): relocation R_X86_64_PC32 against symbol `stderr@@GLIBC_2.2.5' can not be used when making a shared object; recompile with -fPIC
+/usr/bin/ld: final link failed: bad value
+collect2: error: ld returned 1 exit status
+error: command '/usr/bin/x86_64-linux-gnu-gcc' failed with exit code 1

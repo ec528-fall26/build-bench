@@ -1,0 +1,11 @@
+{
+ "case_id": "launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e",
+ "rationale": "Ubuntu 20240504-1ubuntu1: strip -O3, append -O2 on amd64/ppc64el",
+ "edits": [
+  {
+   "path": "input/debian/rules",
+   "old_text": "export DEB_BUILD_MAINT_OPTIONS = hardening=+all\n",
+   "new_text": "export DEB_BUILD_MAINT_OPTIONS = hardening=+all\nifneq (,$(filter $(DEB_HOST_ARCH), amd64 ppc64el))\n  export DEB_CFLAGS_MAINT_STRIP  = -O3\n  export DEB_CFLAGS_MAINT_APPEND = -O2\nendif\n"
+  }
+ ]
+}

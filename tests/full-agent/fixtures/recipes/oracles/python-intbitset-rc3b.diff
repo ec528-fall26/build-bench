@@ -1,0 +1,11 @@
+--- a/input/debian/rules
++++ b/input/debian/rules
+@@ -4,7 +4,7 @@
+ 	dh $@ --with python3,sphinxdoc --buildsystem=pybuild
+ 
+ override_dh_auto_build-indep:
+-	python3 setup.py build_sphinx
++	python3 -m sphinx -b html docs/ docs/_build/html
+ 
+ execute_before_dh_auto_build:
+ 	# Rebuild intbitset.c for both arch:all/arch:any build

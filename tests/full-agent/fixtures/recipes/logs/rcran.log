@@ -1,0 +1,11 @@
+dpkg-buildpackage: info: host architecture arm64
+[...]
+gcc -I"/usr/share/R/include" -DNDEBUG -I.      -fPIC  -g -O2 -ffile-prefix-map=/build/r-base-uvItAp/r-base-4.3.1=. -fstack-protector-strong -Wformat -Werror=format-security -fdebug-prefix-map=/build/r-base-uvItAp/r-base-4.3.1=/usr/src/r-base-4.3.1-1 -Wdate-time -D_FORTIFY_SOURCE=2  -c blake3_portable.c -o blake3_portable.o
+gcc -I"/usr/share/R/include" -DNDEBUG -I.      -fPIC  -g -O2 -ffile-prefix-map=/build/r-base-uvItAp/r-base-4.3.1=. -fstack-protector-strong -Wformat -Werror=format-security -fdebug-prefix-map=/build/r-base-uvItAp/r-base-4.3.1=/usr/src/r-base-4.3.1-1 -Wdate-time -D_FORTIFY_SOURCE=2  -c crc32.c -o crc32.o
+g++ -std=gnu++17 -I"/usr/share/R/include" -DNDEBUG -I.      -fPIC  -g -O2 -ffile-prefix-map=/build/r-base-uvItAp/r-base-4.3.1=. -fstack-protector-strong -Wformat -Werror=format-security -fdebug-prefix-map=/build/r-base-uvItAp/r-base-4.3.1=/usr/src/r-base-4.3.1-1 -Wdate-time -D_FORTIFY_SOURCE=2  -c crc32c.cpp -o crc32c.o
+g++ -std=gnu++17 -I"/usr/share/R/include" -DNDEBUG -I.      -fPIC  -g -O2 -ffile-prefix-map=/build/r-base-uvItAp/r-base-4.3.1=. -fstack-protector-strong -Wformat -Werror=format-security -fdebug-prefix-map=/build/r-base-uvItAp/r-base-4.3.1=/usr/src/r-base-4.3.1-1 -Wdate-time -D_FORTIFY_SOURCE=2  -c crc32c_portable.cpp -o crc32c_portable.o
+In file included from crc32c_portable.cpp:10:
+crc32c/crc32c_prefetch.h:18:10: fatal error: xmmintrin.h: No such file or directory
+   18 | #include <xmmintrin.h>
+      |          ^~~~~~~~~~~~~
+compilation terminated.

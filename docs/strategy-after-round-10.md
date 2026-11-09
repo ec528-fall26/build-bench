@@ -19,11 +19,11 @@ model), no build feedback, one run each.
 | libbpp-qt | arm64→amd64 | **repaired today** | symbols file written for arm64 |
 | python-intbitset | arm64→amd64 | **repaired on re-run** (2 turns) | `setup.py build_sphinx` removed; the agent disabled the step and broke the doc package's install contract |
 | libevtx | arm64→amd64 | miss | a real amd64 segfault in a tool test, 4,100-line file, no diagnostic |
-| pybigwig | arm64→amd64 | not repairable in-package; the agent now says so in 4 turns with no edit | the amd64 runtime library package is empty; ld used a non-PIC archive |
+| pybigwig | arm64→amd64 | not repairable in-package; the agent reads the dependency package with `deb_contents` and says so with no edit | the amd64 runtime library package is empty; ld used a non-PIC archive |
 | libmceliece | amd64→arm64 | not repairable in-package | toolchain (BFD assertion) |
-| libbpp-core | arm64→amd64 | build passes on re-run, by a degenerate edit (every symbol tagged); macro re-run queued | 13 missing symbols in a 4,131-line file; the model retyped the file in a syntax dpkg rejects. The agent now tags the symbols itself from the log (one macro edit). |
+| libbpp-core | arm64→amd64 | **repaired on re-run** with the symbols macro: 13 lines tagged, one attempt | 13 missing symbols in a 4,131-line file; the model retyped the file in a syntax dpkg rejects. The agent now tags the symbols itself from the log (one macro edit). |
 
-Eight builds pass after the round-11 re-runs (libbpp-core's by an edit a maintainer would reject). Two cases cannot be repaired by editing the package at all; for
+Eight of eleven build after the round-12 re-runs, all by edits a maintainer could accept. Two cases cannot be repaired by editing the package at all; for
 those the best outcome is a one-turn, zero-edit stop with the reason, which
 the new `nonpic_static_archive` block produces. Of the remaining misses one is
 now covered (intbitset) and one is a genuine debugging problem (libevtx).

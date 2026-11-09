@@ -1,0 +1,11 @@
+{
+ "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+ "rationale": "variant A: gfortran-mod glob only",
+ "edits": [
+  {
+   "path": "input/CMakeLists.txt",
+   "old_text": "ecbuild_find_package( NAME fiat REQUIRED )\n",
+   "new_text": "ecbuild_find_package( NAME fiat REQUIRED )\n# fiat-targets.cmake points at fortran module directories this package does not ship;\n# redirect each missing directory to the dh-fortran-mod location under /usr/include.\nforeach(_dep_target fiat parkind_sp parkind_dp)\n  if(TARGET ${_dep_target})\n    get_target_property(_dep_dirs ${_dep_target} INTERFACE_INCLUDE_DIRECTORIES)\n    set(_dep_fixed \"\")\n    foreach(_dep_dir ${_dep_dirs})\n      if(NOT EXISTS \"${_dep_dir}\")\n        get_filename_component(_dep_leaf \"${_dep_dir}\" NAME)\n        string(REGEX REPLACE \"^/usr/(lib|include)/([^/]+)/.*$\" \"\\\\2\" _dep_triplet \"${_dep_dir}\")\n        file(GLOB _dep_found \"/usr/include/${_dep_triplet}/fortran/gfortran-mod-*/${_dep_leaf}\")\n        if(_dep_found)\n          list(GET _dep_found 0 _dep_dir)\n        else()\n          set(_dep_dir \"\")\n        endif()\n      endif()\n      if(_dep_dir)\n        list(APPEND _dep_fixed \"${_dep_dir}\")\n      endif()\n    endforeach()\n    set_target_properties(${_dep_target} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES \"${_dep_fixed}\")\n  endif()\nendforeach()\n"
+  }
+ ]
+}

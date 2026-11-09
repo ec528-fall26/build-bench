@@ -177,7 +177,9 @@ class RepairLoop(unittest.TestCase):
                         tool_requests=[
                             ToolRequest(
                                 tool="list_dir",
-                                args={"path": "input"},
+                                # A different request each time: an identical one is
+                                # answered with a stub and not counted (test_loop_control).
+                                args={"path": "input", "variant": len(calls)},
                             )
                         ],
                         hypothesis="",

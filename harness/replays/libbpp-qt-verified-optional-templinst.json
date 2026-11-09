@@ -1,0 +1,16 @@
+{
+ "case_id": "launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f",
+ "rationale": "optional=templinst tag glued to symbol",
+ "edits": [
+  {
+   "path": "input/debian/libbpp-qt2t64.symbols.amd64",
+   "old_text": " _ZN5QListIP15QAbstractButtonE6detachEv@Base 2.4.1",
+   "new_text": " (optional=templinst)_ZN5QListIP15QAbstractButtonE6detachEv@Base 2.4.1"
+  },
+  {
+   "path": "input/debian/libbpp-qt2t64.symbols.amd64",
+   "old_text": " _ZN9QtPrivate8RefCount5derefEv@Base 2.4.1",
+   "new_text": " (optional=templinst)_ZN9QtPrivate8RefCount5derefEv@Base 2.4.1"
+  }
+ ]
+}

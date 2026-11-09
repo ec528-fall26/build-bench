@@ -1,0 +1,30 @@
+dpkg-buildpackage: info: host architecture amd64
+[...]
+dpkg-gensymbols: warning: some new symbols appeared in the symbols file: see diff output below
+dpkg-gensymbols: error: some symbols or patterns disappeared in the symbols file: see diff output below
+dpkg-gensymbols: warning: debian/libbpp-qt2t64/DEBIAN/symbols doesn't match completely debian/libbpp-qt2t64.symbols.amd64
+--- debian/libbpp-qt2t64.symbols.amd64 (libbpp-qt2t64_2.4.1-9.1_amd64)
++++ dpkg-gensymbolskOWcgP	2024-04-10 22:20:45.667101541 +0000
+@@ -262,9 +262,11 @@
+  _ZN5QListI7QStringE6appendERKS0_@Base 2.4.1
+  _ZN5QListI7QStringED1Ev@Base 2.4.1
+  _ZN5QListI7QStringED2Ev@Base 2.4.1
++ _ZN5QListIP13QGraphicsItemE13detach_helperEi@Base 2.4.1-9.1
+  _ZN5QListIP13QGraphicsItemED1Ev@Base 2.4.1
+  _ZN5QListIP13QGraphicsItemED2Ev@Base 2.4.1
+- _ZN5QListIP15QAbstractButtonE6detachEv@Base 2.4.1
++ _ZN5QListIP15QAbstractButtonE13detach_helperEi@Base 2.4.1-9.1
++#MISSING: 2.4.1-9.1# _ZN5QListIP15QAbstractButtonE6detachEv@Base 2.4.1
+  _ZN5QListIP15QAbstractButtonED1Ev@Base 2.4.1
+  _ZN5QListIP15QAbstractButtonED2Ev@Base 2.4.1
+  _ZN5QListIP17QGraphicsTextItemE18detach_helper_growEii@Base 2.4.1
+@@ -273,7 +275,7 @@
+  _ZN7QStringC2EPKc@Base 2.4.1
+  _ZN7QStringD1Ev@Base 2.4.1
+  _ZN7QStringD2Ev@Base 2.4.1
+- _ZN9QtPrivate8RefCount5derefEv@Base 2.4.1
++#MISSING: 2.4.1-9.1# _ZN9QtPrivate8RefCount5derefEv@Base 2.4.1
+  _ZNK3bpp10TreeCanvas10metaObjectEv@Base 2.4.1
+  _ZNK3bpp10TreeCanvas12drawingWidthEv@Base 2.4.1
+  _ZNK3bpp10TreeCanvas13drawingHeightEv@Base 2.4.1
+dh_makeshlibs: error: failing due to earlier errors

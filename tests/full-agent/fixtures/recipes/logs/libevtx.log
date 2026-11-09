@@ -1,0 +1,57 @@
+dpkg-buildpackage: info: host architecture amd64
+[...]
+/bin/bash ../libtool  --tag=CC   --mode=compile gcc -DHAVE_CONFIG_H -I. -I../common  -I../include -I../include -I../common -I../common  -Wdate-time -D_FORTIFY_SOURCE=3  -g -O3 -Werror=implicit-function-declaration -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/<<PKGBUILDDIR>>=. -flto=auto -ffat-lto-objects -fstack-protector-strong -fstack-clash-protection -Wformat -Werror=
+[...]
+.. contents:: :depth: 2
+
+FAIL: test_tools.sh
+===================
+
+Testing: info_handle (PASS)
+./test_runner.sh: line 422: 47865 Segmentation fault      (core dumped) ${TEST_EXECUTABLE} ${ARGUMENTS[@]} 2> /dev/null
+Testing: message_handle (FAIL)
+FAIL test_tools.sh (exit status: 139)
+
+SKIP: test_evtxinfo.sh
+======================
+
+Test input directory not found.
+SKIP test_evtxinfo.sh (exit status: 77)
+
+SKIP: test_evtxexport.sh
+========================
+
+Test input directory not found.
+SKIP test_evtxexport.sh (exit status: 77)
+
+============================================================================
+Testsuite summary for libevtx 20240504
+============================================================================
+# TOTAL: 5
+# PASS:  2
+# SKIP:  2
+# XFAIL: 0
+# FAIL:  1
+# XPASS: 0
+# ERROR: 0
+============================================================================
+See tests/test-suite.log
+Please report to joachim.metz@gmail.com
+============================================================================
+make[4]: *** [Makefile:1588: test-suite.log] Error 1
+make[4]: Leaving directory '/<<PKGBUILDDIR>>/tests'
+make[3]: *** [Makefile:1696: check-TESTS] Error 2
+make[3]: Leaving directory '/<<PKGBUILDDIR>>/tests'
+make[2]: *** [Makefile:1797: check-am] Error 2
+make[2]: Leaving directory '/<<PKGBUILDDIR>>/tests'
+make[1]: *** [Makefile:808: check-recursive] Error 1
+make[1]: Leaving directory '/<<PKGBUILDDIR>>'
+dh_auto_test: error: make -j4 check "TESTSUITEFLAGS=-j4 --verbose" VERBOSE=1 returned exit code 2
+make: *** [debian/rules:10: binary] Error 25
+dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2
+[...]
+make[1]: *** [Makefile:808: check-recursive] Error 1
+make[1]: Leaving directory '/<<PKGBUILDDIR>>'
+dh_auto_test: error: make -j4 check "TESTSUITEFLAGS=-j4 --verbose" VERBOSE=1 returned exit code 2
+make: *** [debian/rules:10: binary] Error 25
+dpkg-buildpackage: error: debian/rules binary subprocess returned exit status 2

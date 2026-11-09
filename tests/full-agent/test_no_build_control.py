@@ -103,7 +103,7 @@ class Control(unittest.TestCase):
         bad = {"path": "input/.pc/x/src/crc32c/crc32c_config.h", "old_text": "a", "new_text": "b"}
         good = {"path": CONFIG, "old_text": "#define HAVE_MM_PREFETCH 1\n",
                 "new_text": "#define HAVE_MM_PREFETCH 0\n"}
-        script = Script(reply(action="edit", hypothesis="h", evidence=["e"], edits=[bad, good]), STOP)
+        script = Script(reply(action="edit", hypothesis="h", evidence=["e"], edits=[bad, good]), STOP, STOP)
         result, _ = self.run_with(script, config=NEW)
         self.assertEqual(result.attempts[0].applied, 1)
         self.assertIn("HAVE_MM_PREFETCH 0", (self.worktree / CONFIG).read_text())
@@ -124,7 +124,7 @@ class Control(unittest.TestCase):
                 self.assertEqual(result.attempts[0].applied, applied)
 
     def test_an_empty_stop_is_sent_back_once(self):
-        script = Script(STOP, FIX, STOP)
+        script = Script(STOP, FIX, STOP, STOP)
         result, _ = self.run_with(script, config=NEW)
         self.assertIn(EMPTY_STOP, script.user(1))
         self.assertEqual(result.termination_reason, "model_stop")
@@ -146,7 +146,7 @@ class Control(unittest.TestCase):
         self.assertEqual(len(script.sent), 1)
 
     def test_the_model_sees_its_own_untested_edits(self):
-        script = Script(FIX, STOP)
+        script = Script(FIX, STOP, STOP)
         self.run_with(script, config=NEW)
         second = script.user(1)
         self.assertIn("=== Your own edits so far (untested", second)
@@ -156,13 +156,17 @@ class Control(unittest.TestCase):
         self.assertNotIn("Your own edits so far", script.user(0))
 
     def test_tools_stay_on_past_six_turns_until_the_run_budget(self):
-        script = Script(*([READ] * 8), FIX, STOP)
+        script = Script(*([READ] * 8), FIX, STOP, STOP)
         result, _ = self.run_with(script, config=NEW)
         self.assertEqual(result.attempts[0].applied, 1)
         self.assertNotIn("Tools are switched off", "".join(script.user(n) for n in range(9)))
 
     def test_the_investigation_budget_ends_tool_use(self):
-        script = Script(*([READ] * NO_BUILD_TOOL_TURNS), READ, FIX, STOP)
+        # Each read differs: an identical request is a stub and does not count.
+        reads = [reply(action="tool", requests=[{"tool": "read_file", "args": {
+            "path": CONFIG, "start_line": 1, "end_line": 2 + n}}], why="read")
+            for n in range(NO_BUILD_TOOL_TURNS + 1)]
+        script = Script(*reads, FIX, STOP, STOP)
         self.run_with(script, config=NEW, budget=Budget(max_seconds=100_000))
         self.assertIn(f"You have used all {NO_BUILD_TOOL_TURNS} investigation turns",
                       script.user(NO_BUILD_TOOL_TURNS))

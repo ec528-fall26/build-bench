@@ -212,7 +212,7 @@ _TOOL_FORMAT = """\
 
 _REPLY = """\
 Your reply
-You may reason briefly in plain text first. End the reply with exactly one JSON
+Reply with the JSON object only; no text before or after it. It is exactly one JSON
 object, which must be one of:
 
 {tool_format}{{"action": "edit",
@@ -819,9 +819,35 @@ def tool_results_message(results: Sequence[ToolResult], *, note: str = "") -> st
     return _block(*parts, note, _NEXT)
 
 
+def verdict_line(attempt: Attempt, status: str = "", reason: str = "") -> str:
+    """One line that leads an attempt's result: applied n/m, then FIXED,
+    NOT FIXED or unknown with one reason. ``status`` is the static prediction's
+    ("fixed", "not_fixed", "unknown"); a real build's result takes precedence."""
+    applied = f"applied {attempt.applied}/{len(attempt.edits)}"
+    build = attempt.build
+    if attempt.applied == 0:
+        verdict, why = "NOT FIXED", "nothing was changed"
+    elif build is not None and build.succeeded:
+        verdict, why = "FIXED", "the build succeeded"
+    elif build is not None:
+        first = build.diagnostics[0].message if build.diagnostics else "no diagnostics returned"
+        verdict, why = "NOT FIXED", f"the build failed at {build.stage_reached}: {_clip(first, 160)}"
+    elif status == "fixed":
+        verdict, why = "FIXED (predicted, not built)", reason
+    elif status == "not_fixed":
+        verdict, why = "NOT FIXED (predicted, not built)", reason
+    else:
+        verdict, why = "unknown", reason or "no build and no static check covers this edit"
+    return f"VERDICT: {applied}; {verdict}: {_clip(why, 240)}"
+
+
+MAX_NOTES = 3
+
+
 def attempt_result_message(
     attempt: Attempt, *, rejections: Sequence[str] = (), undone: bool = False,
-    same_first_error: bool = False, note: str = "",
+    same_first_error: bool = False, note: str = "", verdict: str = "",
+    notes: Sequence[str] = (), prediction: str = "",
 ) -> str:
     """The reply to an "edit" turn: what was applied and what the build said.
 
@@ -829,9 +855,19 @@ def attempt_result_message(
     reverted this attempt because it did worse than the best one so far.
     ``same_first_error`` says the build's first error did not change.
     """
-    lines = [f"=== Attempt {attempt.number} ===",
-             f"Applied {attempt.applied} of {len(attempt.edits)} "
-             f"edit{'s' * (len(attempt.edits) != 1)}."]
+    # With a verdict the message leads with it, then at most three controller
+    # notes and the prediction, then the details (the model read the details
+    # first and missed the verdict that closed them).
+    lines = [f"=== Attempt {attempt.number} ==="]
+    if verdict:
+        lines.append(verdict)
+        if notes:
+            lines.append("=== Changes the controller made to this batch before applying it ===")
+            lines.extend(f"- {_clip(n, MESSAGE_CHARS)}" for n in list(notes)[:MAX_NOTES])
+        if prediction:
+            lines.append(prediction)
+    lines.append(f"Applied {attempt.applied} of {len(attempt.edits)} "
+                 f"edit{'s' * (len(attempt.edits) != 1)}.")
     if rejections:
         lines.append("Rejected:")
         lines.extend(f"- {_clip(reason, MESSAGE_CHARS)}" for reason in rejections)
@@ -869,5 +905,5 @@ def malformed_message(turn: ModelTurn, config: AgentConfig | None = None) -> str
     config = config or AgentConfig()
     actions = '"tool", "edit" or "stop"' if config.use_tools else '"edit" or "stop"'
     return (f"Your last reply could not be used: {turn.reason or 'it was not understood'}.\n"
-            "Nothing was changed. Reply again, ending with exactly one JSON object whose "
-            f'"action" is {actions}, in the format given at the start.\n')
+            "Nothing was changed. Reply again with the JSON object only (no text before or "
+            f'after it), whose "action" is {actions}, in the format given at the start.\n')

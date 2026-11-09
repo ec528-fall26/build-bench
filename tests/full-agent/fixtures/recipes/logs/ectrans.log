@@ -1,0 +1,70 @@
+dpkg-buildpackage: info: host architecture arm64
+[...]
+
+-- Configuring done (5.9s)
+CMake Error in src/trans/CMakeLists.txt:
+  Imported target "fiat" includes non-existent path
+
+    "/usr/lib/aarch64-linux-gnu/fortran/aarch64-linux-gnu-gfortran-13/fiat"
+
+  in its INTERFACE_INCLUDE_DIRECTORIES.  Possible reasons include:
+
+  * The path was deleted, renamed, or moved to another location.
+
+  * An install or uninstall procedure did not complete successfully.
+
+  * The installation package was faulty and references files it does not
+  provide.
+
+
+
+CMake Error in src/trans/CMakeLists.txt:
+  Imported target "fiat" includes non-existent path
+
+    "/usr/lib/aarch64-linux-gnu/fortran/aarch64-linux-gnu-gfortran-13/fiat"
+
+  in its INTERFACE_INCLUDE_DIRECTORIES.  Possible reasons include:
+
+  * The path was deleted, renamed, or moved to another location.
+
+  * An install or uninstall procedure did not complete successfully.
+
+  * The installation package was faulty and references files it does not
+  provide.
+
+
+
+CMake Error in src/trans/CMakeLists.txt:
+  Imported target "fiat" includes non-existent path
+
+    "/usr/lib/aarch64-linux-gnu/fortran/aarch64-linux-gnu-gfortran-13/fiat"
+
+  in its INTERFACE_INCLUDE_DIRECTORIES.  Possible reasons include:
+
+  * The path was deleted, renamed, or moved to another location.
+
+  * An install or uninstall procedure did not complete successfully.
+
+  * The installation package was faulty and references files it does not
+  provide.
+
+
+
+CMake Error in src/trans/CMakeLists.txt:
+  Imported target "fiat" includes non-existent path
+
+    "/usr/lib/aarch64-linux-gnu/fortran/aarch64-linux-gnu-gfortran-13/fiat"
+
+  in its INTERFACE_INCLUDE_DIRECTORIES.  Possible reasons include:
+
+  * The path was deleted, renamed, or moved to another location.
+
+  * An install or uninstall procedure did not complete successfully.
+
+  * The installation package was faulty and references files it does not
+  provide.
+
+
+
+CMake Error in src/programs/CMakeLists.txt:
+  Imported target "fiat" includes non-existent path

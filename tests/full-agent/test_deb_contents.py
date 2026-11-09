@@ -8,11 +8,13 @@ Run from the repository root:  python3 -m unittest discover -s tests/full-agent
 import gzip
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tarfile
 import tempfile
 import unittest
+import unittest.mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]
                        / "buildbench-starter-kit-0.1.0-rc.5/agents/full-agent"))
@@ -37,6 +39,10 @@ def _tar_gz(entries: dict) -> bytes:
     return gzip.compress(buffer.getvalue())
 
 
+def _tar(entries: dict) -> bytes:
+    return gzip.decompress(_tar_gz(entries))
+
+
 def _ar(members: dict) -> bytes:
     out = b"!<arch>\n"
     for name, blob in members.items():
@@ -50,6 +56,15 @@ def make_deb(path: Path, package: str, version: str, arch: str, files: dict) -> 
     deb = _ar({"debian-binary": b"2.0\n", "control.tar.gz": _tar_gz({"control": control}),
                "data.tar.gz": _tar_gz(files)})
     target = path / f"{package}_{version}_{arch}.deb"
+    target.write_bytes(deb)
+    return target
+
+
+def make_deb_as(path: Path, package: str, data_name: str, data_blob: bytes, arch="amd64") -> Path:
+    """A deb whose data member has the given name and (already compressed) bytes."""
+    control = f"Package: {package}\nVersion: 1\nArchitecture: {arch}\n".encode()
+    deb = _ar({"debian-binary": b"2.0\n", "control.tar.gz": _tar_gz({"control": control}), data_name: data_blob})
+    target = path / f"{package}_1_{arch}.deb"
     target.write_bytes(deb)
     return target
 
@@ -127,11 +142,107 @@ class ArParsing(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             deb = Path(temp) / "libx0_1_amd64.deb"
             deb.write_bytes(blob)
-            original = deb_archive._decompress
-            deb_archive._decompress = lambda name, data: None
+            original = deb_archive._open_stream
+            deb_archive._open_stream = lambda name, data: None
             try:
                 info = deb_archive.inspect(deb)
             finally:
-                deb_archive._decompress = original
+                deb_archive._open_stream = original
             self.assertIn("zstd-compressed and no decompressor", info.note)
             self.assertIn("which is an empty package", info.note)
+
+
+try:
+    import zstandard
+except ImportError:  # the wheel is optional: every path must work without it
+    zstandard = None
+
+
+@unittest.skipIf(zstandard is None, "zstandard is not installed")
+class ZstdPath(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.dir = Path(temp.name)
+
+    def test_lists_a_two_frame_zstd_member(self):
+        raw = _tar({"usr/lib/libx.so.1": b"x" * 10, "usr/lib/libx.so": ("link", "libx.so.1")})
+        half = 1024  # split mid-archive: a reader that stops at the first frame loses the rest
+        compressor = zstandard.ZstdCompressor()
+        blob = compressor.compress(raw[:half]) + compressor.compress(raw[half:])
+        deb = make_deb_as(self.dir, "libx1", "data.tar.zst", blob)
+        info = deb_archive.inspect(deb)
+        self.assertEqual(info.note, "")
+        self.assertIn("usr/lib/libx.so -> libx.so.1", info.entries)
+        self.assertIn("usr/lib/libx.so.1 (10 bytes)", info.entries)
+
+    def test_empty_zstd_package_and_read_text(self):
+        deb = make_deb_as(self.dir, "libempty0", "data.tar.zst",
+                          zstandard.ZstdCompressor().compress(_tar({})))
+        self.assertEqual(deb_archive.inspect(deb).note, "ships no files")
+        deb = make_deb_as(self.dir, "libt0", "data.tar.zst",
+                          zstandard.ZstdCompressor().compress(_tar({"etc/x.conf": b"hello\n"})))
+        self.assertEqual(deb_archive.read_text(deb, "etc/x.conf"), ("hello\n", ""))
+
+    def test_output_cap_stops_a_bomb(self):
+        raw = _tar({"big.bin": b"\0" * 200_000})
+        deb = make_deb_as(self.dir, "bomb0", "data.tar.zst", zstandard.ZstdCompressor().compress(raw))
+        with unittest.mock.patch.object(deb_archive, "MAX_DECOMPRESSED_BYTES", 50_000):
+            info = deb_archive.inspect(deb)
+            text, note = deb_archive.read_text(deb, "big.bin")
+        self.assertIn("read limit", info.note)
+        self.assertIsNone(text)
+
+    def test_corrupt_zstd_is_a_note_not_an_exception(self):
+        deb = make_deb_as(self.dir, "bad0", "data.tar.zst", b"\x28\xb5\x2f\xfd" + b"\xff" * 40)
+        info = deb_archive.inspect(deb)
+        self.assertIn("cannot list data.tar.zst", info.note)
+        (self.dir / "dependencies/d").mkdir(parents=True)
+        (self.dir / "input").mkdir()
+        deb.rename(self.dir / "dependencies/d" / deb.name)
+        result = tools.run_tool(ToolRequest("deb_contents", {"package": "bad0"}), self.dir)
+        self.assertIn("cannot list", result.text)
+
+
+class Robustness(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.dir = Path(temp.name)
+
+    def test_without_zstandard_a_zst_deb_gets_the_sizes_only_note(self):
+        deb = make_deb_as(self.dir, "libz0", "data.tar.zst", b"\x28\xb5\x2f\xfd" + b"\x00" * 20)
+        with unittest.mock.patch.object(deb_archive, "_zstandard", lambda: None), \
+                unittest.mock.patch("shutil.which", lambda name: None):
+            try:
+                from compression import zstd  # noqa: F401
+            except ImportError:
+                info = deb_archive.inspect(deb)
+                self.assertIn("no decompressor", info.note)
+                self.assertIn("empty package", info.note)
+
+    def test_truncated_xz_never_raises(self):
+        import lzma
+        blob = lzma.compress(_tar({"usr/a": os.urandom(40_000), "usr/b": b"b"}))
+        blob = blob[:len(blob) // 2]
+        deb = make_deb_as(self.dir, "libxz0", "data.tar.xz", blob)
+        info = deb_archive.inspect(deb)
+        self.assertTrue(info.note)  # LZMAError / EOFError became a note
+        self.assertIsNone(deb_archive.read_text(deb, "usr/b")[0])
+
+    def test_cache_inflates_each_deb_once(self):
+        deb = make_deb(self.dir, "libc0", "1", "amd64", {"usr/lib/libc.so": ("link", "libc.so.0")})
+        cache = {}
+        first = deb_archive.inspect(deb, cache=cache)
+        with unittest.mock.patch.object(deb_archive, "_open_stream", side_effect=AssertionError("re-read")):
+            second = deb_archive.inspect(deb, cache=cache)
+            filtered = deb_archive.inspect(deb, pattern="nomatch", cache=cache)
+        self.assertEqual(first.entries, second.entries)
+        self.assertEqual(filtered.note, "ships no files matching 'nomatch'")
+
+    def test_deb_contents_has_its_own_time_limit(self):
+        self.assertGreater(tools.MAX_DEB_SECONDS, tools.MAX_TOOL_SECONDS)
+
+
+if __name__ == "__main__":
+    unittest.main()

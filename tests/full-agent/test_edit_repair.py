@@ -687,7 +687,7 @@ class SymbolsMacro(unittest.TestCase):
         self.assertEqual(len(edits), 2)
         self.assertEqual(edits[0].new_text, " (optional)_ZN3bpp11MatrixTools4multIdEEvRKNS_6MatrixIT_EERKSt6vectorIS3_SaIS3_EES6_RS4_@Base 2.4.1")
         self.assertEqual(edits[1].new_text, " (c++|optional)\"bpp::B::b()@Base\" 2.4.1")
-        self.assertIn("tagged 2 of the 2 symbols", notes[0])
+        self.assertIn("Recipe symbols-tag expanded: tagged 2 of the 2 symbols", notes[0])
         text = self.FILE
         for e in edits:
             text = text.replace(e.old_text, e.new_text)
@@ -704,7 +704,24 @@ class SymbolsMacro(unittest.TestCase):
     def test_without_a_symbols_diff_the_macro_is_dropped_with_a_note(self):
         edits, notes = edit_repair.expand_macros([self.macro()], self.root, ["unrelated"])
         self.assertEqual(edits, [])
-        self.assertIn("no dpkg-gensymbols diff", notes[0])
+        self.assertIn("Recipe symbols-tag refused", notes[0])
+
+    def test_the_recipe_token_and_the_legacy_alias_are_the_same_macro(self):
+        token = Edit("input/debian/libbpp-core4.symbols.amd64", "@@recipe:symbols-tag@@", "auto")
+        alias = self.macro("optional")
+        by_token, notes = edit_repair.expand_macros([token], self.root, self.LOG)
+        by_alias, _ = edit_repair.expand_macros([alias], self.root, self.LOG)
+        self.assertEqual(len(by_token), len(by_alias))
+        self.assertIn("Recipe symbols-tag expanded", notes[0])
+        # auto picks the tag per symbol: the std::vector template gets templinst, plain (c++) stays optional
+        self.assertIn("(optional=templinst)_ZN3bpp11MatrixTools4multIdEEvRKNS_6MatrixIT_EERKSt6vector", by_token[0].new_text)
+        self.assertIn(" (c++|optional)\"bpp::B::b()@Base\"", by_token[1].new_text)
+
+    def test_a_refused_recipe_leaves_the_batch_without_the_macro_and_says_why(self):
+        edits, notes = edit_repair.expand_macros([Edit("input/debian/rules", "@@recipe:strip-bsymbolic-functions@@", "")],
+                                                 self.root, self.LOG)
+        self.assertEqual(edits, [])
+        self.assertIn("Recipe strip-bsymbolic-functions refused", notes[0])
 
     def test_ordinary_edits_pass_through(self):
         plain = Edit("input/debian/rules", "a", "b")

@@ -1,0 +1,11 @@
+{
+ "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+ "rationale": "gold on arm64",
+ "edits": [
+  {
+   "path": "input/debian/rules",
+   "old_text": "export DEB_LDFLAGS_MAINT_APPEND = -Wl,-z,noexecstack\n",
+   "new_text": "export DEB_LDFLAGS_MAINT_APPEND = -Wl,-z,noexecstack\nifeq ($(DEB_HOST_ARCH),arm64)\nexport DEB_LDFLAGS_MAINT_APPEND += -fuse-ld=gold\nendif\n"
+  }
+ ]
+}

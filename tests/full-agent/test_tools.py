@@ -15,7 +15,7 @@ sys.path.insert(0, str(AGENT))
 
 from src.diff_tracker import DiffTracker
 from src.contracts import ToolRequest, ToolResult
-from src.tools import run_tool, MAX_OUTPUT_CHARS, MAX_FILE_BYTES, MAX_SEARCH_FILES, collect_files
+from src.tools import run_tool, MAX_OUTPUT_CHARS, MAX_FILE_BYTES, collect_files
 
 class TestTools(unittest.TestCase):
 
@@ -438,11 +438,13 @@ class TestTools(unittest.TestCase):
                 },
             )
 
-            with patch("src.tools.MAX_SEARCH_FILES", 2):
+            with patch("src.tools.MAX_SEARCH_BYTES", 14):
                 result = run_tool(request, worktree)
 
             self.assertTrue(result.truncated)
             self.assertNotIn("input/src/c.c:1:needle", result.text)
+            self.assertIn("scanned 2 of 3 matching files", result.text)
+            self.assertIn("first unscanned: input/src/c.c", result.text)
 
     def test_search_glob_matches_root_and_nested_files(self):
         with TemporaryDirectory() as tmp:

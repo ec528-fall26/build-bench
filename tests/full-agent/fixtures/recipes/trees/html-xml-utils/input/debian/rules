@@ -1,0 +1,14 @@
+#!/usr/bin/make -f
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+LDFLAGS ?=
+LDFLAGS += -Wl,-z,defs
+
+%:
+	dh $@
+
+override_dh_auto_install:
+	dh_auto_install
+	-$(RM) $(CURDIR)/debian/html-xml-utils/usr/share/doc/html-xml-utils/COPYING

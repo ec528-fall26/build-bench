@@ -1,0 +1,11 @@
+dpkg-buildpackage: info: host architecture amd64
+[...]
+   or: setup.py --help [cmd1 cmd2 ...]
+   or: setup.py --help-commands
+   or: setup.py cmd --help
+
+error: invalid command 'build_sphinx'
+make[1]: *** [debian/rules:7: override_dh_auto_build-indep] Error 1
+make[1]: Leaving directory '/<<PKGBUILDDIR>>'
+make: *** [debian/rules:4: build] Error 2
+dpkg-buildpackage: error: debian/rules build subprocess returned exit status 2

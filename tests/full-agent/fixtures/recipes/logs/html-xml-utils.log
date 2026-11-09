@@ -1,0 +1,81 @@
+dpkg-buildpackage: info: host architecture arm64
+[...]
+make[1]: Entering directory '/<<PKGBUILDDIR>>'
+gperf -a -c -C -o -t -p -T -k '1,2,$' -N lookup_element dtd.hash >dtd.c
+gperf -a -c -C -o -t -p -k '1,2,$' -D -N lookup_entity unent.hash >unent.c
+make cexport
+2 input keys have identical hash values, examine output carefully...
+make[2]: Entering directory '/<<PKGBUILDDIR>>'
+gcc -DHAVE_CONFIG_H -I.   -Wdate-time -D_FORTIFY_SOURCE=3  -g -O2 -Werror=implicit-function-declaration -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/<<PKGBUILDDIR>>=. -flto=auto -ffat-lto-objects -fstack-protector-strong -fstack-clash-protection -Wformat -Werror=format-security -mbranch-protection=standard -fdebug-prefix-map=/<<PKGBUILDDIR>>=/usr/src/html-xml-utils-7.7-1
+make cexport
+make[2]: Entering directory '/<<PKGBUILDDIR>>'
+gcc -DHAVE_CONFIG_H -I.   -Wdate-time -D_FORTIFY_SOURCE=3  -g -O2 -Werror=implicit-function-declaration -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/<<PKGBUILDDIR>>=. -flto=auto -ffat-lto-objects -fstack-protector-strong -fstack-clash-protection -Wformat -Werror=format-security -mbranch-protection=standard -fdebug-prefix-map=/<<PKGBUILDDIR>>=/usr/src/html-xml-utils-7.7-1
+cexport.c: In function ‘exportdef’:
+cexport.c:124:13: warning: old-style function definition [-Wold-style-definition]
+  124 | static void exportdef(i)
+      |             ^~~~~~~~~
+cexport.c: In function ‘export’:
+cexport.c:153:13: warning: old-style function definition [-Wold-style-definition]
+  153 | static void export(i)
+      |             ^~~~~~
+cexport.c: In function ‘process’:
+cexport.c:291:13: warning: old-style function definition [-Wold-style-definition]
+  291 | static void process(file, cpp)
+      |             ^~~~~~~
+cexport.c: In function ‘exportdef’:
+cexport.c:124:13: warning: old-style function definition [-Wold-style-definition]
+  124 | static void exportdef(i)
+      |             ^~~~~~~~~
+cexport.c: In function ‘export’:
+cexport.c:153:13: warning: old-style function definition [-Wold-style-definition]
+  153 | static void export(i)
+      |             ^~~~~~
+cexport.c: In function ‘process’:
+cexport.c:291:13: warning: old-style function definition [-Wold-style-definition]
+  291 | static void process(file, cpp)
+      |             ^~~~~~~
+cexport.c: In function ‘usage’:
+cexport.c:426:13: warning: old-style function definition [-Wold-style-definition]
+  426 | static void usage(s)
+      |             ^~~~~
+cexport.c: In function ‘main’:
+cexport.c:435:5: warning: old-style function definition [-Wold-style-definition]
+  435 | int main(argc, argv)
+      |     ^~~~
+cexport.c: In function ‘usage’:
+cexport.c:426:13: warning: old-style function definition [-Wold-style-definition]
+  426 | static void usage(s)
+      |             ^~~~~
+cexport.c: In function ‘main’:
+cexport.c:435:5: warning: old-style function definition [-Wold-style-definition]
+  435 | int main(argc, argv)
+      |     ^~~~
+gcc  -g -O2 -Werror=implicit-function-declaration -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/<<PKGBUILDDIR>>=. -flto=auto -ffat-lto-objects -fstack-protector-strong -fstack-clash-protection -Wformat -Werror=format-security -mbranch-protection=standard -fdebug-prefix-map=/<<PKGBUILDDIR>>=/usr/src/html-xml-utils-7.7-1.2  -Wl,-Bsymbolic-functions -Wl,--package-metadata=%7
+lto1: internal compiler error: resolution sub id 0xac317e46329f3d98 not in object file
+gcc  -g -O2 -Werror=implicit-function-declaration -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/<<PKGBUILDDIR>>=. -flto=auto -ffat-lto-objects -fstack-protector-strong -fstack-clash-protection -Wformat -Werror=format-security -mbranch-protection=standard -fdebug-prefix-map=/<<PKGBUILDDIR>>=/usr/src/html-xml-utils-7.7-1.2  -Wl,-Bsymbolic-functions -Wl,--package-metadata=%7
+0xf0562f diagnostic_context::diagnostic_impl(rich_location*, diagnostic_metadata const*, diagnostic_option_id, char const*, std::__va_list*, diagnostic_t)
+	???:0
+0xed65eb internal_error(char const*, ...)
+	???:0
+0xf73fff read_cgraph_and_symbols(unsigned int, char const**)
+	???:0
+0x17ea2c7 lto_main()
+	???:0
+Please submit a full bug report, with preprocessed source (by using -freport-bug).
+Please include the complete backtrace with any bug report.
+See <file:///usr/share/doc/gcc-15/README.Bugs> for instructions.
+lto-wrapper: fatal error: gcc returned 1 exit status
+compilation terminated.
+/usr/bin/ld: error: lto-wrapper failed
+collect2: error: ld returned 1 exit status
+make[2]: *** [Makefile:1106: cexport] Error 1
+make[2]: Leaving directory '/<<PKGBUILDDIR>>'
+make[1]: *** [Makefile:3107: unent.e] Error 2
+make[1]: *** Waiting for unfinished jobs....
+make[2]: Leaving directory '/<<PKGBUILDDIR>>'
+./cexport -I. -I. -Wdate-time -D_FORTIFY_SOURCE=3 -c "gcc -E" <dtd.c >dtd.e
+/bin/bash: line 1: ./cexport: No such file or directory
+make[1]: *** [Makefile:3108: dtd.e] Error 127
+make[1]: Leaving directory '/<<PKGBUILDDIR>>'
+dh_auto_build: error: make -j8 returned exit code 2
+make: *** [debian/rules:10: binary-arch] Error 25

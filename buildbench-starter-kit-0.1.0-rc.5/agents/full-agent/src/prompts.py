@@ -165,10 +165,11 @@ How an edit works
 
 _TOOLS = """\
 Tools
-You can inspect the package before you edit. Every tool is read-only and
-limited to input/. Files installed by the build's dependencies (their headers,
-CMake configuration and imported targets) are outside input/: no tool can read
-them, so the build output is the only evidence about them.
+You can inspect the package before you edit. Every tool is read-only. The
+source tools are limited to input/; deb_contents reads the case's frozen
+dependency packages, so what a dependency installs (its headers, CMake
+configuration, shared libraries, Fortran modules) is evidence you can check
+rather than guess.
 - list_dir {{"path": "input/debian"}}: the entries of one directory.
 - find_files {{"name_glob": "*.h"}}: files anywhere under input/ whose name
   matches.
@@ -181,6 +182,12 @@ them, so the build output is the only evidence about them.
 - patch_series {{}}: the package's existing debian/patches and the order they
   are applied in.
 - current_diff {{}}: what your edits have changed so far.
+- deb_contents {{"package": "libfiat-dev"}}: the files a dependency package
+  installs, with sizes and symlink targets (names are the .deb names, for
+  example libfiat-dev, libbigwig0t64). Add "filter": "cmake" to list only
+  matching entries, or "path": "usr/lib/x86_64-linux-gnu/cmake/fiat/fiat-targets.cmake"
+  to read one text file from it. A runtime library package of a few hundred
+  bytes ships no library.
 - read_log {{"start_line": 1, "end_line": 200}}: those lines of the original
   failing build's log, numbered. The log excerpt you are shown gives the line
   numbers of the first error, so you can read what came before or after it.
@@ -746,6 +753,7 @@ def opening_message(
     diagnostics: Sequence[Diagnostic] = (), log_path: Path | None = None,
     package: str | None = None, history: Sequence[Attempt] = (),
     kept: Collection[int] | None = None, note: str = "", pattern: str = "",
+    architecture: str = "",
 ) -> str:
     """The first user message of a conversation: the evidence for one case.
 
@@ -774,6 +782,7 @@ def opening_message(
             header,
             render_diagnostics(diagnostics),
             pattern,   # patterns.recognise: the known repair of a recognised failure
+            architecture,   # arch_model + arch_slice: the facts that differ and where the build depends on them
             render_source_excerpts(diagnostics, context.worktree),
             # Bound fallback evidence even when no error was recognized
             window or _log_tail(context.log_tail, TAIL_LINES),

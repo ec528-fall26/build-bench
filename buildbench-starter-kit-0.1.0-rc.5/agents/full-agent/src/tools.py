@@ -16,9 +16,10 @@ from .diff_tracker import DiffTracker
 from functools import lru_cache
 import stat
 from .tool_timeout import tool_time_limit
+from . import deb_archive
 
 TOOLS = ("list_dir", "find_files", "search", "read_file", "current_diff", "patch_series",
-         "read_log", "search_log")
+         "read_log", "search_log", "deb_contents")
 
 MAX_OUTPUT_CHARS = 8000
 MAX_FILE_BYTES = 1024 * 1024
@@ -382,6 +383,48 @@ def _current_diff(request: ToolRequest, worktree: Path, diff_tracker) -> ToolRes
     return ToolResult(request=request, text=text, truncated=truncated)
 
 
+def _deb_contents(request: ToolRequest, worktree: Path, diff_tracker) -> ToolResult:
+    """What a dependency package installs, from the case's frozen .deb files.
+
+    {"package": "libfiat-dev"}                       lists its files
+    {"package": "libfiat-dev", "filter": "cmake"}    only entries containing the text
+    {"package": "libfiat-dev", "path": "usr/lib/.../fiat-targets.cmake"}  that file's text
+    """
+    args = request.args
+    package = args.get("package")
+    if not isinstance(package, str) or not package.strip():
+        return _unavailable(request, "missing argument: package")
+    for name in ("filter", "path"):
+        if name in args and not isinstance(args[name], str):
+            return _unavailable(request, f"invalid argument type: {name}")
+    if not deb_archive.dependency_dirs(worktree):
+        locked = deb_archive.lock_entries(worktree, package)
+        text = ("=== deb_contents: unavailable (this worktree has no dependencies/ directory with the case's "
+                ".deb files" + ("; config/dependency-lock.json lists " + ", ".join(
+                    f"{d.get('package')} {d.get('version')} [{d.get('arch')}]" for d in locked[:6]) if locked else "")
+                + ") ===")
+        return ToolResult(request=request, text=text, truncated=False)
+    debs = deb_archive.find_debs(worktree, package)
+    if not debs:
+        return _unavailable(request, f"no dependency package named like {package!r}; names are the .deb "
+                                     "file names before the first underscore, for example libfiat-dev")
+    if len(debs) > 6:
+        names = ", ".join(d.name.split("_", 1)[0] for d in debs[:12])
+        return _unavailable(request, f"{len(debs)} packages match {package!r}: {names}; give one name")
+    if "path" in args:
+        deb = debs[0]
+        text, note = deb_archive.read_text(deb, args["path"])
+        if text is None:
+            return _unavailable(request, f"{deb.name}: {note}")
+        truncated = len(text) > MAX_OUTPUT_CHARS
+        return ToolResult(request=request, text=f"=== {deb.name}:{args['path']} ===\n{text[:MAX_OUTPUT_CHARS]}",
+                          truncated=truncated)
+    parts = [deb_archive.render(deb_archive.inspect(deb, pattern=args.get("filter", ""))) for deb in debs]
+    text = "=== deb_contents ===\n" + "\n".join(parts)
+    truncated = len(text) > MAX_OUTPUT_CHARS
+    return ToolResult(request=request, text=text[:MAX_OUTPUT_CHARS], truncated=truncated)
+
+
 # One function per worktree tool; the log tools are dispatched by run_tool
 # because they take the log path instead of the worktree.
 _WORKTREE_TOOLS = {
@@ -391,6 +434,7 @@ _WORKTREE_TOOLS = {
     "search": _search,
     "patch_series": _patch_series,
     "current_diff": _current_diff,
+    "deb_contents": _deb_contents,
 }
 
 

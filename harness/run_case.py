@@ -360,6 +360,16 @@ def run_case(
             raise _Stop("unpack_failed", str(error)) from None
         pristine = run_dir / "pristine"
         shutil.copytree(work / "input", pristine, symlinks=True)
+        # The kit's runner copies the whole case into the agent's worktree
+        # (runner/run-agent-case.sh), so dependencies/ and config/ sit next to
+        # input/; mirror that so deb_contents sees the frozen .deb files.
+        for name in ("dependencies", "config", "manifest.json"):
+            source = case_dir / name
+            if source.exists() and not (work / name).exists():
+                if source.is_dir():
+                    (work / name).symlink_to(source.resolve(), target_is_directory=True)
+                else:
+                    shutil.copy2(source, work / name)
 
         context = agent.CaseContext(
             case_id=manifest["case_id"], worktree=work, log_tail="",

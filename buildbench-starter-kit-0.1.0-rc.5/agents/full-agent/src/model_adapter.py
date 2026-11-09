@@ -36,7 +36,7 @@ from pathlib import Path
 from time import monotonic
 from typing import Callable
 
-from . import patterns, prompts, test_failures, ffi_analysis
+from . import arch_model, arch_slice, patterns, prompts, test_failures, ffi_analysis
 from .contracts import AgentConfig, Budget, BuildResult, Diagnostic, ModelTurn, ToolRequest
 from .edit_applier import LOGGER as EDIT_LOGGER
 from .edit_preflight import FOCUSED_PREFIX
@@ -306,6 +306,7 @@ class ModelAdapter:
         self.log_path = log_path
         self.package = package
         self.pattern = ""
+        self.architecture = ""
         self.ffi = ffi_analysis.analyze(context.worktree) if ffi_analysis.enabled() else None
         worktree = getattr(context, "worktree", None)
         if config.use_evidence_manager and worktree is not None:
@@ -316,6 +317,8 @@ class ModelAdapter:
             # A failure in the package's test suite: name the failing tests and why.
             tests = test_failures.render(log_path, worktree, arch)
             self.pattern = "\n\n".join(block for block in (self.pattern, tests) if block)
+            self.architecture = self._architecture_block(worktree, arch, diagnostics,
+                                                         getattr(context, "case_id", None))
         self.clock = clock
         self.started = clock()
         self.turns: list[dict] = []    # one summary per model call, for the run record
@@ -334,6 +337,24 @@ class ModelAdapter:
 
     def close(self) -> None:
         EDIT_LOGGER.removeHandler(self._rejections)
+
+    @staticmethod
+    def _architecture_block(worktree, arch_name: str, diagnostics, case_id) -> str:
+        """What differs between the two architectures, and where this package's
+        build depends on it (arch_model, arch_slice); "" when the target is unknown."""
+        target = arch_model.lookup(arch_name)
+        if target is None:
+            pair = arch_model.pair_from_case_id(case_id)
+            target = arch_model.lookup(pair[1]) if pair else None
+        if target is None:
+            return ""
+        source = arch_model.source_for(target, case_id)
+        try:
+            parts = [arch_model.render(source, target),
+                     arch_slice.render(arch_slice.scan(worktree, target), diagnostics, target)]
+        except Exception:  # evidence must never break a run
+            return ""
+        return "\n\n".join(part for part in parts if part)
 
     def _tool_turn_limit(self) -> int:
         return 2 if self.repair_strategy == "small-group" else TOOL_TURN_LIMIT
@@ -500,7 +521,7 @@ class ModelAdapter:
             context, config, diagnostics=diagnostics, log_path=log_path,
             package=self.package, history=request.history,
             kept=request.kept_attempts if config.use_history else None,
-            note=strategy_note, pattern=self.pattern))]
+            note=strategy_note, pattern=self.pattern, architecture=self.architecture))]
         if self.ffi is not None:
             parts.append(self.ffi.render(ffi_analysis.index_sources(context.worktree),
                                          'current worktree; no build performed'))
@@ -510,7 +531,7 @@ class ModelAdapter:
 
         latest = request.latest_attempt
         if latest is not None and latest.number != self._seen_attempt:
-            self._new_attempt(latest, request.current_build, request.notes)
+            self._new_attempt(latest, request.current_build, request.notes, request.prediction)
         if latest is not None:
             parts.append(
                 repair_strategy.attempt_summary(latest, request.current_build)
@@ -714,7 +735,7 @@ class ModelAdapter:
         return "\n\n".join(blocks)
 
     def _new_attempt(self, attempt, current_build: BuildResult | None,
-                     notes: list[str] = ()) -> None:
+                     notes: list[str] = (), prediction: str = "") -> None:
         """Word the result of an attempt the model has not been told about yet."""
         self._seen_attempt = attempt.number
         rejections = self._rejections.messages[:]
@@ -738,5 +759,6 @@ class ModelAdapter:
                  + "\n".join(f"- {note}" for note in notes)) if notes else "",
                 _edit_outcomes(attempt, rejections, undone=undone),
                 self._rejection_help(attempt, rejections),
+                prediction,
             ])),
         ))

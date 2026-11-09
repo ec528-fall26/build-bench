@@ -27,6 +27,73 @@ it has no build feedback, so edits are investigated and revised but submitted
 untested. Locally, `harness/run_case.py --agent full-agent` runs the same loop
 with real builds (Part D). Results: `docs/part5-findings.md` §9c.
 
+Version 0.6.0-rc.3 (8 November): an architecture model instead of a bare loop
+(`docs/architecture-model.md`):
+- `arch_model.py`: what differs between the source and target architecture,
+  as data (macros, char signedness and `c_char`, triplets, intrinsics
+  headers, outline atomics, long double, page size, endianness), rendered for
+  the model as "what differs and what it breaks";
+- `arch_slice.py`: a scan of the whole package for every construct whose
+  build depends on the architecture (preprocessor guards, x86 intrinsics
+  includes and calls, inline asm, Rust `cfg` and `i8`/`u8` C-string pointers,
+  make conditionals and exported flags, `Architecture:` fields, per-arch
+  symbols files, hard-coded triplets), each evaluated for the target and
+  shown next to the error it is nearest to, with where its guard macro is
+  defined. The model sees the places that matter in files it never opened;
+- `predict.py`: exact evaluators for C preprocessor conditionals (with the
+  target's macros and the project's own `#define`s) and GNU make conditionals
+  (with `DEB_HOST_ARCH` and friends set for the target); tri-state, never
+  guessing;
+- `verify.py`: after each unbuilt batch, the initial errors are re-examined in
+  the edited files under the target's facts (is the include still reached, is
+  the flag exported on the path make takes, do `i8` pointers remain, are the
+  missing symbols tagged, was a quilt patch edited) and the verdicts are shown
+  with the attempt as the feedback the hosted run otherwise lacks;
+- a correction gets two tool turns before it must decide (rust-subversion
+  spent 20 of its 60 turns searching mid-correction). The other 3 November
+  error, a hand-edited quilt patch (pybigwig), is refused by 0.5.x's
+  `rules_guard` already;
+- `patterns.cmake_imported_target` and `verify._cmake` (ectrans, 8 November
+  live run): a dependency's exported CMake target names an include directory
+  that does not exist on the target. Every version so far cleared the
+  property of the one target CMake names, and the next configure failed on
+  the two sibling targets from the same package. The recogniser finds the
+  siblings in the package's own link lists (`parkind_${prec}` expanded
+  through the file's `foreach`), the `find_package` line to insert after, and
+  renders a loop that replaces each missing directory with the one
+  dh-fortran-mod installed; the verdict after the edit says which targets are
+  still uncovered, whether the property was cleared instead of redirected,
+  and whether the repair runs before the import (where `if(TARGET)` is false).
+  Live: ectrans repaired in 4 turns (the first repair of that case).
+- the slice's closing line now says what the constructs it does not show
+  evaluate to on the target (rcran spent six tool turns after a verdict of
+  fixed looking for the other seven, all guarded);
+- two more recognisers from the first real amd64-target runs (round 10,
+  `docs/no-build-live-findings.md`): `sphinx_build_command` (python-intbitset:
+  `setup.py build_sphinx` was removed by Sphinx 7; the block quotes the
+  `.install` line that depends on the step's output and gives the one-line
+  `python3 -m sphinx` replacement, and `verify._sphinx` calls a disabled step
+  "NOT fixed: dh_install will fail with missing files") and
+  `nonpic_static_archive` (pybigwig: the amd64 runtime package of the library
+  is 3 KB and ships no shared object, so ld used the non-PIC archive; nothing
+  in the package can fix that, and the block says to stop without an edit);
+- a macro edit for symbols files (libbpp-core: 13 missing symbols, the model
+  retyped 4,131 lines in a syntax dpkg rejects). The model sends one edit with
+  old_text `@@tag-missing-symbols@@`; `edit_repair.expand_macros` turns it
+  into one correctly tagged line per symbol the log reports missing, before
+  preflight. Live: libbpp-qt repaired (first x86-target repair), libbpp-core
+  to re-run with the macro;
+- `deb_contents` (`src/deb_archive.py`): a read-only tool over the case's
+  frozen dependency packages, which the kit's runner copies into the worktree
+  next to input/. It lists what a dependency installs (sizes, symlink
+  targets, a filter) and reads one text file from it. Standard-library `ar`
+  and tar; zstd data members need Python 3.14, the `zstandard` wheel or a
+  `zstd` binary, otherwise the member sizes are still reported (a runtime
+  library package of 2 KB ships no library). On the real cases it answers in
+  10 ms what decided ectrans and pybigwig: the fiat module directory and the
+  complete imported-target list in `fiat-targets.cmake`, and the empty
+  `libbigwig0t64`. The local harness now mirrors the kit's layout.
+
 Version 0.6.0-rc.2 (8 November), output-verification reliability:
 - `src/loop.py`, `src/model_adapter.py`: a malformed verifier response receives
   one format-correction retry on the same pending candidate, within existing

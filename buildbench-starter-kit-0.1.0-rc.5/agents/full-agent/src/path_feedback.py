@@ -91,3 +91,4 @@ def missing_prefix_feedback(worktree, edits, *, patch_policy=None):
         return index, "\n".join(lines)
 
     return None, ""
+

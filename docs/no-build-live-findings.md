@@ -165,6 +165,92 @@ be refused with the reason (edit the patched source under `input/` instead;
 dpkg-source applies the series and refuses a hand-edited patch), the way a
 path outside `input/` is refused now.
 
+## Round 8: 0.6.0-rc.3 (architecture model) against main's 0.6.0-rc.2 (8 November, 20:00–21:20 UTC)
+
+Same four cases, same model (gpt-oss-120b via Bedrock), no build feedback,
+one run each. rc.3 is rc.2 plus `arch_model`, `arch_slice`, `predict` and
+`verify` (`docs/architecture-model.md`).
+
+| Case | rc.3 (architecture model) | rc.2 (main) |
+| --- | --- | --- |
+| libunwind | repaired, 2 turns, 17.7 k in / 1.0 k out, 206 s | repaired, 4 turns, 34.2 k / 1.9 k, 205 s |
+| rust-subversion | repaired, model stop at 36 turns, 2 attempts, 29 edits, 1.13 M / 28.8 k, 435 s | repaired, turn budget at 60, 4 attempts (2 empty), 30 edits, 1.49 M / 52.7 k, 592 s |
+| ectrans | not repaired, 9 turns, 78.6 k / 6.2 k | not repaired, 7 turns, 49.7 k / 5.4 k |
+| rcran (r-cran-digest) | repaired, 10 turns, 122 k / 5.5 k | repaired, 3 turns, 29.3 k / 1.4 k |
+
+What the new blocks did:
+
+- **rust-subversion**: after the second batch the prediction read "no
+  `*const i8` or `*mut i8` C-string pointer types remain in the crate ...
+  reply stop", and the model stopped. rc.2 had the same two real batches and
+  then spent 24 turns proposing already-made replacements until the budget
+  ended the run. The verdict is the stop condition the no-build loop lacked.
+- **libunwind**: the prediction confirmed the exported flags on the arm64
+  path of `debian/rules` after the first edit; the model stopped at once.
+- **rcran**: the same four-line change in both, and rc.3's prediction said
+  "the include of xmmintrin.h at line 18 is no longer compiled on arm64 ...
+  reply stop". The model still spent six tool turns checking "other
+  x86-specific intrinsics headers that may be included unconditionally"
+  before stopping: the slice had told it the package has 9
+  architecture-dependent constructs and shown the 2 nearest, so it went to
+  look at the other 7 (blake3's guarded `immintrin.h` among them). Those
+  were all evaluated "not reached on arm64" already; the slice should say so
+  in one line instead of leaving a count. Changed for the next run.
+- **ectrans**: no block fired (the slice has nothing for CMake imports and
+  the verdicts had no CMake case), and both versions made the same wrong
+  repair: `set_target_properties(fiat PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "")`
+  for the one target the log names. The validation build then failed on
+  `parkind_dp` and `parkind_sp`, two more imported targets from the same
+  libfiat-dev package, with the same error. The log never mentions them,
+  because CMake stops at the first.
+
+### ectrans, the actual cause
+
+The error is "Imported target "fiat" includes non-existent path
+`/usr/lib/aarch64-linux-gnu/fortran/aarch64-linux-gnu-gfortran-13/fiat` in
+its INTERFACE_INCLUDE_DIRECTORIES". From the fiat-ecmwf 1.2.0-1 arm64 build
+log on Launchpad: the package installs its modules under
+`/usr/include/aarch64-linux-gnu/fortran/gfortran-mod-15/{fiat,parkind_dp,parkind_sp}/`,
+but its exported `fiat-targets.cmake` names the gfortran-13 directory that
+was only a build-time path. Ubuntu deleted that arm64 build from noble on
+2024-04-10 ("patchelf/gfortran/debhelper breakage on !amd64"). ectrans itself
+links `fiat parkind_${prec}` in `src/trans` and `src/programs`, so three
+targets are checked and all three carry the bad directory. Clearing the
+property, as both agents did, would also drop the module directory the
+Fortran `use` statements need.
+
+Added for the next run (unit-tested, 706 tests pass on the instance):
+`patterns.cmake_imported_target` names the sibling targets from the package's
+own link lists, the `find_package` line to insert after, and a CMake loop
+that redirects each missing directory to the one dh-fortran-mod installed;
+`verify._cmake` predicts after the edit which targets remain uncovered,
+whether the property was cleared instead of redirected, and whether the
+repair sits before the import. Live result on ectrans: round 9.
+
+## Round 9: ectrans with the CMake recogniser (8 November, 21:28 UTC)
+
+**Repaired**, first time for any version. 4 model turns (one malformed reply,
+one tool call, one edit, stop), 43.5 k input / 1.9 k output tokens, 225 s.
+The edit is the loop from the block, placed after `ecbuild_find_package( NAME
+fiat REQUIRED )` in the top-level `CMakeLists.txt`, covering `fiat`,
+`parkind_sp`, `parkind_dp`; the prediction after it read "[fixed]" for all
+three and the model stopped. The validation build configured, compiled,
+linked and produced `libectrans-0_1.3.0-1build1_arm64.deb`, `libectrans-dev`
+and `ectrans-utils`.
+
+Two caveats, both inside the test phase that `debian/rules` ignores (`dh_auto_test
+|| true`, "Ignore test failures; just log" in the changelog): 97 of 156 ctest
+cases failed, and the `test_install` sub-build reports the same non-existent
+fiat path on ectrans's own exported target `trans_dp` (ecbuild propagates
+fiat's interface directories into ectrans's export file). Whether the 97
+failures also occur on amd64 is not known from this run. A fuller repair
+would also rewrite the installed `ectrans-targets.cmake` in
+`override_dh_auto_install`, as the rules file already does for another path.
+
+Local cases repaired so far: rcran, libunwind, rust-subversion,
+html-xml-utils, ectrans (5 of 11). The x86 cases wait for QEMU to be
+re-registered on the instance after its restart.
+
 ## What went wrong
 
 1. **A failed correction discards the whole batch.** rust-subversion round 4
@@ -251,6 +337,73 @@ The largest lever is outside the agent. The website mentions that multiple
 repair rounds with updated logs may be arranged. Every failure above is
 something one build would have shown, so a second round would be worth more
 than any of these changes. Ask the organizers or watch for the announcement.
+
+## Round 10: the x86-target cases, first real runs (8 November, 22:09 UTC onward)
+
+With QEMU 10.2 registered (next section) the amd64-target cases build for
+real on the arm64 instance. 0.6.0-rc.3, no build feedback, one run each;
+the emulated validator build takes 10–45 minutes per case.
+
+| Case | Outcome | What happened |
+| --- | --- | --- |
+| python-intbitset | not repaired, 6 turns, 36.9 k in | `error: invalid command 'build_sphinx'` (Sphinx 7 removed its setup.py command; the step is -indep, so arm64 never ran it). The agent renamed the override target to `-disabled`; the build then failed in `dh_install` because `python-intbitset-doc.install` expects `docs/_build/html/`. |
+| libevtx | not repaired, 27 turns, 404 k in | `test_tools.sh`: the `message_handle` tool test segfaults on amd64, in the original Launchpad log and in the validation build alike. 15 tool turns, then an unrelated edit (an unconditional `#include <signal.h>`). A real x86-64 bug in 4,100 lines of `evtxtools/message_handle.c`; not located. |
+| pybigwig | not repaired, 9 turns, 91 k in | `libBigWig.a(bwValues.o): relocation R_X86_64_PC32 ... recompile with -fPIC`. The agent added `-fPIC` to the package's own CFLAGS, which cannot recompile the archive. Cause: the amd64 `libbigwig0t64` runtime package is 3,066 bytes and ships no shared library, so `libBigWig.so` dangles and ld used the non-PIC archive. The dfsg tarball has no bundled libBigWig sources, so no in-package repair exists. |
+| libbpp-qt | **repaired**, 38 turns, 3 attempts, 487 k in | dpkg-gensymbols: two, then one more symbol missing on amd64; the model tagged them `(optional)` following the round-6 block. The first x86-target repair of any version. |
+| libbpp-core | not repaired, 60 turns (budget), 7 attempts, 611 k in, 2 malformed | The same error with 13 missing symbols in a 4,131-line file. The model retyped the whole file, put `(optional)` after the version (dpkg: "(optional) is not a valid version"), and never recovered. |
+
+Added for the next run (unit-tested):
+
+- `patterns.sphinx_build_command` + `verify._sphinx`: names the `build_sphinx`
+  line, reads `setup.cfg`'s `[build_sphinx]` source and build directories,
+  quotes the `.install` line that depends on the output, and gives the
+  one-line replacement `python3 -m sphinx -b html docs/ docs/_build/html`;
+  the verdict calls a renamed or deleted step "NOT fixed: dh_install will
+  fail with missing files" and the direct call "fixed". Checked against the
+  live run's worktree: the agent's actual edit gets NOT fixed, the proper
+  one gets fixed.
+- a **symbols macro** (`patterns.SYMBOLS_MACRO`, `edit_repair.expand_macros`):
+  the block now tells the model to send one edit whose old_text is
+  `@@tag-missing-symbols@@`; the agent reads the dpkg-gensymbols diff from
+  the log, finds each missing symbol's line in the named file and prefixes
+  the tag in dpkg's syntax (`(optional)` or `(c++|optional)`), reporting the
+  count. The model never retypes a symbols file again; `verify._symbols`
+  also calls a tag placed after the version "NOT fixed". Tested in the loop.
+- `patterns.nonpic_static_archive`: for the pybigwig shape, finds the
+  archive and relocation in the log, looks up the runtime package's download
+  size in the same log (3,066 bytes), explains that the package's own
+  `-fPIC` cannot help, and tells the model to stop without an edit unless
+  the library's sources are bundled. A correct "cannot be repaired here" in
+  one turn is worth more than nine turns and a wrong edit.
+
+## Round 11: re-runs with the round-10 blocks (9 November, 00:24 UTC onward)
+
+| Case | Outcome | What happened |
+| --- | --- | --- |
+| python-intbitset | **repaired**, 2 turns, 1 edit, 976 s | The one-line change the block prescribed (`python3 -m sphinx -b html docs/ docs/_build/html` in the unchanged override target); the verdict read fixed; stop. |
+| pybigwig | correctly not repaired: no edit, 4 turns, 18 s, 51.6 k in | The model's stop reason: the static archive is not PIC, the package has no libBigWig sources, the runtime library package is broken; "the fix must be made in the libbigwig package". Nine turns and a wrong edit in round 10. |
+| libbpp-core | **build passes**, but by a degenerate edit: attempt budget (8), 25 turns, 323 k in | The model ignored the macro and prefixed `(arch=!amd64) ` to all 4,130 symbol lines without the leading space, so dpkg-gensymbols read each as a library header line named `(arch=!amd64)`; it then only warns ("some libraries disappeared: (arch=!amd64)", "new symbols appeared") and the package builds, with its amd64 symbols check effectively disabled. The validator counts it; a maintainer would not. Two causes found in the run: the symbols verdict counted every `-` line of the whole log ("202 missing") and the model took `#MISSING:` for file content. Both fixed; re-run queued. |
+
+Local tally: rcran, libunwind, rust-subversion, html-xml-utils, ectrans,
+libbpp-qt, python-intbitset, libbpp-core (degenerate) repaired (8 of 11).
+pybigwig and libmceliece cannot be repaired inside the package; libevtx
+needs the crash located.
+
+## x86-target cases on the arm64 instance (fixed 8 November)
+
+Every amd64/i386-target validator build on the arm64 instance ended in
+"infrastructure error" with `Segmentation fault` lines in the chroot. The
+cause is not the chroot: Ubuntu 24.04's `qemu-user-static` 8.2.2 crashes
+inside itself ("QEMU internal SIGSEGV {code=MAPERR, addr=0x20}") on x86
+`grep` from every Ubuntu release, and obs-build runs `grep` in the chroot.
+QEMU 10.2 (the `tonistiigi/binfmt` image) runs the same binary correctly.
+`harness/fix-qemu-x86.sh` (run once with sudo) replaces the two x86 binfmt
+handlers with the QEMU 10.2 ones and installs a systemd unit so the change
+survives the instance's stop/start cycles, which is what undid the earlier
+manual fix after each restart; `--undo` restores the Ubuntu handlers. After
+it, the libevtx chroot reached the package's own `configure` with no
+segfault. Emulated builds are slow (minutes per configure step), so expect
+20–60 minutes per x86 case.
 
 ## Reproducing
 

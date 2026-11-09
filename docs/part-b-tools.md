@@ -22,7 +22,7 @@ The implementation lives in
 | `contracts.py` | Existing shared `ToolRequest` and `ToolResult` types |
 
 Tests are in [`tests/full-agent/test_tools.py`](../tests/full-agent/test_tools.py).
-The implementation uses only the Python standard library.
+The implementation uses only the Python standard library. `deb_contents` (added 9 November, `src/deb_archive.py`) reads the case's frozen dependency `.deb` files from `dependencies/` next to `input/`; zstd-compressed data members need a decompressor (Python 3.14, the `zstandard` wheel or a `zstd` binary), otherwise only member sizes are reported.
 
 ## Workspace and public interface
 

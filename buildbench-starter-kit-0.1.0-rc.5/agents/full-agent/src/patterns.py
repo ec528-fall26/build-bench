@@ -257,6 +257,28 @@ _SYMBOLS_FILE = re.compile(r"doesn't match completely (?P<path>\S+)")
 _DIFF_LINE = re.compile(r"^[-+](?![-+]{2})")
 
 
+SYMBOLS_MACRO = "@@tag-missing-symbols@@"
+_SYMBOL_NAME = re.compile(r'^\s*(?:\(.*?\))?\s*"?(?P<name>[^\s"@]+@\S+)')
+
+
+def missing_symbols(log_lines: Sequence[str]) -> list[str]:
+    """The symbols dpkg-gensymbols reports missing (name@Base), from the diff in the log."""
+    start = next((i for i, line in enumerate(log_lines) if _SYMBOLS_ERROR.search(line)), 0)
+    names: list[str] = []
+    for line in log_lines[start:start + 20000]:
+        if line.startswith("+#MISSING:"):
+            body = line[1:]
+        elif line.startswith("-") and not line.startswith("---"):
+            body = line[1:]
+        else:
+            continue
+        body = re.sub(r"^\s*#MISSING:[^#]*#", "", body)
+        match = _SYMBOL_NAME.match(body)
+        if match and match.group("name") not in names:
+            names.append(match.group("name"))
+    return names
+
+
 def debian_symbols(log_lines: Sequence[str], worktree: Path, target_arch: str) -> str:
     start = next((i for i, line in enumerate(log_lines) if _SYMBOLS_ERROR.search(line)), None)
     if start is None:
@@ -289,14 +311,333 @@ def debian_symbols(log_lines: Sequence[str], worktree: Path, target_arch: str) -
             lines.append(f"... and {len(missing) - MAX_DIFF_LINES} more in the log.")
     # Symbols tags take Debian names (arm64, amd64): (arch=!aarch64) never matches.
     tag_arch = archnames.debian(target_arch) or "arm64"
-    lines.append("Repair: in the symbols file, mark each missing entry as architecture-"
-                 "specific or optional, for example `(arch=!" + tag_arch + ")`"
-                 " or `(optional)` before the symbol name, following the file's existing "
-                 "tag style; use a wildcard pattern such as `(c++)\"typeinfo for ...@Base\" "
-                 "1.0` only if the file already uses them. Do not delete the file, and do "
-                 "not change debian/control.")
+    target_file = ("input/debian/" + PurePosixPath(files[0]).name) if files else "input/debian/<package>.symbols"
+    lines.append("`#MISSING: <version>#` is dpkg's diff notation for a symbol the build did not export; "
+                 "it does not appear in the file, and must not be written into it.")
+    lines.append("Repair: each missing symbol's line gets a tag in parentheses before the symbol name, "
+                 "`(arch=!" + tag_arch + ")` if the symbol exists on every other architecture or `(optional)` "
+                 "otherwise, following the file's existing tag style (`(c++)\"...\"` becomes "
+                 "`(c++|optional)\"...\"`). The tag never goes after the version. The other "
+                 f"{'lines stay' if len(missing) < 50 else 'thousands of lines stay'} as they are; do not delete the "
+                 "file, do not change debian/control, and do not retype the file.")
+    lines.append("The agent makes these line edits itself from the diff above when you send this single edit "
+                 "(it reports how many lines it tagged):")
+    lines.append('{"action": "edit", "hypothesis": "<why these symbols are absent on ' + tag_arch + '>", '
+                 '"edits": [{"path": "' + target_file + '", "old_text": "' + SYMBOLS_MACRO
+                 + '", "new_text": "optional"}]}')
+    lines.append("Use \"new_text\": \"arch=!" + tag_arch + "\" instead of \"optional\" to tag them as "
+                 "architecture-specific. Then reply stop once the prediction reads fixed.")
     lines.append(END)
     return "\n".join(lines)
+
+
+# --- CMake: an imported target whose include directory does not exist -------
+#
+# ectrans on arm64 (docs/no-build-live-findings.md): libfiat-dev's exported
+# CMake targets name a Fortran module directory that the package did not
+# install on this architecture. CMake reports the first imported target it
+# checks; the others from the same package fail the same way once that one is
+# patched, and clearing the property drops the module directory the compile
+# needs. The repair is a loop over every imported target of the package that
+# replaces each missing directory with the one that exists.
+
+_IMPORTED_TARGET = re.compile(
+    r'Imported target "(?P<target>[^"\s]+)" includes non-existent path\s+"(?P<path>[^"]+)"\s+in its '
+    r'(?P<property>INTERFACE_INCLUDE_DIRECTORIES|INTERFACE_LINK_LIBRARIES|IMPORTED_LOCATION\w*)')
+_CMAKE_ERROR_FILE = re.compile(r'CMake Error (?:in|at) (?P<file>[\w./+-]+)')
+_FIND_PACKAGE = re.compile(r'(?:ecbuild_)?find_package\s*\(\s*(?:NAME\s+)?(?P<name>[\w.+-]+)', re.IGNORECASE)
+_FOREACH = re.compile(r'foreach\s*\(\s*(?P<var>\w+)\s+(?P<values>[^)]*)\)', re.IGNORECASE)
+_LINK_LISTS = re.compile(
+    r'(?:target_link_libraries\s*\(\s*(?P<linked>[\w${}.-]+)|\b(?:PUBLIC_LIBS|PRIVATE_LIBS|LIBS)\b)'
+    r'(?P<args>(?:[^()]|\((?:[^()]|\([^()]*\))*\))*?)(?=\)|\b(?!(?:PUBLIC|PRIVATE|INTERFACE)\b)[A-Z_]{3,}\b)')
+_PACKAGE_TARGET = re.compile(r'(?:add_library|add_executable|ecbuild_add_library|ecbuild_add_executable)'
+                             r'\s*\(\s*(?:TARGET\s+)?(?P<name>[\w${}.-]+)', re.IGNORECASE)
+_CMAKE_KEYWORDS = {"PUBLIC", "PRIVATE", "INTERFACE", "LINK_PUBLIC", "LINK_PRIVATE", "debug", "optimized",
+                   "general"}
+_CMAKE_FILES = (".txt", ".cmake")
+
+
+def _cmake_sources(worktree: Path) -> list[tuple[str, str]]:
+    return [(rel, text) for rel, text in _source_files(worktree, _CMAKE_FILES)
+            if PurePosixPath(rel).name == "CMakeLists.txt" or rel.endswith(".cmake")]
+
+
+def _expand(token: str, bindings: dict[str, list[str]]) -> list[str]:
+    """Every value of ``token`` under the file's foreach bindings (one level)."""
+    match = re.search(r"\$\{(\w+)\}", token)
+    if not match:
+        return [token]
+    values = bindings.get(match.group(1))
+    if not values:
+        return []
+    return [token.replace(match.group(0), value) for value in values]
+
+
+def imported_targets(log_lines: Sequence[str], worktree: Path) -> dict:
+    """The imported targets the log names, the ones linked beside them, and the
+    find_package call that imports them; {} when the log has no such error."""
+    text = "\n".join(log_lines)
+    errors = [(m.group("target"), m.group("path"), m.group("property")) for m in _IMPORTED_TARGET.finditer(text)]
+    if not errors:
+        return {}
+    named = list(dict.fromkeys(target for target, _, _ in errors))
+    paths = list(dict.fromkeys(path for _, path, _ in errors))
+    error_files = list(dict.fromkeys(m.group("file") for m in _CMAKE_ERROR_FILE.finditer(text)))
+    sources = _cmake_sources(worktree)
+    package_targets: set[str] = set()
+    bindings_by_file: dict[str, dict[str, list[str]]] = {}
+    for rel, src in sources:
+        bindings: dict[str, list[str]] = {}
+        for m in _FOREACH.finditer(src):
+            values = [v for v in m.group("values").split() if "${" not in v and v.upper() not in ("IN", "LISTS", "ITEMS", "RANGE")]
+            if values:
+                bindings.setdefault(m.group("var"), values)
+        bindings_by_file[rel] = bindings
+        for m in _PACKAGE_TARGET.finditer(src):
+            package_targets.update(_expand(m.group("name"), bindings))
+    siblings: dict[str, str] = {}   # target -> "file:line" where it is linked beside a named one
+    for rel, src in sources:
+        bindings = bindings_by_file[rel]
+        for m in _LINK_LISTS.finditer(src):
+            tokens = []
+            for raw in m.group("args").split():
+                if raw in _CMAKE_KEYWORDS or raw.startswith("$<"):
+                    continue
+                tokens.extend(_expand(raw, bindings))
+            if not any(t in named for t in tokens):
+                continue
+            line = src.count("\n", 0, m.start()) + 1
+            for t in tokens:
+                if t in named or t in package_targets or "${" in t or t in siblings:
+                    continue
+                siblings[t] = f"{rel}:{line}"
+    find_call = None
+    for rel, src in sources:
+        for m in _FIND_PACKAGE.finditer(src):
+            name = m.group("name")
+            if name.lower() in {n.lower() for n in named} or any(n.lower().startswith(name.lower()) for n in named):
+                find_call = (rel, src.count("\n", 0, m.start()) + 1, src[m.start():src.find("\n", m.start()) if src.find("\n", m.start()) != -1 else None].strip())
+                break
+        if find_call:
+            break
+    return {"named": named, "paths": paths, "siblings": siblings, "find_package": find_call,
+            "error_files": error_files}
+
+
+def cmake_imported_target(log_lines: Sequence[str], worktree: Path, target_arch: str) -> str:
+    facts = imported_targets(log_lines, worktree)
+    if not facts:
+        return ""
+    named, paths, siblings = facts["named"], facts["paths"], facts["siblings"]
+    arch = archnames.debian(target_arch) or target_arch or "this architecture"
+    all_targets = named + list(siblings)
+    lines = [
+        TITLE,
+        "Imported CMake target with a non-existent include directory: the build's dependency "
+        f"exports target{'s' if len(named) > 1 else ''} " + ", ".join(f"`{n}`" for n in named)
+        + " whose INTERFACE_INCLUDE_DIRECTORIES names " + ", ".join(f"`{p}`" for p in paths[:3])
+        + f", a directory the dependency did not install on {arch} (its exported .cmake file was "
+        "written for another compiler or layout). The exported file is outside input/ and cannot be "
+        "edited; the package must repair the imported target after find_package imports it.",
+        "Two facts decide the repair:",
+        "1. CMake checks every imported target that any target links and reports only the first; "
+        + ("the same package also provides " + ", ".join(f"`{t}` (linked at {where})" for t, where in list(siblings.items())[:8])
+           + ", which will fail with the same error once the named one is patched. Cover all of them."
+           if siblings else "cover every imported target of the same package, not only the one named."),
+        "2. Clearing the property is not enough: the directory holds the Fortran .mod files (or headers) "
+        "the compile needs, so a `use` statement then fails with 'Cannot open module file'. Replace each "
+        "missing directory with the one that exists. On Debian/Ubuntu, dh-fortran-mod installs modules "
+        "under /usr/include/<triplet>/fortran/gfortran-mod-NN/<name> or /usr/lib/<triplet>/fortran/"
+        "gfortran-mod-NN/<name>; a glob over fortran/*/<name> under both prefixes finds it without "
+        "naming the compiler version.",
+    ]
+    where = facts["find_package"]
+    if where:
+        lines.append(f"Place the repair in {where[0]} immediately after line {where[1]} "
+                     f"(`{where[2]}`), so it runs after the targets are imported and before any "
+                     "add_subdirectory. One edit, in that file; do not edit the subdirectories' "
+                     "CMakeLists.txt.")
+    else:
+        lines.append("Place the repair in the top-level input/CMakeLists.txt immediately after the "
+                     "find_package call that imports the target.")
+    lines.append("Repair (adjust only the target list):")
+    lines.append(cmake_repair_snippet(all_targets))
+    lines.append(END)
+    return "\n".join(lines)
+
+
+def cmake_repair_snippet(targets: Sequence[str]) -> str:
+    names = " ".join(targets) or "<imported targets>"
+    return "\n".join([
+        "# The dependency's exported targets name include directories that do not exist",
+        "# on this architecture; point each at the directory that does.",
+        f"foreach( _dep_target {names} )",
+        "  if( TARGET ${_dep_target} )",
+        "    get_target_property( _dep_dirs ${_dep_target} INTERFACE_INCLUDE_DIRECTORIES )",
+        "    if( _dep_dirs )",
+        "      set( _dep_fixed )",
+        "      foreach( _dep_dir ${_dep_dirs} )",
+        "        if( NOT EXISTS \"${_dep_dir}\" )",
+        "          get_filename_component( _dep_leaf \"${_dep_dir}\" NAME )",
+        "          string( REGEX REPLACE \"^/usr/(lib|include)/([^/]+)/.*$\" \"\\\\2\" _dep_triplet \"${_dep_dir}\" )",
+        "          file( GLOB _dep_found \"/usr/include/${_dep_triplet}/fortran/*/${_dep_leaf}\"",
+        "                               \"/usr/lib/${_dep_triplet}/fortran/*/${_dep_leaf}\" )",
+        "          if( _dep_found )",
+        "            list( GET _dep_found 0 _dep_dir )",
+        "          else()",
+        "            set( _dep_dir \"\" )",
+        "          endif()",
+        "        endif()",
+        "        if( _dep_dir )",
+        "          list( APPEND _dep_fixed \"${_dep_dir}\" )",
+        "        endif()",
+        "      endforeach()",
+        "      set_target_properties( ${_dep_target} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES \"${_dep_fixed}\" )",
+        "    endif()",
+        "  endif()",
+        "endforeach()",
+    ])
+
+
+# --- setup.py build_sphinx no longer exists ---------------------------------
+#
+# python-intbitset on amd64 (round 10): Sphinx 7 removed its setup.py command,
+# so `python3 setup.py build_sphinx` in debian/rules fails with "invalid
+# command"; the arm64 build never ran that step (it is -indep). The agent's
+# first repair disabled the override, and dh_install then failed because the
+# -doc package's .install file expects the HTML the step produced.
+
+_BUILD_SPHINX = re.compile(r"error: invalid command 'build_sphinx'")
+_SETUP_CFG_SECTION = re.compile(r"^\[build_sphinx\]\s*$(?P<body>(?:\n(?!\[).*)*)", re.M)
+
+
+def _setup_cfg_sphinx(worktree: Path) -> tuple[str, str]:
+    """(source-dir, build-dir) from setup.cfg's [build_sphinx], with Sphinx's defaults."""
+    source, build = "", "build/sphinx"
+    try:
+        text = (Path(worktree) / "input" / "setup.cfg").read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        text = ""
+    match = _SETUP_CFG_SECTION.search(text)
+    if match:
+        for line in match.group("body").splitlines():
+            key, _, value = line.partition("=")
+            key = key.strip().replace("_", "-")
+            if key == "source-dir":
+                source = value.strip()
+            elif key == "build-dir":
+                build = value.strip()
+    if not source:
+        for candidate in ("doc", "docs"):
+            if (Path(worktree) / "input" / candidate / "conf.py").is_file():
+                source = candidate
+                break
+    return source or "doc", build
+
+
+def _install_expectations(worktree: Path, needle: str) -> list[str]:
+    """debian/*.install, *.docs, *.links lines that name ``needle``."""
+    found = []
+    debian = Path(worktree) / "input" / "debian"
+    if not debian.is_dir():
+        return found
+    for path in sorted(debian.iterdir()):
+        if path.suffix not in (".install", ".docs", ".links") or not path.is_file():
+            continue
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeError):
+            continue
+        for number, line in enumerate(lines, start=1):
+            if needle and needle.strip("./") in line:
+                found.append(f"input/debian/{path.name}:{number}: {line.strip()}")
+    return found
+
+
+def sphinx_build_command(log_lines: Sequence[str], worktree: Path, target_arch: str) -> str:
+    if not any(_BUILD_SPHINX.search(line) for line in log_lines):
+        return ""
+    rules = _read_text(Path(worktree) / "input" / "debian" / "rules")
+    where = [f"input/debian/rules:{n}: {line.strip()}" for n, line in enumerate(rules.splitlines(), start=1)
+             if "build_sphinx" in line]
+    source, build = _setup_cfg_sphinx(worktree)
+    html = build.rstrip("/") + "/html"
+    expects = _install_expectations(worktree, build)
+    lines = [
+        TITLE,
+        "`setup.py build_sphinx` no longer exists: Sphinx 7 removed its setuptools command, so the "
+        "documentation step fails with \"invalid command 'build_sphinx'\" on any architecture that runs "
+        "it. It is in an architecture-independent (-indep) target, which the other architecture's build "
+        "did not run; that is the whole difference between the two builds."
+        + (" The call: " + "; ".join(where[:2]) + "." if where else ""),
+        f"setup.cfg's [build_sphinx] section says source-dir `{source}` and build-dir `{build}`, so the "
+        f"step used to write HTML to `{html}`."
+        + (" That directory is an output contract: " + "; ".join(expects[:3])
+           + ". Disabling, renaming or deleting the step makes dh_install fail with \"missing files\" "
+           "instead." if expects else ""),
+        "Repair: keep the override target exactly as named and replace only its command with the "
+        "equivalent direct Sphinx invocation (python3-sphinx is already in Build-Depends):",
+        f"\tpython3 -m sphinx -b html {source} {html}",
+        "(a recipe line starts with a tab). Nothing else needs to change.",
+        END,
+    ]
+    return "\n".join(lines)
+
+
+# --- a non-PIC static archive linked into a shared object -------------------
+#
+# pybigwig on amd64 (round 10): the extension links -lBigWig; the runtime
+# package libbigwig0t64 is 3 KB on amd64 and ships no shared library, so the
+# -dev package's libBigWig.so symlink dangles and ld falls back to the static
+# archive, whose objects are not PIC. Nothing in the package can fix that; the
+# agent should say so instead of adding -fPIC to its own flags (round 10 did).
+
+_NONPIC = re.compile(r"(?P<archive>/usr/lib/[\w./+-]*?/lib(?P<name>[\w+-]+)\.a)\([\w.+-]+\): relocation "
+                     r"R_(?P<reloc>\w+) against (?:symbol )?[`'](?P<symbol>[^'`]+)['`]? can not be used when making a shared object")
+_GET_PACKAGE = re.compile(r"Get:\d+ \S+ \S+ (?P<arch>\w+) (?P<pkg>\S+) \w+ (?P<version>\S+) \[(?P<size>[\d.,]+) (?P<unit>k?B)\]")
+
+
+def nonpic_static_archive(log_lines: Sequence[str], worktree: Path, target_arch: str) -> str:
+    match = next((m for line in log_lines for m in [_NONPIC.search(line)] if m), None)
+    if match is None:
+        return ""
+    name = match.group("name")
+    packages = []
+    for line in log_lines:
+        got = _GET_PACKAGE.search(line)
+        if got and name.lower() in got.group("pkg").lower():
+            size = float(got.group("size").replace(",", "")) * (1000 if got.group("unit") == "kB" else 1)
+            packages.append((got.group("pkg"), got.group("version"), int(size)))
+    runtime = [p for p in packages if not p[0].endswith("-dev")]
+    arch = archnames.debian(target_arch) or target_arch or "this architecture"
+    lines = [
+        TITLE,
+        f"Non-PIC static archive in a shared object: the link pulled `{match.group('archive')}` and its "
+        f"objects carry {match.group('reloc')} relocations against `{match.group('symbol')}`, which a shared "
+        f"object (here a Python extension) cannot contain on {arch}. The linker only uses a static archive "
+        f"when no shared `lib{name}.so.N` resolves in the build root.",
+    ]
+    if runtime:
+        pkg, version, size = runtime[0]
+        lines.append(f"The runtime package `{pkg}` {version} downloaded for {arch} is {size:,} bytes"
+                     + (": a shared-library package that small ships no library, so the -dev package's "
+                        f"`lib{name}.so` symlink points at nothing and ld fell back to the archive."
+                        if size < 20_000 else "."))
+    lines.append("Adding -fPIC to this package's CFLAGS or LDFLAGS does not recompile the archive, so the error "
+                 "recurs unchanged. The repair belongs in the library's package (ship the shared library or build "
+                 "the archive with -fPIC), not here; the only in-package route is compiling the library's sources "
+                 "into the extension, which works only if they are in input/ (check for a bundled copy).")
+    lines.append("If no bundled sources exist, make no edit and reply stop with that reason; if asked to "
+                 "reconsider, reply stop again.")
+    lines.append(END)
+    return "\n".join(lines)
+
+
+def _read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return ""
 
 
 def recognise(diagnostics: Sequence, log_path: Path | None, worktree: Path,
@@ -312,7 +653,8 @@ def recognise(diagnostics: Sequence, log_path: Path | None, worktree: Path,
         if block:
             return block
     log_lines = _log_lines(log_path)
-    for recogniser in (arm_outline_atomics, debian_symbols):
+    for recogniser in (arm_outline_atomics, debian_symbols, cmake_imported_target,
+                       sphinx_build_command, nonpic_static_archive):
         try:
             block = recogniser(log_lines, worktree, target_arch)
         except Exception:

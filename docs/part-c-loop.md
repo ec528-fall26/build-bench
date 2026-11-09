@@ -140,6 +140,7 @@ method, called in this order by `_Loop.run`:
 | 2 | `_validate` (`_retarget`, `_drop_reason`) | preflight, mechanical repair, one item at a time back to the model |
 | 3 | `_review` | optional proposed-batch review |
 | 4 | `_apply` | write the batch, record the attempt |
+| 4a | `_predict` | without build feedback: `verify.predict` on the edited files under the target's facts (0.4.0) |
 | 5 | `_build` | build feedback if any; keep or restore the candidate |
 | 6 | `_attempt_feedback` (`_repeated_diagnostic`) | what the model is told; the repeated-diagnostic stop |
 

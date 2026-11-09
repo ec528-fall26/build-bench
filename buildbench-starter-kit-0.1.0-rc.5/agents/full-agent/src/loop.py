@@ -22,8 +22,9 @@ from .contracts import (
 from .diff_tracker import DiffTracker
 from .edit_applier import apply_edits
 from .edit_preflight import focused_feedback
-from .edit_repair import prune_batch, retarget_path, simulate, static_warnings
+from .edit_repair import expand_macros, prune_batch, retarget_path, simulate, static_warnings
 from .path_feedback import missing_prefix_feedback, uncapturable_feedback
+from . import arch_model, patterns, verify
 from .tools import run_tool
 from .types import CaseContext
 from .proposal_review import render_review, signature, edit_identity
@@ -63,6 +64,8 @@ class LoopRequest:
     output_verification: list = field(default_factory=list)
     output_verification_feedback: str = ""
     verification_format_feedback: str = ""
+    # verify.render's static prediction for the latest unbuilt batch, or "".
+    prediction: str = ""
 
 @dataclass
 class LoopResult:
@@ -224,6 +227,7 @@ class _Loop:
     """
 
     MAX_CORRECTIONS = 12   # per batch; a later item always keeps at least 3
+    CORRECTION_TOOL_TURNS = 2   # tool turns allowed while one item awaits correction
 
     def __init__(self, context: CaseContext, *, next_turn, config, budget, build_feedback,
                  patch_policy, review_edits, initial_diagnostics, log_path, max_turns,
@@ -273,13 +277,21 @@ class _Loop:
         self.feedback = ""
         self.latest_attempt_feedback = ""
         self.batch_notes: list[str] = []
+        self.prediction = ""                 # verify.render for the latest unbuilt batch
         self.edit_validation_feedback = ""
         self.proposal_review = ""
+        # The target architecture, for the static prediction of an unbuilt batch.
+        metadata = getattr(context, "task_metadata", None) or {}
+        self.target = arch_model.lookup(str(metadata.get("target_arch") or ""))
+        if self.target is None:
+            pair = arch_model.pair_from_case_id(getattr(context, "case_id", None))
+            self.target = arch_model.lookup(pair[1]) if pair else None
         # The batch being corrected one item at a time
         self.pending_turn = None
         self.pending_index = None
         self.pending_notes: list[str] = []   # prune notes of that batch
         self.correction_responses = 0
+        self.correction_tool_turns = 0       # rust-subversion spent 20 turns searching mid-correction
         # (path, old_text) of corrections already rejected for the pending item:
         # a repeat cannot succeed either (libunwind sent one ten times, 3 November).
         self.rejected_texts: set[tuple[str, str]] = set()
@@ -371,6 +383,7 @@ class _Loop:
         self.pending_slot = None
         self.pending_notes = []
         self.correction_responses = 0
+        self.correction_tool_turns = 0
         self.rejected_texts.clear()
 
     # --- without builds (no-build control) ----------------------------------
@@ -455,6 +468,7 @@ class _Loop:
             verification_format_feedback=self.verification_format_feedback,
             output_verification=(deepcopy(self.review_turn.edits)
                                  if self.verification_pending and self.review_turn else []),
+            prediction=self.prediction,
         )
 
     def _ask_model(self) -> LoopResult | None:
@@ -493,7 +507,16 @@ class _Loop:
                                  "or return a stop action.")
             return _CONTINUE
         # During a correction the pending batch stays pending: reading the
-        # file is how the model finds the text it failed to copy.
+        # file is how the model finds the text it failed to copy, but two
+        # turns of it are enough (rust-subversion, 3 November: 20 turns).
+        if self.pending_turn is not None:
+            self.correction_tool_turns += 1
+            if self.correction_tool_turns > self.CORRECTION_TOOL_TURNS:
+                self.edit_validation_feedback += (
+                    f"\nYou have used {self.CORRECTION_TOOL_TURNS} tool turns on this correction; no more are "
+                    "run. Return the corrected edit (its old_text copied from the text you were shown), "
+                    "an empty edit list to drop the item, or stop.")
+                return _CONTINUE
         for tool_request in self.turn.tool_requests:
             if self._out_of_time():
                 return self.finish("time_budget", "No time remains to start another tool.")
@@ -705,6 +728,13 @@ class _Loop:
         before extraction. No files are written at this stage.
         """
         worktree, policy = self.context.worktree, self.patch_policy
+        expanded, more = expand_macros(self.turn.edits, worktree, patterns._log_lines(self.log_path))
+        if more:
+            notes.extend(more)
+            self.turn = deepcopy(self.turn)
+            self.turn.edits = expanded
+            if not self.turn.edits:
+                return snapshot, "\n".join(more)
         self.pending_index, feedback = missing_prefix_feedback(
             worktree, self.turn.edits, patch_policy=policy)
         if feedback:
@@ -898,6 +928,7 @@ class _Loop:
                                "Reviewed batch was not fully applied; restored files and skipped build.")
         self.feedback = f"Accepted {applied} of {len(self.turn.edits)} proposed edit operations."
         self.batch_notes = notes + [f"Warning (the edit was applied): {w}" for w in warnings]
+        self.prediction = self._predict(snapshot) if applied else ""
         if self.batch_notes:
             self.feedback += " " + " ".join(self.batch_notes)
         # Record the attempt before requesting a build.
@@ -910,6 +941,23 @@ class _Loop:
         # Drop only the tool results the edit may have made outdated.
         self.tool_results[:] = _still_valid(self.tool_results, {e.path for e in self.turn.edits})
         return applied
+
+    def _predict(self, snapshot) -> str:
+        """verify.render for the batch just applied, in a run with no build
+        feedback: the edited files evaluated under the target's facts."""
+        if self.config.use_build_feedback and self.build_feedback is not None:
+            return ""
+        if self.target is None or not self.initial_diagnostics:
+            return ""
+        try:
+            originals = {saved.path: saved.content.decode("utf-8") for saved in snapshot.files}
+            verdicts = verify.predict(
+                self.context.worktree, self.initial_diagnostics, self.target,
+                changed={edit.path for edit in self.turn.edits}, originals=originals,
+                log_lines=patterns._log_lines(self.log_path))
+            return verify.render(verdicts, self.target)
+        except Exception:  # a prediction must never end a run
+            return ""
 
     def _build(self, snapshot, applied: int) -> LoopResult | None:
         """Build if feedback is available, keep or restore the candidate."""

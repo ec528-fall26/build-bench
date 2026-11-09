@@ -157,3 +157,97 @@ class Rendering(Worktree):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CMakeImportedTarget(Worktree):
+    """ectrans: the dependency's exported target names a module directory that
+    does not exist on arm64; the siblings and the find_package call are found."""
+
+    LOG = [
+        "-- Configuring done (5.9s)",
+        "CMake Error in src/trans/CMakeLists.txt:",
+        '  Imported target "fiat" includes non-existent path',
+        "",
+        '    "/usr/lib/aarch64-linux-gnu/fortran/aarch64-linux-gnu-gfortran-13/fiat"',
+        "",
+        "  in its INTERFACE_INCLUDE_DIRECTORIES.  Possible reasons include:",
+    ]
+
+    def _package(self):
+        self.write("input/CMakeLists.txt", "project( ectrans Fortran )\n\n"
+                   "ecbuild_find_package( NAME fiat REQUIRED )\n\nadd_subdirectory( src )\n")
+        self.write("input/src/trans/CMakeLists.txt",
+                   "foreach( prec dp sp )\n  ecbuild_add_library(\n    TARGET trans_${prec}\n"
+                   "    PUBLIC_LIBS fiat parkind_${prec}\n  )\n"
+                   "  target_link_libraries( trans_${prec} PUBLIC fiat parkind_${prec} )\nendforeach()\n")
+        self.write("input/src/programs/CMakeLists.txt",
+                   "ecbuild_add_executable( TARGET ectrans-info SOURCES info.F90 LIBS fiat trans_dp )\n")
+
+    def test_names_the_siblings_and_the_find_package_line(self):
+        self._package()
+        facts = patterns.imported_targets(self.LOG, self.root)
+        self.assertEqual(facts["named"], ["fiat"])
+        self.assertEqual(set(facts["siblings"]), {"parkind_dp", "parkind_sp"})
+        self.assertEqual(facts["find_package"][:2], ("input/CMakeLists.txt", 3))
+        block = patterns.cmake_imported_target(self.LOG, self.root, "aarch64")
+        self.assertIn("foreach( _dep_target fiat parkind_dp parkind_sp )", block)
+        self.assertIn("input/CMakeLists.txt immediately after line 3", block)
+        self.assertIn("Clearing the property is not enough", block)
+        self.assertNotIn("trans_dp", block)  # the package's own targets are not imported ones
+
+    def test_recognise_picks_it_up_from_the_log(self):
+        self._package()
+        log = self.root / "build.log"
+        log.write_text("\n".join(self.LOG), encoding="utf-8")
+        self.assertIn("Imported CMake target", patterns.recognise([], log, self.root, "aarch64"))
+
+    def test_other_cmake_errors_are_not_this_pattern(self):
+        self._package()
+        self.assertEqual(patterns.cmake_imported_target(["CMake Error: Could not find fiat"], self.root, "aarch64"), "")
+
+
+class SphinxBuildCommand(Worktree):
+    """python-intbitset on amd64: setup.py build_sphinx was removed by Sphinx 7;
+    the -doc package's install file expects the HTML the step wrote."""
+
+    LOG = ["python3 setup.py build_sphinx", "error: invalid command 'build_sphinx'",
+           "make[1]: *** [debian/rules:7: override_dh_auto_build-indep] Error 1"]
+
+    def _package(self):
+        self.write("input/setup.cfg", "[build_sphinx]\nsource-dir = docs/\nbuild-dir = docs/_build\nall_files = 1\n")
+        self.write("input/debian/rules", "#!/usr/bin/make -f\n%:\n\tdh $@ --with python3,sphinxdoc --buildsystem=pybuild\n\n"
+                   "override_dh_auto_build-indep:\n\tpython3 setup.py build_sphinx\n")
+        self.write("input/debian/python-intbitset-doc.install", "./docs/*.rst usr/share/doc/python-intbitset-doc/\n"
+                   "./docs/_build/html/ usr/share/doc/python-intbitset-doc/\n")
+
+    def test_names_the_output_contract_and_the_replacement_command(self):
+        self._package()
+        block = patterns.sphinx_build_command(self.LOG, self.root, "x86_64")
+        self.assertIn("input/debian/rules:6", block)
+        self.assertIn("python-intbitset-doc.install:2", block)
+        self.assertIn("python3 -m sphinx -b html docs/ docs/_build/html", block)
+        self.assertIn("keep the override target exactly as named", block)
+
+    def test_defaults_without_a_setup_cfg_section(self):
+        self.write("input/debian/rules", "override_dh_auto_build-indep:\n\tpython3 setup.py build_sphinx\n")
+        self.write("input/doc/conf.py", "")
+        self.assertIn("python3 -m sphinx -b html doc build/sphinx/html",
+                      patterns.sphinx_build_command(self.LOG, self.root, "x86_64"))
+
+
+class NonPicArchive(Worktree):
+    LOG = ["Get:69 http://ftpmaster.internal/ubuntu resolute/universe amd64 libbigwig0t64 amd64 0.4.8+dfsg-2 [3066 B]",
+           "Get:70 http://ftpmaster.internal/ubuntu resolute/universe amd64 libbigwig-dev amd64 0.4.8+dfsg-2 [40.7 kB]",
+           "/usr/bin/ld: /usr/lib/x86_64-linux-gnu/libBigWig.a(bwValues.o): relocation R_X86_64_PC32 against symbol "
+           "`stderr@@GLIBC_2.2.5' can not be used when making a shared object; recompile with -fPIC",
+           "collect2: error: ld returned 1 exit status"]
+
+    def test_names_the_empty_runtime_package_and_says_stop(self):
+        block = patterns.nonpic_static_archive(self.LOG, self.root, "x86_64")
+        self.assertIn("libBigWig.a", block)
+        self.assertIn("`libbigwig0t64` 0.4.8+dfsg-2 downloaded for amd64 is 3,066 bytes", block)
+        self.assertIn("ships no library", block)
+        self.assertIn("make no edit and reply stop", block)
+
+    def test_without_the_relocation_error_nothing(self):
+        self.assertEqual(patterns.nonpic_static_archive(self.LOG[:2], self.root, "x86_64"), "")

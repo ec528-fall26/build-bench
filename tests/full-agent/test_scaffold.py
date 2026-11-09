@@ -105,7 +105,8 @@ class PartBStandIn(unittest.TestCase):
 
     def test_tool_names_match_the_plan(self):
         self.assertEqual(set(TOOLS), {"list_dir", "find_files", "search", "read_file",
-                                      "current_diff", "patch_series", "read_log", "search_log"})
+                                      "current_diff", "patch_series", "read_log", "search_log",
+                                      "deb_contents"})
 
 
 class PartDStandIn(unittest.TestCase):

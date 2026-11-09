@@ -148,6 +148,58 @@ def already_made(original: str, edit) -> bool:
     return new in original
 
 
+_TAGGED = re.compile(r"^(?P<indent>\s*)\((?P<tags>[^)]*)\)\s*(?P<rest>\S.*)$")
+
+
+def expand_macros(edits, worktree, log_lines) -> tuple[list, list[str]]:
+    """Replace macro edits with the concrete edits the agent computes itself.
+
+    `@@tag-missing-symbols@@` (patterns.SYMBOLS_MACRO): one edit per symbol
+    that dpkg-gensymbols reported missing, adding the tag in new_text to that
+    symbol's line of the named symbols file. libbpp-core (round 10): the model
+    retyped 4,131 lines in a syntax dpkg rejects when 13 needed a tag.
+    """
+    from . import patterns
+    from .types import Edit
+    out, notes = [], []
+    for edit in edits:
+        if edit.old_text.strip() != patterns.SYMBOLS_MACRO:
+            out.append(edit)
+            continue
+        tag = edit.new_text.strip().strip("()") or "optional"
+        try:
+            text = (Path(worktree) / edit.path).read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            notes.append(f"Macro edit on {edit.path} dropped: the file cannot be read.")
+            continue
+        missing = patterns.missing_symbols(log_lines)
+        if not missing:
+            notes.append(f"Macro edit on {edit.path} dropped: the log has no dpkg-gensymbols diff to take the "
+                         "missing symbols from; tag the lines yourself.")
+            continue
+        made, already, absent = 0, 0, 0
+        for name in missing:
+            line = next((l for l in text.split("\n") if name in l), None)
+            if line is None:
+                absent += 1
+                continue
+            match = _TAGGED.match(line)
+            if match:
+                if tag.split("=")[0] in match.group("tags"):
+                    already += 1
+                    continue
+                new = f"{match.group('indent')}({match.group('tags')}|{tag}){match.group('rest')}"
+            else:
+                stripped = line.lstrip()
+                new = f"{line[:len(line) - len(stripped)]}({tag}){stripped}"
+            out.append(Edit(edit.path, line, new))
+            made += 1
+        notes.append(f"Macro edit expanded: tagged {made} of the {len(missing)} symbols the log reports missing in "
+                     f"{edit.path} with ({tag})" + (f"; {already} were tagged already" if already else "")
+                     + (f"; {absent} are not in the file" if absent else "") + ".")
+    return out, notes
+
+
 def prune_batch(snapshot, edits):
     """Mechanically repair a batch; return (edits, notes, dropped).
 

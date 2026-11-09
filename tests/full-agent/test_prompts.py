@@ -98,6 +98,7 @@ class SystemPrompt(unittest.TestCase):
         examples = re.findall(r"(?m)^- (\w+) (\{.*?\}):", prompts.system_prompt())
         self.assertEqual([name for name, _ in examples], list(TOOLS)[:4] + ["patch_series",
                                                                             "current_diff",
+                                                                            "deb_contents",
                                                                             "read_log",
                                                                             "search_log"])
         with tempfile.TemporaryDirectory() as tmp:

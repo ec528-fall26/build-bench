@@ -28,7 +28,7 @@ class Diagnostic:                 # Part A produces, everyone reads
 
 @dataclass
 class ToolRequest:                # model -> Part B
-    tool: str                     # list_dir | find_files | search | read_file | current_diff | patch_series | read_log | search_log
+    tool: str                     # list_dir | find_files | search | read_file | current_diff | patch_series | read_log | search_log | deb_contents
     args: dict
 
 

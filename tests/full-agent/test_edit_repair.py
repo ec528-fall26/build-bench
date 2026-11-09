@@ -25,6 +25,8 @@ from src.edit_preflight import CONTINUATION_BREAK, continuation_breaks, focused_
 from src.edit_repair import (  # noqa: E402
     already_made, exported_maint_flags, prune_batch, relax_whitespace, retarget_path, static_warnings)
 from src.loop import run_loop  # noqa: E402
+from src import edit_repair  # noqa: E402
+from src.types import Edit  # noqa: E402
 
 
 def edit(old, new, path="input/a.c", replace_all=False):
@@ -649,3 +651,61 @@ class AlreadyMade(_Salvage):
         self.run_script([turn([edit("*const i8", "*const libc::c_char", replace_all=True)]),
                          turn([]), STOP])
         self.assertIn("FOCUSED INDEX: 0", self.requests[1].edit_validation_feedback)
+
+
+class SymbolsMacro(unittest.TestCase):
+    """libbpp-core (round 10): the agent tags the missing symbols itself from
+    the dpkg-gensymbols diff in the log; the model sends one macro edit."""
+
+    LOG = ["dpkg-gensymbols: error: some symbols or patterns disappeared in the symbols file: see diff output below",
+           "--- debian/libbpp-core4.symbols.amd64 (libbpp-core4_2.4.1-6_amd64)",
+           "+++ dpkg-gensymbolsXOuVXk\t2021-10-31",
+           "- _ZN3bpp11MatrixTools4multIdEEvRKNS_6MatrixIT_EERKSt6vectorIS3_SaIS3_EES6_RS4_@Base 2.4.1",
+           "+#MISSING: 2.4.1-6# _ZN3bpp11MatrixTools4multIdEEvRKNS_6MatrixIT_EERKSt6vectorIS3_SaIS3_EES6_RS4_@Base 2.4.1",
+           "-#MISSING: 2.4.1-6# (c++)\"bpp::B::b()@Base\" 2.4.1",
+           "+ _ZN3bppNewE@Base 2.4.1-6",
+           "dh_makeshlibs: error: failing due to earlier errors"]
+    FILE = ("libbpp-core.so.4 libbpp-core4 #MINVER#\n"
+            " _Z4compii@Base 2.4.1\n"
+            " _ZN3bpp11MatrixTools4multIdEEvRKNS_6MatrixIT_EERKSt6vectorIS3_SaIS3_EES6_RS4_@Base 2.4.1\n"
+            " (c++)\"bpp::B::b()@Base\" 2.4.1\n")
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        path = self.root / "input/debian/libbpp-core4.symbols.amd64"
+        path.parent.mkdir(parents=True)
+        path.write_text(self.FILE)
+
+    def macro(self, tag="optional"):
+        from src.patterns import SYMBOLS_MACRO
+        return Edit("input/debian/libbpp-core4.symbols.amd64", SYMBOLS_MACRO, tag)
+
+    def test_expands_to_one_edit_per_missing_symbol_in_dpkg_syntax(self):
+        edits, notes = edit_repair.expand_macros([self.macro()], self.root, self.LOG)
+        self.assertEqual(len(edits), 2)
+        self.assertEqual(edits[0].new_text, " (optional)_ZN3bpp11MatrixTools4multIdEEvRKNS_6MatrixIT_EERKSt6vectorIS3_SaIS3_EES6_RS4_@Base 2.4.1")
+        self.assertEqual(edits[1].new_text, " (c++|optional)\"bpp::B::b()@Base\" 2.4.1")
+        self.assertIn("tagged 2 of the 2 symbols", notes[0])
+        text = self.FILE
+        for e in edits:
+            text = text.replace(e.old_text, e.new_text)
+        self.assertIn(" _Z4compii@Base 2.4.1\n", text)   # untouched symbols stay
+
+    def test_arch_tag_and_already_tagged_lines(self):
+        (self.root / "input/debian/libbpp-core4.symbols.amd64").write_text(
+            self.FILE.replace(" (c++)\"bpp::B", " (c++|arch=!amd64)\"bpp::B"))
+        edits, notes = edit_repair.expand_macros([self.macro("arch=!amd64")], self.root, self.LOG)
+        self.assertEqual(len(edits), 1)
+        self.assertTrue(edits[0].new_text.startswith(" (arch=!amd64)_ZN3bpp11"))
+        self.assertIn("1 were tagged already", notes[0])
+
+    def test_without_a_symbols_diff_the_macro_is_dropped_with_a_note(self):
+        edits, notes = edit_repair.expand_macros([self.macro()], self.root, ["unrelated"])
+        self.assertEqual(edits, [])
+        self.assertIn("no dpkg-gensymbols diff", notes[0])
+
+    def test_ordinary_edits_pass_through(self):
+        plain = Edit("input/debian/rules", "a", "b")
+        self.assertEqual(edit_repair.expand_macros([plain], self.root, self.LOG), ([plain], []))

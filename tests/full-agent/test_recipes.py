@@ -40,7 +40,7 @@ TARGET = {"libbpp-core": "amd64", "rcran": "arm64", "ectrans": "arm64", "libmcel
           "rust-subversion": "arm64", "libevtx": "amd64", "html-xml-utils": "arm64", "pybigwig": "amd64"}
 LOG_KEY = {"rcran": "r-cran-digest"}
 EXPECTED = {"libbpp-core": {"symbols-tag"}, "libbpp-qt": {"symbols-tag"},
-            "libmceliece": {"strip-bsymbolic-functions"}, "libevtx": {"o2-on-test-segfault", "optimize-guard-test-memory"},
+            "libmceliece": {"strip-bsymbolic-functions"}, "libevtx": {"o2-on-test-segfault"},
             "html-xml-utils": {"serial-helper-build"}, "ectrans": {"cmake-redirect-imported-dirs"},
             "python-intbitset": {"replace-removed-command"}, "libunwind": {"arch-flags"},
             "pybigwig": {"static-archive-shim"}, "rcran": set(), "rust-subversion": set()}
@@ -121,7 +121,7 @@ class Recognition(unittest.TestCase):
         self.assertTrue(all(m.offset is not None and m.offset >= 0 for _, m in menu))
 
     def test_every_recipe_has_a_tier_and_a_one_line_note(self):
-        self.assertEqual(len(registry.ids()), 9)
+        self.assertEqual(len(registry.ids()), 8)
         for recipe_id in registry.ids():
             recipe = registry.get(recipe_id)
             self.assertIn(recipe.tier, registry.TIERS)
@@ -137,8 +137,7 @@ class Recognition(unittest.TestCase):
             self.assertEqual(found, expected, case)
 
     def test_the_wrong_architecture_is_not_recognised(self):
-        self.assertEqual({r.id for r, _ in registry.menu(log_lines("libevtx"), tree("libevtx"), "arm64")},
-                         {"optimize-guard-test-memory"})  # the -O2 recipe is amd64/ppc64el only
+        self.assertEqual(registry.menu(log_lines("libevtx"), tree("libevtx"), "arm64"), [])  # -O2 is amd64/ppc64el only
         self.assertEqual(registry.menu(log_lines("libmceliece"), tree("libmceliece"), "amd64")[0][0].id,
                          "strip-bsymbolic-functions")  # the BFD assertion names aarch64 itself
 
@@ -247,13 +246,6 @@ class O2OnTestSegfault(unittest.TestCase):
         self.assertEqual(edits[0].old_text, oracle[0].old_text)
         self.assertEqual(apply(tree("libevtx"), edits), apply(tree("libevtx"), oracle))
         self.assertIn("-O3", edits[0].new_text)
-
-    def test_optimize_guard_equals_the_verified_replay(self):
-        edits, notes = expand("libevtx", "optimize-guard-test-memory", "", "input/tests/evtx_test_memory.h")
-        oracle = replay("libevtx-verified-optimize-guard.json")
-        self.assertEqual([(e.path, norm(e.old_text), norm(e.new_text)) for e in edits],
-                         [(e.path, norm(e.old_text), norm(e.new_text)) for e in oracle])
-        self.assertEqual(apply(tree("libevtx"), edits), apply(tree("libevtx"), oracle))
 
     def test_needs_o3_a_test_segfault_and_an_architecture_where_it_applies(self):
         recipe = registry.get("o2-on-test-segfault")
@@ -596,11 +588,9 @@ class Blocks(unittest.TestCase):
             self.assertLess(at, block.index("By hand") if "By hand" in block else len(block), case)
             self.assertIn("To apply exactly these edits", lines[0], case)
 
-    def test_the_libevtx_block_offers_the_second_choice(self):
+    def test_the_libevtx_block_offers_only_the_o2_recipe(self):
         lines, parsed = self.invocation_of(self.block("libevtx"))
-        self.assertEqual([p["edits"][0]["old_text"] for p in parsed],
-                         ["@@recipe:o2-on-test-segfault@@", "@@recipe:optimize-guard-test-memory@@"])
-        self.assertEqual(parsed[1]["edits"][0]["path"], "input/tests/evtx_test_memory.h")
+        self.assertEqual([p["edits"][0]["old_text"] for p in parsed], ["@@recipe:o2-on-test-segfault@@"])
 
     def test_the_symbols_block_names_the_file_and_offers_auto(self):
         lines, parsed = self.invocation_of(self.block("libbpp-qt"))

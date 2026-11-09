@@ -76,9 +76,6 @@ def recipe_target(recipe_id: str, match) -> str:
         return find[0] if find else "input/CMakeLists.txt"
     if recipe_id == "serial-helper-build":
         return params.get("file") or "input/debian/rules"
-    if recipe_id == "optimize-guard-test-memory":
-        sites = params.get("sites") or []
-        return sites[0][0] if sites else "input/debian/rules"
     return "input/debian/rules"
 
 

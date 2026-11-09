@@ -27,6 +27,15 @@ it has no build feedback, so edits are investigated and revised but submitted
 untested. Locally, `harness/run_case.py --agent full-agent` runs the same loop
 with real builds (Part D). Results: `docs/part5-findings.md` §9c.
 
+Version 0.6.0-rc.6 (9 November), rc.5 with two more bypass refusals:
+- `src/rules_guard.py` refuses a make condition replaced by a constant in
+  debian/rules (golang-avo: `ifeq (1,1)` excluded 15 test packages) and a
+  function body reduced to a bare return (opentelemetry-cpp: `Shutdown()`).
+  Found by reading rc.5's repairs of the 111 small public cases.
+- The `optimize-guard-test-memory` recipe is removed: it turned off the
+  package's memory-test wrappers in optimised builds. libevtx keeps
+  `o2-on-test-segfault`.
+
 Version 0.6.0-rc.5 (9 November): recipes, edit gates, readable dependencies, loop control
 (`docs/campaign-2026-11-09/implementation.md`):
 - `recipes/`: nine verified repairs as one registry (symbols-tag,

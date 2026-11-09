@@ -62,7 +62,7 @@ class Recipe:
 
 
 _RECIPES: dict[str, Recipe] = {}
-_MODULES = ("symbols_tag", "strip_bsymbolic", "o2_on_test_segfault", "optimize_guard",
+_MODULES = ("symbols_tag", "strip_bsymbolic", "o2_on_test_segfault",
             "serial_helper", "cmake_redirect", "replace_removed_command", "arch_flags",
             "static_shim")
 _loaded = False

@@ -101,7 +101,7 @@ class Wiring(unittest.TestCase):
             reply(action="tool", requests=[{"tool": "read_file", "args": {
                 "path": config, "start_line": 14, "end_line": 16}}], why="copy"),
             edit("#define HAVE_MM_PREFETCH 1\n", "#define HAVE_MM_PREFETCH 0\n", "fixed"),
-            reply(action="stop", reason="done"))
+            reply(action="stop", reason="done"), reply(action="stop", reason="done"))
         result, _ = self.run_with(script)
         self.assertEqual(result.termination_reason, "model_stop")
         self.assertIn("Results of your tool requests", script.user(2))

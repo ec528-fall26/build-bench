@@ -50,6 +50,13 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(self.check([edit("alpha", "gamma")]), "")
         self.assertEqual(self.path.read_text(), "alpha\nbeta\n")
 
+    def test_one_edit_that_changes_hundreds_of_lines_is_refused(self):
+        self.path.write_text("".join(f"line {i}\n" for i in range(400)), encoding="utf-8")
+        old = self.path.read_text()
+        result = self.check([edit(old, old.replace("line", "item"))])
+        self.assertIn("edit_too_large", result)
+        self.assertIn("@@recipe:symbols-tag@@", result)
+
     def test_sequential_dependencies_are_valid(self):
         self.assertEqual(self.check([
             edit("alpha", "gamma"), edit("gamma", "delta")

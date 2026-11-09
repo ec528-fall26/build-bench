@@ -1,0 +1,11 @@
+{
+ "case_id": "launchpad-resolute-amd64-arm64-html-xml-utils-fe68b3f14b84",
+ "rationale": "prebuild cexport serially",
+ "edits": [
+  {
+   "path": "input/debian/rules",
+   "old_text": "override_dh_auto_install:\n",
+   "new_text": "override_dh_auto_build:\n\tdh_auto_build -- cexport\n\tdh_auto_build\n\noverride_dh_auto_install:\n"
+  }
+ ]
+}

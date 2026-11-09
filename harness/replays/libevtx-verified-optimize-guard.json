@@ -1,0 +1,11 @@
+{
+ "case_id": "launchpad-plucky-arm64-amd64-libevtx-1ee53325da7e",
+ "rationale": "disable LD_PRELOAD-style memory test wrappers when optimized",
+ "edits": [
+  {
+   "path": "input/tests/evtx_test_memory.h",
+   "old_text": "&& !defined( HAVE_ASAN )\n#define HAVE_EVTX_TEST_MEMORY",
+   "new_text": "&& !defined( HAVE_ASAN ) && !defined( __OPTIMIZE__ )\n#define HAVE_EVTX_TEST_MEMORY"
+  }
+ ]
+}

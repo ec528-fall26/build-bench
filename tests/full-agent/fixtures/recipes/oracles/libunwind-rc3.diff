@@ -1,0 +1,13 @@
+--- a/input/debian/rules
++++ b/input/debian/rules
+@@ -5,6 +5,10 @@
+ #export DH_VERBOSE=1
+ 
+ export DEB_BUILD_MAINT_OPTIONS = hardening=-all,+format
++ifeq ($(DEB_HOST_ARCH),arm64)
++export DEB_CFLAGS_MAINT_APPEND += -mno-outline-atomics
++export DEB_CXXFLAGS_MAINT_APPEND += -mno-outline-atomics
++endif
+ 
+ ifneq (,$(filter $(DEB_HOST_ARCH), amd64 i386))
+   CXX_EXCEPTIONS=--enable-cxx-exceptions

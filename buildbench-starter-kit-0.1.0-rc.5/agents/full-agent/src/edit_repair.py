@@ -151,56 +151,48 @@ def already_made(original: str, edit) -> bool:
 _TAGGED = re.compile(r"^(?P<indent>\s*)\((?P<tags>[^)]*)\)\s*(?P<rest>\S.*)$")
 
 
-def expand_macros(edits, worktree, log_lines) -> tuple[list, list[str]]:
-    """Replace macro edits with the concrete edits the agent computes itself.
+def expand_macros(edits, worktree, log_lines, target_arch: str = "") -> tuple[list, list[str]]:
+    """Replace macro edits with the concrete edits a recipe computes itself.
 
-    `@@tag-missing-symbols@@` (patterns.SYMBOLS_MACRO): one edit per symbol
-    that dpkg-gensymbols reported missing, adding the tag in new_text to that
-    symbol's line of the named symbols file. libbpp-core (round 10): the model
-    retyped 4,131 lines in a syntax dpkg rejects when 13 needed a tag.
+    An edit whose old_text is ``@@recipe:<id>@@`` (or the legacy alias
+    ``@@tag-missing-symbols@@``, the symbols-tag recipe) invokes the recipe of
+    that id (recipes/registry.py); its new_text carries optional plain-text
+    parameters. The recipe re-checks its signature in the log and its
+    preconditions in the tree and either expands to edits ("Recipe <id>
+    expanded: ...") or refuses with a note and no edit; it never guesses.
+    libbpp-core (round 10): the model retyped 4,131 lines in a syntax dpkg
+    rejects when 13 needed a tag. Never raises: a failure is a refusal note.
+
+    ``target_arch`` is the case's target when the caller knows it; recipes read
+    the host architecture from the log otherwise.
     """
-    from . import patterns
-    from .types import Edit
     out, notes = [], []
+    try:
+        from .recipes import registry
+    except Exception:
+        return list(edits), []
+    expanded: set[tuple[str, str]] = set()
     for edit in edits:
-        if edit.old_text.strip() != patterns.SYMBOLS_MACRO:
+        recipe_id = registry.macro_id(getattr(edit, "old_text", None))
+        if recipe_id is None:
             out.append(edit)
             continue
-        tag = edit.new_text.strip().strip("()") or "optional"
-        try:
-            text = (Path(worktree) / edit.path).read_text(encoding="utf-8")
-        except (OSError, UnicodeError):
-            notes.append(f"Macro edit on {edit.path} dropped: the file cannot be read.")
+        path = getattr(edit, "path", "")
+        if (recipe_id, path) in expanded:
+            notes.append(f"Recipe {recipe_id} on {path} was already expanded earlier in this batch; "
+                         "the repeat was dropped.")
             continue
-        missing = patterns.missing_symbols(log_lines)
-        if not missing:
-            notes.append(f"Macro edit on {edit.path} dropped: the log has no dpkg-gensymbols diff to take the "
-                         "missing symbols from; tag the lines yourself.")
-            continue
-        made, already, absent = 0, 0, 0
-        for name in missing:
-            line = next((l for l in text.split("\n") if name in l), None)
-            if line is None:
-                absent += 1
-                continue
-            match = _TAGGED.match(line)
-            if match:
-                if tag.split("=")[0] in match.group("tags"):
-                    already += 1
-                    continue
-                new = f"{match.group('indent')}({match.group('tags')}|{tag}){match.group('rest')}"
-            else:
-                stripped = line.lstrip()
-                new = f"{line[:len(line) - len(stripped)]}({tag}){stripped}"
-            out.append(Edit(edit.path, line, new))
-            made += 1
-        notes.append(f"Macro edit expanded: tagged {made} of the {len(missing)} symbols the log reports missing in "
-                     f"{edit.path} with ({tag})" + (f"; {already} were tagged already" if already else "")
-                     + (f"; {absent} are not in the file" if absent else "") + ".")
+        params = registry.parse_params(getattr(edit, "new_text", ""))
+        params["path"] = path
+        made, note = registry.run(recipe_id, worktree, log_lines, target_arch, params)
+        notes.append(note)
+        if made:
+            expanded.add((recipe_id, path))
+            out.extend(made)
     return out, notes
 
 
-def prune_batch(snapshot, edits):
+def prune_batch(snapshot, edits, missing_symbol_count=None):
     """Mechanically repair a batch; return (edits, notes, dropped).
 
     Each note is one sentence for the model. ``dropped`` is the number of
@@ -215,7 +207,7 @@ def prune_batch(snapshot, edits):
     positions = [getattr(edit, "_position", index + 1) for index, edit in enumerate(edits)]
     relaxed: set[int] = set()
     while edits:
-        issues = inspect_batch(snapshot, edits)
+        issues = inspect_batch(snapshot, edits, missing_symbol_count=missing_symbol_count)
         if not issues:
             break
         index, edit, reason, duplicate, before, _ = issues[0]
@@ -260,7 +252,7 @@ def prune_batch(snapshot, edits):
         dropped += 1
     # Only an edit whose old_text matches as it stands can be judged make-level:
     # a space-indented line is a recipe if the model mis-wrote a tab (review).
-    failing = {issue[0] for issue in inspect_batch(snapshot, edits)}
+    failing = {issue[0] for issue in inspect_batch(snapshot, edits, missing_symbol_count=missing_symbol_count)}
     exported = []
     for index in reversed(range(len(edits))):
         if index in failing:

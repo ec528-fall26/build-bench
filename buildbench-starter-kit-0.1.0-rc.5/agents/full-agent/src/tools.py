@@ -15,6 +15,7 @@ from .path_checks import check_path
 from .diff_tracker import DiffTracker
 from functools import lru_cache
 import stat
+import time
 from .tool_timeout import tool_time_limit
 from . import deb_archive
 
@@ -23,9 +24,16 @@ TOOLS = ("list_dir", "find_files", "search", "read_file", "current_diff", "patch
 
 MAX_OUTPUT_CHARS = 8000
 MAX_FILE_BYTES = 1024 * 1024
-MAX_SEARCH_FILES = 100
-MAX_TREE_ENTRIES = 5000
+MAX_TREE_ENTRIES = 20000
 MAX_TOOL_SECONDS = 2.0
+# search keeps inside the 2 s tool limit with its own, earlier deadline, and says
+# how far it got instead of stopping at a fixed file count.
+MAX_SEARCH_SECONDS = 1.5
+MAX_SEARCH_BYTES = 1_500_000
+_SEARCH_SKIP_DIRS = {".pc", ".git", ".pybuild"}
+_SEARCH_LATE_DIRS = {"doc", "docs", "test", "tests", "testing", "example", "examples", "man"}
+# Reading a .deb's tar takes longer than a text search (about 0.6 s native, 16 s emulated, for the largest).
+MAX_DEB_SECONDS = 6.0
 # The failure log is read-only evidence outside the worktree. A log can be
 # megabytes, so its tools get longer and output lines are shortened.
 MAX_LOG_BYTES = 64 * 1024 * 1024
@@ -42,18 +50,19 @@ def run_tool(request: ToolRequest, worktree: Path, *, diff_tracker : DiffTracker
             truncated = False,
         )
 
-    try: 
+    try:
         if request.tool in ("read_log", "search_log"):
             with tool_time_limit(MAX_LOG_SECONDS):
                 return _run_log_tool(request, log_path)
-        with tool_time_limit(MAX_TOOL_SECONDS):
+        limit = MAX_DEB_SECONDS if request.tool == "deb_contents" else MAX_TOOL_SECONDS
+        with tool_time_limit(limit):
             return _run_tool(request, worktree, diff_tracker= diff_tracker)
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
+    except Exception as error:  # noqa: BLE001 - a tool must never end the run (LZMAError, zlib.error, EOFError, zstandard errors)
         return ToolResult(
             request= request,
-            text = f"=== tool: unavailable ({error}) ===",
+            text = f"=== {request.tool}: unavailable ({type(error).__name__}: {error}) ===",
             truncated = False,
-        ) 
+        )
 
 
 def _log_line(line: bytes) -> str:
@@ -300,34 +309,78 @@ def _find_files(request: ToolRequest, worktree: Path, diff_tracker) -> ToolResul
     return ToolResult(request=request, text=text, truncated=truncated)
 
 
+def _search_rank(relative: str) -> int:
+    """0 for source and packaging files, 1 for docs and tests, which rarely hold the cause."""
+    parts = relative.lower().split("/")
+    if any(part in _SEARCH_LATE_DIRS or part.startswith("test") for part in parts[:-1]):
+        return 1
+    if parts[-1].endswith((".md", ".rst", ".txt", ".html", ".1", ".3", ".po")) and parts[-1] != "cmakelists.txt":
+        return 1
+    return 0
+
+
+def _search_files(root: Path) -> tuple[list[Path], bool, int]:
+    """Files under ``root`` without .pc/, .git/, .pybuild/ and obj-*/, plus (tree cut, directories skipped)."""
+    pending, files, visited, pruned = [root], [], 0, 0
+    while pending:
+        directory = pending.pop()
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                if visited >= MAX_TREE_ENTRIES:
+                    return files, True, pruned
+                visited += 1
+                if entry.is_symlink():
+                    continue
+                if entry.is_dir(follow_symlinks=False):
+                    if entry.name in _SEARCH_SKIP_DIRS or entry.name.startswith("obj-"):
+                        pruned += 1
+                        continue
+                    pending.append(Path(entry.path))
+                elif entry.is_file(follow_symlinks=False):
+                    files.append(Path(entry.path))
+    return files, False, pruned
+
+
 def _search(request: ToolRequest, worktree: Path, diff_tracker) -> ToolResult:
+    """Regex search over input/. Never a silent partial: the header says how many files were read."""
     regex = request.args.get("regex")
     path_glob = request.args.get("path_glob")
     if not isinstance(regex, str) or not isinstance(path_glob, str):
         return _unavailable(request, "regex and path_glob must be strings")
     truncated = False
+    started = time.monotonic()
     try:
         expression = re.compile(regex)
         root, failure = _checked_root(request, worktree, "search")
         if failure is not None:
             return failure
-        files, tree_truncated = collect_files(root)
+        files, tree_truncated, pruned = _search_files(root)
+        candidates = []
+        for path in files:
+            relative = path.relative_to(worktree).as_posix()
+            if matches_path(relative, path_glob):
+                candidates.append((_search_rank(relative), relative, path))
+        candidates.sort(key=lambda item: (item[0], item[1]))
         matches = []
         used_chars = 0
         skipped = 0
-        files_scanned = 0
-        for path in files:
-            relative = path.relative_to(worktree).as_posix()
-            if not matches_path(relative, path_glob):
-                continue
-            if files_scanned >= MAX_SEARCH_FILES:
-                truncated = True
+        scanned = 0
+        bytes_read = 0
+        stop = ""   # why the scan ended early, with the first path not read
+        for index, (_, relative, path) in enumerate(candidates):
+            if time.monotonic() - started > MAX_SEARCH_SECONDS:
+                stop = f"time budget of {MAX_SEARCH_SECONDS:g} s reached"
+            elif bytes_read >= MAX_SEARCH_BYTES:
+                stop = f"text budget of {MAX_SEARCH_BYTES:,} bytes reached"
+            if stop:
+                stop += f"; first unscanned: {relative}"
                 break
-            files_scanned += 1
+            scanned += 1
             try:
                 with path.open("rb") as file:
                     data = file.read(MAX_FILE_BYTES + 1)
-                if len(data) > MAX_FILE_BYTES:
+                bytes_read += len(data)
+                if len(data) > MAX_FILE_BYTES or b"\0" in data[:4096]:
                     skipped += 1
                     continue
                 lines = data.decode("utf-8").splitlines()
@@ -346,13 +399,28 @@ def _search(request: ToolRequest, worktree: Path, diff_tracker) -> ToolResult:
                 matches.append(match)
                 used_chars += len(match) + 1
             if truncated:
+                nxt = candidates[index + 1][1] if index + 1 < len(candidates) else None
+                stop = (f"output limit reached in {relative}"
+                        + (f"; first unscanned: {nxt}" if nxt else ""))
                 break
-        truncated = truncated or tree_truncated
+        truncated = truncated or tree_truncated or bool(stop)
+        total = len(candidates)
+        status = f"scanned {scanned} of {total} matching files"
+        if stop:
+            status += f" (stopped: {stop})"
+        notes = []
+        if tree_truncated:
+            notes.append(f"directory listing cut at {MAX_TREE_ENTRIES} entries")
+        if pruned:
+            notes.append(f"skipped {pruned} directories named .pc, .git, .pybuild or obj-*")
         content = "\n".join(matches) if matches else "(no matches returned)"
-        text = f"=== search: {regex}; skipped files: {skipped} ===\n{content}"
+        text = (f"=== search: {regex}; {status}; skipped files: {skipped}"
+                + ("; " + "; ".join(notes) if notes else "") + f" ===\n{content}")
     except re.error:
         text = "=== search: unavailable (invalid regular expression) ==="
     except (OSError, ValueError) as error:
+        if isinstance(error, TimeoutError):
+            raise
         text = f"=== search: unavailable ({error}) ==="
     return ToolResult(request=request, text=text, truncated=truncated)
 

@@ -1,0 +1,11 @@
+{
+ "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+ "rationale": "strip Ubuntu default -Bsymbolic-functions",
+ "edits": [
+  {
+   "path": "input/debian/rules",
+   "old_text": "export DEB_LDFLAGS_MAINT_APPEND = -Wl,-z,noexecstack\n",
+   "new_text": "export DEB_LDFLAGS_MAINT_APPEND = -Wl,-z,noexecstack\nexport DEB_LDFLAGS_MAINT_STRIP = -Wl,-Bsymbolic-functions\n"
+  }
+ ]
+}

@@ -14,19 +14,20 @@ Standard library only, read-only.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 import re
 
 from .arch_model import Architecture
 from .predict import Tri, cpp_active_lines, define_locations, make_active_lines
-from . import patterns
+from . import patterns, rules_guard, syntax_guard
 
 _MISSING_HEADER = re.compile(r"fatal error: (?P<header>[\w./+-]+): No such file or directory")
 _RUST_SIGNED = re.compile(r"expected `\*(?:const|mut) (?P<want>[iu]8)`, found `\*(?:const|mut) (?P<have>[iu]8)`")
 _RUST_CSTRING = re.compile(r"\*(?:const|mut)\s+(?P<type>[iu]8)\b")
 _OUTLINE = re.compile(r"__aarch64_\w+")
-_SYMBOL_LINE = re.compile(r"^\s*(?:\(.*?\))?\s*\"?(?P<name>[^\s\"@]+)")
+_TAG_PREFIX = re.compile(r"^\s*(?:\([^()]*\))?")
 _PATCH_DIR = ("input/debian/patches/",)
 
 
@@ -70,8 +71,12 @@ def _c_diagnostic(worktree: Path, item, target: Architecture, originals: dict[st
     header = _MISSING_HEADER.search(item.message)
     if number is None:
         if quoted and not any(l.strip() == quoted for l in lines):
+            # A line that merely disappears proves nothing: it may have been moved or
+            # replaced by code with the same fault, and what it declared may still be used.
             what = f"the include of {header.group('header')}" if header else "the failing line"
-            return Verdict(True, f"{path}: {what} is no longer in the file.")
+            return Verdict(None, f"{path}: {what} is no longer in the file, but removing a line does not "
+                                 "show the error is gone (what it provided may still be used, or it may "
+                                 "have moved); this check cannot tell.")
         return Verdict(None, f"{path}: the failing line could not be located after the edit.")
     reached = cpp_active_lines(text, target, defines).active[number - 1]
     what = f"the include of {header.group('header')} at line {number}" if header else f"line {number} ({lines[number-1].strip()[:80]})"
@@ -93,8 +98,9 @@ def _c_diagnostic(worktree: Path, item, target: Architecture, originals: dict[st
     if changed:
         return Verdict(None, f"{path}: {what} changed and is compiled on {target.dpkg}; the error may or may not "
                              "recur (no compiler is available to check).")
-    return Verdict(False, f"{path}: {what} is unchanged and still compiled on {target.dpkg}; the same error "
-                          "will recur unless its cause was elsewhere.")
+    return Verdict(None, f"{path}: {what} is unchanged and still compiled on {target.dpkg}. Whether the error "
+                         "recurs depends on code this check cannot evaluate (no compiler is available), so "
+                         "this is not a verdict.")
 
 
 def _rust(worktree: Path, diagnostics, target: Architecture, changed: set[str]) -> Verdict | None:
@@ -153,6 +159,9 @@ def _rules(worktree: Path, log_text: str, target: Architecture, changed: set[str
         elif name not in state.exported and state.active[number - 1] is True:
             out.append(Verdict(False, f"debian/rules:{number}: {name} is assigned but never exported, so "
                                       "dpkg-buildflags never sees it."))
+    for number, message in rules_guard.buildflags_problems(text):
+        if not (state.active[number - 1] is False if number - 1 < len(state.active) else False):
+            out.append(Verdict(False, f"debian/rules:{number}: {message}."))
     if "__aarch64_" in log_text and target.outline_atomics:
         flags = state.flags.get("DEB_CFLAGS_MAINT_APPEND") or ""
         if "-mno-outline-atomics" in flags:
@@ -161,33 +170,108 @@ def _rules(worktree: Path, log_text: str, target: Architecture, changed: set[str
     return out
 
 
-def _symbols(worktree: Path, log_lines: list[str], target: Architecture, changed: set[str]) -> list[Verdict]:
+def _symbol_key(line: str) -> str | None:
+    """The 'name@Base' a symbols line is about, tags, quotes and version removed."""
+    body = _TAG_PREFIX.sub("", line.rstrip("\r")).strip()
+    if not body or body.startswith("#"):
+        return None
+    m = re.match(r'("(?:[^"\\]|\\.)*"(?:@\S*)?|\S+)', body)
+    return m.group(1).replace('"', "") if m else None
+
+
+def _tagged(line: str) -> bool:
+    return bool(re.match(r"^\s*\((?:[^()]*\|)?(?:optional|arch=|arch-bits|arch-endian|ignore-blacklist)", line))
+
+
+MAX_LISTED = 12   # remaining items a verdict names, each in full
+
+
+def _named(items) -> str:
+    """Up to MAX_LISTED items, each whole (a truncated symbol name cannot be searched for)."""
+    items = list(items)
+    text = "; ".join(items[:MAX_LISTED])
+    return text + (f"; and {len(items) - MAX_LISTED} more" if len(items) > MAX_LISTED else "")
+
+
+def _overtagging(original: str, text: str, missing: list[str]) -> str | None:
+    """Why the lines that changed are not exactly 'a tag inserted on each reported symbol'."""
+    old, new = original.split("\n"), text.split("\n")
+    wanted = {m.replace('"', "") for m in missing}
+    gone = Counter(l for l in old if l.strip()) - Counter(l for l in new if l.strip())
+    came = Counter(l for l in new if l.strip()) - Counter(l for l in old if l.strip())
+    gone_keys = Counter(_symbol_key(l) for l in gone.elements())
+    came_keys = Counter(_symbol_key(l) for l in came.elements())
+    if not gone and not came:
+        return None
+    extra = sorted(k for k in came_keys if k and k not in wanted)
+    other = sorted(k for k in gone_keys if k and k not in wanted)
+    not_tag = [k for k in came_keys if gone_keys.get(k) != came_keys[k]] + \
+              [k for k in gone_keys if k not in came_keys]
+    if extra or other:
+        names = list(dict.fromkeys(extra + other))
+        return (f"{len(names)} changed symbol lines are "
+                f"not in the log's list of {len(wanted)} missing symbols: {_named(names)}. "
+                "Tag only the reported symbols and leave every other line as it was")
+    if not_tag:
+        names = sorted(set(not_tag))
+        return (f"{len(names)} reported symbols were removed or retyped instead of getting a tag "
+                f"inserted: {_named(names)}; change them only by inserting a "
+                "(tag) before the name")
+    return None
+
+
+def _symbols(worktree: Path, log_lines: list[str], target: Architecture, changed: set[str],
+             originals: dict[str, str] | None = None) -> list[Verdict]:
     edited = [p for p in changed if ".symbols" in PurePosixPath(p).name]
     if not edited:
         return []
     missing = patterns.missing_symbols(log_lines)
     if not missing:
         return []
+    originals = originals or {}
     out = []
     for path in edited:
         text = _read(worktree, path) or ""
-        misplaced = [l for l in text.split("\n") if re.search(r"@\S+\s+\S*\((?:optional|arch=)[^)]*\)", l)]
+        bad = syntax_guard.symbols_lint(text)
+        if bad:
+            numbers = ", ".join(str(n) for n, _, _ in bad[:MAX_LISTED]) + (" ..." if len(bad) > MAX_LISTED else "")
+            fix = next((f for _, _, f in bad if f), None)
+            out.append(Verdict(False, f"{path}: file has {len(bad)} unparseable lines: {numbers}; "
+                                      "dpkg-gensymbols drops them, so they tag nothing"
+                                      + (f" (for example write {fix!r})" if fix else "") + "."))
+        lines = text.split("\n")
+        misplaced = [(n, l) for n, l in enumerate(lines, 1)
+                     if re.search(r"@\S+\s+(?:\S+\s+)?\((?:optional|arch=)[^)]*\)", l)]
         if misplaced:
-            out.append(Verdict(False, f"{path}: {len(misplaced)} lines carry a tag after the symbol name, for example "
-                                      f"{misplaced[0].strip()[:90]!r}; dpkg-gensymbols reads that as the version "
+            out.append(Verdict(False, f"{path}: {len(misplaced)} lines carry a tag after the symbol name: "
+                                      + _named(f"line {n}: {l.strip()}" for n, l in misplaced)
+                                      + "; dpkg-gensymbols reads that as the version "
                                       "(\"(optional) is not a valid version\"). Tags go in parentheses before the name."))
-        still = []
+        still = []   # (line number, the line) of each reported symbol that is still untagged
         for name in missing:
-            for line in text.split("\n"):
+            for number, line in enumerate(lines, 1):
                 if name in line and "(arch=" not in line and "(optional" not in line and "(arch-bits" not in line:
-                    still.append(name)
+                    still.append((number, line.strip(), name))
                     break
         if still:
             out.append(Verdict(False, f"{path}: {len(still)} of the {len(missing)} symbols the log reports missing "
-                                      f"are still listed without an (arch=...) or (optional) tag, for example "
-                                      f"{still[0][:80]}; dpkg-gensymbols will fail on them again."))
-        else:
-            out.append(Verdict(True, f"{path}: every symbol the log reports missing is now tagged or removed."))
+                                      f"are still listed without an (arch=...) or (optional) tag: "
+                                      + _named(f"line {n}: {l}" for n, l, _ in still)
+                                      + "; dpkg-gensymbols will fail on them again."))
+            continue
+        original = originals.get(path)
+        if original is None:
+            if not bad and not misplaced:
+                out.append(Verdict(True, f"{path}: every reported-missing symbol is tagged ({len(missing)}); the "
+                                         "original file was not available, so whether anything else changed "
+                                         "was not checked."))
+            continue
+        over = _overtagging(original, text, missing)
+        if over:
+            out.append(Verdict(False, f"{path}: over-tagging: {over}."))
+        elif not bad and not misplaced:
+            out.append(Verdict(True, f"{path}: every reported-missing symbol tagged ({len(missing)}); "
+                                     "nothing else changed."))
     return out
 
 
@@ -285,6 +369,82 @@ def _sphinx(worktree: Path, log_lines: list[str], changed: set[str]) -> list[Ver
     return out
 
 
+_BYPASS_SYMBOLIC = re.compile(r"-Wl,-Bsymbolic(?![-\w])")
+_CONDITIONAL_LIBS = re.compile(r"^\s*(?:libs|libraries)\s*[+]?=|\blibs\.(?:append|extend)\(|libraries\s*=", re.M)
+
+
+def _links_library(text: str, name: str) -> list[str]:
+    """Lines (stripped) of a setup.py that still link -l<name> unconditionally."""
+    flag = re.compile(r"""["']-l""" + re.escape(name) + r"""["']""")
+    quoted = re.compile(r"""["']""" + re.escape(name) + r"""["']""")
+    found = []
+    for line in text.split("\n"):
+        if line.lstrip().startswith("#"):
+            continue
+        if flag.search(line):
+            found.append(line.strip())
+            continue
+        if not quoted.search(line) or not _CONDITIONAL_LIBS.search(line):
+            continue
+        head, sep, tail = line.partition(" else ")
+        if sep and " if " in head and not quoted.search(head) and quoted.search(tail):
+            continue   # `libs = [...] if _extra_objs else ["X", ...]`: X only when nothing was unpacked
+        found.append(line.strip())
+    return found
+
+
+def _static_shim(worktree: Path, log_lines: list[str], changed: set[str]) -> list[Verdict]:
+    """A non-PIC static archive pulled into a Python extension (pybigwig class):
+    the one repair that passed the validator needs four pieces, and a setup.py
+    that has some of them still fails the link (replays/pybigwig-verified-static-shim.json)."""
+    edited = [p for p in sorted(changed) if PurePosixPath(p).name == "setup.py"]
+    if not edited:
+        return []
+    hits = [m for line in log_lines for m in [patterns._NONPIC.search(line)] if m]
+    if not hits:
+        return []
+    name = hits[0].group("name")
+    symbols = list(dict.fromkeys(re.sub(r"@.*$", "", m.group("symbol")) for m in hits))
+    out = []
+    for path in edited:
+        text = _read(worktree, path)
+        if text is None:
+            continue
+        missing = []
+        still = _links_library(text, name)
+        if still:
+            missing.append(f"(a) setup.py still links lib{name} unconditionally ({still[0]}); the library has "
+                           f"to be dropped from the link when its objects are linked directly")
+        if not (re.search(r"extra_objects", text) or re.search(r"""["']ar["']\s*,\s*["']x["']|\bar x\b""", text)):
+            missing.append(f"(b) no step links the archive's objects (unpack lib{name}.a with `ar x` and pass the "
+                           "objects as extra_objects)")
+        unshimmed = [sym for sym in symbols
+                     if not re.search(r"visibility\W{0,6}hidden\W{0,12}[^;]{0,40}\*\s*" + re.escape(sym) + r"\b", text)]
+        if unshimmed:
+            missing.append("(c) no hidden shim defines " + ", ".join(unshimmed)
+                           + " (a `FILE *" + unshimmed[0] + "` with __attribute__((visibility(\"hidden\"))) "
+                           "in a small C file added to sources), so the PC32 relocations against it stay illegal "
+                           "in a shared object")
+        if not _BYPASS_SYMBOLIC.search(text):
+            missing.append("(d) -Wl,-Bsymbolic is not passed (extra_link_args), so the references are not bound "
+                           "inside the extension")
+        if not missing:
+            out.append(Verdict(True, f"{path}: lib{name}.a is unpacked and its objects linked, lib{name} is no "
+                                     f"longer linked, {'/'.join(symbols)} is defined by a hidden shim and "
+                                     "-Wl,-Bsymbolic is passed: the four pieces of the verified static-archive repair."))
+            continue
+        from .patterns import invocation_paragraph
+        out.append(Verdict(False, f"{path}: the non-PIC archive lib{name}.a will still fail to link into the "
+                                  "extension; the verified repair (recipe static-archive-shim) needs four pieces "
+                                  "and this edit lacks " + "; ".join(missing) + ". "
+                                  + invocation_paragraph("static-archive-shim", path,
+                                                         f"lib{name}.so is missing so the non-PIC archive is "
+                                                         "linked into the extension")
+                                  + " (The recipe refuses a setup.py that already sets extra_objects: restore "
+                                    "the original line first, or add the missing pieces to your own edit.)"))
+    return out
+
+
 def predict(worktree: Path, diagnostics, target: Architecture | None, *, changed: set[str],
             originals: dict[str, str] | None = None, log_lines: list[str] = ()) -> list[Verdict]:
     """Verdicts for the initial diagnostics against the edited worktree."""
@@ -307,9 +467,10 @@ def predict(worktree: Path, diagnostics, target: Architecture | None, *, changed
     if rust:
         out.append(rust)
     out.extend(_rules(worktree, log_text, target, changed, originals.get("input/debian/rules")))
-    out.extend(_symbols(worktree, list(log_lines), target, changed))
+    out.extend(_symbols(worktree, list(log_lines), target, changed, originals))
     out.extend(_cmake(worktree, list(log_lines), changed))
     out.extend(_sphinx(worktree, list(log_lines), changed))
+    out.extend(_static_shim(worktree, list(log_lines), changed))
     return out
 
 

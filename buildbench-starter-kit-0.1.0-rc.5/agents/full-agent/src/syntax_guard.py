@@ -71,6 +71,7 @@ class Problem:
     path: str
     message: str
     line: int | None = None          # 1-based, in the text after the batch
+    hard: bool = False               # an unchanged resend does not bypass it
 
 
 # --- helpers -----------------------------------------------------------------
@@ -301,22 +302,94 @@ def _make(before: str, after: str, path: str) -> list[Problem]:
     return found
 
 
+# dpkg-gensymbols (Dpkg::Shlibs::SymbolFile) reads
+#   ' [(tag|tag2=value)]symbol[@Base] minimal-version [dependency-id]'
+# with the tag group glued to the symbol. A space after the tag group makes the
+# group the symbol and the real symbol the version, so dpkg warns "failed to
+# parse line" and drops the line (libbpp-qt, 8 November: ' (optional) sym' was
+# accepted and tagged nothing). libbpp-core rc3 wrote the tag after the version
+# and rc3b put it in column 0, which tagged all 4,130 lines to no effect.
+_QUOTED = r"\"(?:[^\"\\]|\\.)*\"(?:@\S*)?"
 _SYMBOL_LINE = re.compile(
-    r"^ (?:\((?P<tags>[^)]*)\))?(?P<symbol>\"(?:[^\"\\]|\\.)*\"|\S+)\s+(?P<version>\S+)")
+    r"^[ \t]+(?:\((?P<tags>[^()]*)\))?(?P<symbol>" + _QUOTED + r"|(?!\()\S+)"
+    r"[ \t]+(?P<version>\S+)(?:[ \t]+(?P<depid>\d+))?[ \t]*$")
 _DEB_VERSION = re.compile(r"^(?:\d+:)?[0-9][A-Za-z0-9.+~-]*$")
+_TAG_GROUP = re.compile(r"\([^()]*\)")
+_SYMBOL_TAIL = re.compile(r"^\s*(?P<symbol>" + _QUOTED + r"|\S+)\s+(?P<version>\S+)\s*(?P<depid>\d+)?\s*$")
+_HEADER_LINE = re.compile(r"^[^\s@(|*#]\S*[ \t]+\S+(?:[ \t]+\S.*)?$")
+MAX_SYMBOL_LINES = 200_000
+
+
+def _symbol_line_ok(line: str) -> re.Match | None:
+    m = _SYMBOL_LINE.match(line)
+    if m is None:
+        return None
+    version = m.group("version")
+    if version != "#MINVER#" and not _DEB_VERSION.match(version):
+        return None
+    return m
+
+
+def _glued(line: str) -> str | None:
+    """The line as dpkg wants it (one glued tag group before the symbol), when
+    that is a mechanical rewrite of ``line``; None when it is not."""
+    quoted = re.findall(r'"(?:[^"\\]|\\.)*"', line)       # "f()@Base" holds "()" itself
+    masked = re.sub(r'"(?:[^"\\]|\\.)*"', "\0", line)
+    inner = [g[1:-1] for g in _TAG_GROUP.findall(masked)]
+    rest = _TAG_GROUP.sub(" ", masked).strip()
+    m = _SYMBOL_TAIL.match(rest)
+    if m is None or ("@" not in m.group("symbol") and "\0" not in m.group("symbol")):
+        return None
+    symbol = m.group("symbol")
+    for text in quoted[:1]:
+        symbol = symbol.replace("\0", text, 1)
+    tags = "|".join(dict.fromkeys(t.strip() for t in "|".join(inner).split("|") if t.strip()))
+    candidate = " " + (f"({tags})" if tags else "") + symbol + " " + m.group("version")
+    if m.group("depid"):
+        candidate += " " + m.group("depid")
+    return candidate if _symbol_line_ok(candidate) else None
+
+
+def symbols_lint(text: str) -> list[tuple[int, str, str | None]]:
+    """(line number, line, corrected line or None) for every line of a symbols
+    file that dpkg's parser would reject or drop. The whole file, every time.
+
+    Accepted: the library header (' soname package minver' in column 0), '|'
+    alternative-dependency and '* Field: value' lines, comments, '#include' and
+    '#DEPRECATED:' lines, and symbol lines. '#MISSING:' markers are what
+    dpkg-gensymbols writes into its own output; they do not belong in a source
+    symbols file and are refused.
+    """
+    found = []
+    for number, line in enumerate(text.split("\n")[:MAX_SYMBOL_LINES], 1):
+        line = line.rstrip("\r")
+        if not line.strip():
+            continue
+        if line.startswith("#"):
+            if line.startswith("#MISSING:"):
+                body = line.split("#", 2)[-1].strip()
+                found.append((number, line.strip()[:200], (" " + body) if body else None))
+            continue
+        if line[0] in " \t":
+            if _symbol_line_ok(line) is None:
+                found.append((number, line.strip()[:200], _glued(line)))
+            continue
+        if line.startswith("|") or re.match(r"^\*\s+[\w-]+:", line):
+            continue
+        if "@" in line or _HEADER_LINE.match(line) is None:
+            found.append((number, line.strip()[:200], _glued(line)))
+    return found
 
 
 def _symbols_issues(text: str) -> Counter:
-    """Lines dpkg-gensymbols rejects or tags that can never match."""
+    """Tags that can never match: arch= names that are not Debian architectures."""
     from .archnames import DEBIAN_NAMES
     issues = Counter()
-    for line in text.split("\n"):
-        if not line.startswith(" ") or not line.strip():
+    for line in text.split("\n")[:MAX_SYMBOL_LINES]:
+        if not line.startswith((" ", "\t")) or not line.strip():
             continue
-        m = _SYMBOL_LINE.match(line)
-        if m is None or (m.group("version") != "#MINVER#"
-                         and not _DEB_VERSION.match(m.group("version"))):
-            issues[("format", line.strip()[:160])] += 1
+        m = _symbol_line_ok(line)
+        if m is None:
             continue
         for tag in (m.group("tags") or "").split("|"):
             key, _, value = tag.partition("=")
@@ -330,22 +403,27 @@ def _symbols_issues(text: str) -> Counter:
 
 
 def _symbols(before: str, after: str, path: str) -> list[Problem]:
-    old, new = _symbols_issues(before), _symbols_issues(after)
+    """Whole-file grammar lint (a hard block) plus new impossible arch tags."""
     found = []
-    for (kind, detail), count in new.items():
-        if count <= old.get((kind, detail), 0):
-            continue
-        if kind == "format":
-            line = next((n for n, l in enumerate(after.split("\n"), 1) if l.strip()[:160] == detail),
-                        None)
-            found.append(Problem(path, "a symbols line that dpkg-gensymbols cannot parse "
-                                 "(expected ' [(tags)]symbol@VERSION minimal-version', with a "
-                                 f"C++ name in quotes after a (c++) tag): {detail}", line))
-        else:
+    bad = symbols_lint(after)
+    if bad:
+        numbers = ", ".join(str(n) for n, _, _ in bad[:20]) + (" ..." if len(bad) > 20 else "")
+        shown = []
+        for number, line, fix in bad[:3]:
+            shown.append(f"line {number} {line[:120]!r}" + (f" should be {fix[:140]!r}" if fix else
+                                                           " has no valid form"))
+        found.append(Problem(
+            path, f"file has {len(bad)} unparseable lines: {numbers}. dpkg-gensymbols cannot parse "
+            "them and silently drops them, so they tag nothing. The form is "
+            "' [(tag|tag2)]symbol@Base minimal-version': one space, the tag group glued to the "
+            "symbol (no space after the ')'), tags before the version, never after. "
+            + "; ".join(shown), bad[0][0], hard=True))
+    old = _symbols_issues(before)
+    for (kind, detail), count in _symbols_issues(after).items():
+        if count > old.get((kind, detail), 0):
             found.append(Problem(path, f"the tag arch={detail} names no Debian architecture, "
                                  "so it never matches: symbols tags take Debian names such as "
-                                 "arm64, amd64, riscv64 (not aarch64 or x86_64)"))
-        if len(found) >= 3:
+                                 "arm64, amd64, riscv64 (not aarch64 or x86_64)", hard=True))
             break
     return found
 
@@ -825,7 +903,7 @@ def check_batch(snapshot, edits, *, worktree: Path | None = None,
         if not problems:
             continue
         index = _culprit(snapshot, edits, path, originals, problems, finals[path])
-        if edit_signature(edits[index]) in allow:
+        if edit_signature(edits[index]) in allow and not any(p.hard for p in problems):
             continue
         return index, problems, finals[path]
     return None
@@ -859,14 +937,19 @@ def feedback(index: int, edits, problems: list[Problem], after: str, hypothesis:
     excerpt = _excerpt(after, next((p.line for p in problems if p.line), None))
     if excerpt:
         blocks.append(f"\n=== {edit.path} after the batch, around that line ===\n{excerpt}")
+    hard = any(problem.hard for problem in problems)
     blocks += [
         "",
         f"Proposed NEW text of edit {index}: {edit.new_text[:1600]}",
         "Return exactly ONE replacement edit for this item, with path, old_text and "
         "new_text, that keeps the file well-formed (close every brace, #if and ifeq you "
         "open; use a TAB before recipe commands). Do not resend the other edits.",
-        "If you are certain the edit is correct as it is (for example the check cannot "
-        "see a macro), resend it unchanged and it will be applied.",
-        "To remove this item, return action edit with edits: [].",
     ]
+    if hard:
+        blocks.append("This is a format error, not a judgement call: the same edit sent "
+                      "again is refused again. Send the corrected line.")
+    else:
+        blocks.append("If you are certain the edit is correct as it is (for example the check "
+                      "cannot see a macro), resend it unchanged and it will be applied.")
+    blocks.append("To remove this item, return action edit with edits: [].")
     return "\n".join(blocks)

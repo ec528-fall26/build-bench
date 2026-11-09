@@ -1,5 +1,6 @@
 """Read-only validation of a sequential edit batch against a snapshot."""
 
+from collections import Counter
 import difflib
 from pathlib import PurePosixPath
 import re
@@ -114,8 +115,81 @@ def continuation_breaks(path: str, before: str, after: str) -> list[int]:
     return breaks
 
 
-def inspect_batch(snapshot, edits):
+MAX_EDIT_LINES = 200            # a single edit that changes more lines is refused ...
+MIN_REPLACE_ALL_SITES = 100     # ... unless replace_all matched at least this many places
+SYMBOLS_BUDGET_FACTOR = 2       # symbols file: changed lines <= 2 x distinct missing symbols
+EXACT_DIFF_LIMIT = 1_000_000    # above this many line pairs, count by multiset (difflib is quadratic)
+RECIPE_HINT = ('For a repeated mechanical change use the recipe channel instead of retyping '
+               'lines (for symbols files "@@recipe:symbols-tag@@" tags the reported symbols).')
+_SYMBOLS_NAME = re.compile(r"(?:.+\.)?symbols(?:\.[a-z0-9-]+)?")
+
+
+def _is_symbols(path: str) -> bool:
+    pure = PurePosixPath(path)
+    return pure.parent.name == "debian" and _SYMBOLS_NAME.fullmatch(pure.name) is not None
+
+
+def changed_line_count(before: str, after: str) -> int:
+    """Lines that differ between two texts: per difflib opcode the larger side.
+
+    Common leading and trailing lines are dropped first. A very large middle is
+    counted from the multiset of lines instead (same answer for retyped lines,
+    never slower than linear), so the count is always cheap.
+    """
+    if before == after:
+        return 0
+    old, new = before.split("\n"), after.split("\n")
+    head = 0
+    while head < len(old) and head < len(new) and old[head] == new[head]:
+        head += 1
+    tail = 0
+    while (tail < len(old) - head and tail < len(new) - head
+           and old[len(old) - 1 - tail] == new[len(new) - 1 - tail]):
+        tail += 1
+    old, new = old[head:len(old) - tail], new[head:len(new) - tail]
+    if len(old) * len(new) > EXACT_DIFF_LIMIT:
+        gone, came = Counter(old) - Counter(new), Counter(new) - Counter(old)
+        return max(sum(gone.values()), sum(came.values()))
+    matcher = difflib.SequenceMatcher(None, old, new, autojunk=False)
+    return sum(max(i2 - i1, j2 - j1) for tag, i1, i2, j1, j2 in matcher.get_opcodes()
+               if tag != "equal")
+
+
+def _size_reason(path, original, before, after, sites, replace_all, missing_symbol_count):
+    """Why an edit is too large for the evidence, or None (see the module budgets).
+
+    Never raises: a failure of the check lets the edit through.
+    """
+    try:
+        return _size_reason_unsafe(path, original, before, after, sites, replace_all,
+                                   missing_symbol_count)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _size_reason_unsafe(path, original, before, after, sites, replace_all, missing_symbol_count):
+    if _is_symbols(path) and missing_symbol_count and missing_symbol_count > 0:
+        total = changed_line_count(original, after)
+        limit = SYMBOLS_BUDGET_FACTOR * missing_symbol_count
+        if total > limit:
+            return (f"symbols_edit_too_large: {path} would have {total} changed lines, but the log "
+                    f"reports {missing_symbol_count} missing symbols (allowed: {limit}). Tag only "
+                    f"the reported symbols and leave every other line as it is. {RECIPE_HINT}")
+    changed = changed_line_count(before, after)
+    if changed > MAX_EDIT_LINES and not (replace_all and sites >= MIN_REPLACE_ALL_SITES):
+        return (f"edit_too_large: this edit changes {changed} lines (limit {MAX_EDIT_LINES}, "
+                f"unless replace_all matches at least {MIN_REPLACE_ALL_SITES} places). Change "
+                f"only the lines the error names. {RECIPE_HINT}")
+    return None
+
+
+def inspect_batch(snapshot, edits, missing_symbol_count=None):
     """Return feedback on failure, or an empty string on success.
+
+    ``missing_symbol_count`` is the number of distinct symbols the build log
+    reports missing; with it, an edit that leaves a debian/*.symbols* file with
+    more than twice that many changed lines is rejected. None (or 0) disables
+    the symbols rule; the 200-line rule always applies.
 
     Paths, policy access and file types have already been checked by
     CandidateSnapshot.capture. Simulate successful edits in order; rejected
@@ -125,6 +199,7 @@ def inspect_batch(snapshot, edits):
         saved.path: saved.content.decode("utf-8")
         for saved in snapshot.files
     }
+    originals = dict(current)
     issues = []
     seen = {}
 
@@ -158,12 +233,16 @@ def inspect_batch(snapshot, edits):
             edit.new_text.encode("utf-8")
             before = current[edit.path]
             positions = _matches(before, edit.old_text)
-            after, _ = replacement(before, edit)
+            after, sites = replacement(before, edit)
             reason = _policy_reason(edit.path, before, after)
             if reason:
                 raise EditRejected(reason)
             if len(after.encode("utf-8")) > MAX_FILE_BYTES:
                 raise EditRejected("result_too_large")
+            too_large = _size_reason(edit.path, originals.get(edit.path, before), before, after,
+                                     sites, getattr(edit, "replace_all", False), missing_symbol_count)
+            if too_large:
+                raise EditRejected(too_large)
             broken = continuation_breaks(edit.path, before, after)
             if broken:
                 raise EditRejected(f"{CONTINUATION_BREAK}: result line {broken[0]}")
@@ -198,8 +277,8 @@ def _covered(original, earlier, edit, before):
     return text == before
 
 
-def validate_batch(snapshot, edits):
-    issues = inspect_batch(snapshot, edits)
+def validate_batch(snapshot, edits, missing_symbol_count=None):
+    issues = inspect_batch(snapshot, edits, missing_symbol_count)
     if not issues:
         return ""
 
@@ -250,15 +329,15 @@ def validate_batch(snapshot, edits):
 FOCUSED_PREFIX = "=== Focused edit correction ==="
 
 
-def focused_feedback(snapshot, edits, hypothesis):
+def focused_feedback(snapshot, edits, hypothesis, missing_symbol_count=None):
     """Return the first failing index and a bounded correction request."""
-    issues = inspect_batch(snapshot, edits)
+    issues = inspect_batch(snapshot, edits, missing_symbol_count)
     if not issues:
         return None, ""
 
     index, edit, reason, duplicate, before, positions = issues[0]
     # The prefix ending at this item reproduces its sequential input state.
-    detail = validate_batch(snapshot, edits[:index + 1])
+    detail = validate_batch(snapshot, edits[:index + 1], missing_symbol_count)
     detail = detail.replace(
         "Resubmit a complete corrected batch, including any valid edits you "
         "still want. Use unique surrounding context copied exactly from source.",

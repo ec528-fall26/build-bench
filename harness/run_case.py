@@ -110,14 +110,15 @@ def load_agent(agent_dir: Path) -> SimpleNamespace:
     )
     if agent.full:
         from src.config import config_from_env
-        from src.contracts import BuildResult, Diagnostic
+        from src.contracts import Budget, BuildResult, Diagnostic
         from src.evidence import diagnose
         from src.model_adapter import client_completion
 
         agent.__dict__.update(
             run_agent=agent_main.run_agent, result_record=agent_main.result_record,
             config_from_env=config_from_env, client_completion=client_completion,
-            diagnose=diagnose, BuildResult=BuildResult, Diagnostic=Diagnostic,
+            diagnose=diagnose, BuildResult=BuildResult, Diagnostic=Diagnostic, Budget=Budget,
+            no_build_max_attempts=getattr(agent_main, "NO_BUILD_MAX_ATTEMPTS", 3),
         )
     return agent
 
@@ -268,12 +269,19 @@ def run_full_agent(agent, context, log: Path, model, manifest: dict, bundle: Pat
     else:
         complete = agent.client_completion(model)
     config = agent.config_from_env()
+    # BB_AGENT_USE_BUILD_FEEDBACK=0 imitates a hosted run, which has no builds
+    # and so the no-build attempt cap; main.run_agent applies the cap only when
+    # no adapter is passed, and the harness always passes one.
+    budget = None
+    if not config.use_build_feedback and config.use_no_build_control:
+        budget = replace(agent.Budget(), max_attempts=min(agent.Budget().max_attempts,
+                                                          agent.no_build_max_attempts))
     feedback = LocalBuildFeedback(bundle, run_dir / "builds", agent, excerpt=excerpt,
                                   runner=runner)
     adapter = None
     try:
         result, adapter = agent.run_agent(
-            context, log, complete, config=config, build_feedback=feedback,
+            context, log, complete, config=config, build_feedback=feedback, budget=budget,
             patch_policy=manifest["patch_policy"],
             package=Path(manifest["build"]["recipe"]).name.split("_")[0])
     finally:

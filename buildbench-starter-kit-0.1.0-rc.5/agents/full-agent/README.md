@@ -27,6 +27,40 @@ it has no build feedback, so edits are investigated and revised but submitted
 untested. Locally, `harness/run_case.py --agent full-agent` runs the same loop
 with real builds (Part D). Results: `docs/part5-findings.md` §9c.
 
+Version 0.6.0-rc.5 (9 November): recipes, edit gates, readable dependencies, loop control
+(`docs/campaign-2026-11-09/implementation.md`):
+- `recipes/`: nine verified repairs as one registry (symbols-tag,
+  strip-bsymbolic-functions, o2-on-test-segfault, optimize-guard-test-memory,
+  serial-helper-build, cmake-redirect-imported-dirs, replace-removed-command,
+  arch-flags, static-archive-shim). The model asks for one with an edit whose
+  `old_text` is `@@recipe:<id>@@`; `expand_macros` re-recognises the log
+  signature, checks the tree, and writes the exact edit, or refuses with the
+  reason. `patterns.recognise` now ranks log blocks by distance from the first
+  fatal error and each block leads with its one-line invocation;
+- edit gates: `syntax_guard.symbols_lint` checks a whole `.symbols` file
+  against dpkg's grammar (glued tag groups, no tag after the version, no
+  `#MISSING` markers) and its findings are not waived by an unchanged resend;
+  `edit_preflight` refuses a symbols file edit larger than twice the reported
+  missing symbols and any single edit over 200 changed lines; `verify.py`
+  answers "unknown" rather than "fixed" when it cannot see the line, and checks
+  over-tagging; `rules_guard` refuses compiler-flag overrides on `dh_auto_*`,
+  `DEB_BUILD_OPTIONS` tokens in `DEB_BUILD_MAINT_OPTIONS`, and `|| true` after
+  build or test steps;
+- readable dependencies: `dep_audit.py` opens the case's dependency debs and
+  reports dangling `.so` links, empty runtime packages and CMake/pkg-config
+  paths that do not exist, next to the architecture block (30 s cap, silent
+  when irrelevant). `deb_archive` streams gz/xz/bz2/zst with a size cap; zstd
+  uses the one pinned wheel `zstandard==0.25.0` imported lazily (every path
+  works without it). `search` has time and byte budgets instead of a file
+  count and says what it did not scan; every tool failure becomes a result
+  line; an agent exception after a changed worktree is reported as completed;
+- loop control: an all-fixed verdict allows two more read-only turns, then a
+  controller stop; an identical tool request is answered with a stub that does
+  not count; investigation notes at 8 and 12 tool turns; the reply format asks
+  for the JSON object only, reasoning text is stripped, and a malformed reply
+  is answered inside the same conversation; attempt feedback opens with a
+  VERDICT line; turn records carry `finish_reason` and completion tokens.
+
 Version 0.6.0-rc.4 (9 November), rc.3 with the guard rules of 0.5.2:
 - `src/rules_guard.py`: refuses tagging a whole symbols file (`(optional)` or
   `(arch=...)`: libbpp-core's degenerate pass in rc.3) and breaking `dh $@`

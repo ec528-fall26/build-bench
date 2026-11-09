@@ -40,7 +40,7 @@ from . import arch_model, arch_slice, patterns, prompts, test_failures, ffi_anal
 from .contracts import AgentConfig, Budget, BuildResult, Diagnostic, ModelTurn, ToolRequest
 from .edit_applier import LOGGER as EDIT_LOGGER
 from .edit_preflight import FOCUSED_PREFIX
-from .loop import LoopRequest
+from .loop import LoopRequest, SHOWN_TOOL_RESULTS, STUB_PREFIX
 from .model_client import MODEL_ID, ModelCallFailed, request_completion
 from .reply import extract_action_json, parse_turn
 from .request_trace import trace_completion
@@ -54,7 +54,7 @@ from .tools import run_tool
 Completion = tuple[str, "str | None", dict]
 Complete = Callable[[list[dict]], Completion]
 
-MAX_TOOL_RESULTS = 12  # most recent results shown; older ones are counted
+MAX_TOOL_RESULTS = SHOWN_TOOL_RESULTS  # most recent results shown; older ones are counted
 MIN_REQUEST_SECONDS = 30  # do not start a request that could not finish in time
 NUDGE_AFTER = 4  # tool turns in a row without an edit before the model is asked to act
 TOOL_TURN_LIMIT = 6  # ... and before tools are switched off until its next edit
@@ -140,6 +140,12 @@ def client_completion(client) -> Complete:
             text, finish = choice["message"]["content"], choice.get("finish_reason")
         except (KeyError, IndexError, TypeError):
             text, finish = "", None
+        if isinstance(text, list):  # content as typed parts: keep the text parts, not a reasoning part
+            text = "".join(part.get("text", "") for part in text
+                           if isinstance(part, dict) and part.get("type") in (None, "text")
+                           and isinstance(part.get("text"), str))
+        # A separate reasoning field (message.reasoning / reasoning_content) is
+        # never read: it is neither the reply nor evidence.
         return (text if isinstance(text, str) else ""), finish, usage
 
     return complete
@@ -169,10 +175,14 @@ def _distinct(results: list) -> tuple[list, int]:
     """Each identical request once (its latest result), and how many repeats."""
     latest = {}
     for result in results:
+        # A stub ("Identical to your request at turn N") never replaces the real
+        # result; _tool_results_block reports it in a note.
+        if result.text.startswith(STUB_PREFIX):
+            continue
         key = (result.request.tool, json.dumps(result.request.args, sort_keys=True, default=str))
         latest.pop(key, None)
         latest[key] = result
-    return list(latest.values()), len(results) - len(latest)
+    return list(latest.values()), len([r for r in results if not r.text.startswith(STUB_PREFIX)]) - len(latest)
 
 
 def _asks_for_tools(text: str) -> bool:
@@ -318,7 +328,8 @@ class ModelAdapter:
             tests = test_failures.render(log_path, worktree, arch)
             self.pattern = "\n\n".join(block for block in (self.pattern, tests) if block)
             self.architecture = self._architecture_block(worktree, arch, diagnostics,
-                                                         getattr(context, "case_id", None))
+                                                         getattr(context, "case_id", None),
+                                                         log_path)
         self.clock = clock
         self.started = clock()
         self.turns: list[dict] = []    # one summary per model call, for the run record
@@ -331,6 +342,10 @@ class ModelAdapter:
         self._tokens: int | None = 0
         self._known_tokens = 0
         self._investigating = 0  # tool turns since the last edit
+        self._uncounted_seen = 0  # loop-refused or stubbed tool turns already subtracted
+        self._last_messages: list[dict] | None = None  # the request behind the last reply
+        self._last_reply = ""
+        self._last_state = None
         self._tool_turns = 0     # tool turns in the whole run
         self._rejections = _Rejections()
         EDIT_LOGGER.addHandler(self._rejections)
@@ -339,7 +354,7 @@ class ModelAdapter:
         EDIT_LOGGER.removeHandler(self._rejections)
 
     @staticmethod
-    def _architecture_block(worktree, arch_name: str, diagnostics, case_id) -> str:
+    def _architecture_block(worktree, arch_name: str, diagnostics, case_id, log_path=None) -> str:
         """What differs between the two architectures, and where this package's
         build depends on it (arch_model, arch_slice); "" when the target is unknown."""
         target = arch_model.lookup(arch_name)
@@ -354,7 +369,16 @@ class ModelAdapter:
                      arch_slice.render(arch_slice.scan(worktree, target), diagnostics, target)]
         except Exception:  # evidence must never break a run
             return ""
-        return "\n\n".join(part for part in parts if part)
+        # Dependency facts (dep_audit, written separately): after the architecture
+        # block; skipped silently when the module is absent or fails.
+        try:
+            import importlib
+            dep_audit = importlib.import_module(f"{__package__}.dep_audit")
+            parts.append(dep_audit.render(worktree, patterns._log_lines(log_path),
+                                          arch_name or target.dpkg))
+        except Exception:
+            pass
+        return "\n\n".join(part for part in parts if isinstance(part, str) and part)
 
     def _tool_turn_limit(self) -> int:
         return 2 if self.repair_strategy == "small-group" else TOOL_TURN_LIMIT
@@ -378,9 +402,17 @@ class ModelAdapter:
     def __call__(self, request: LoopRequest) -> tuple[ModelTurn, dict]:
         if request.output_verification:
             return self._verify_outputs(request)
+        # The loop did not run these tool turns (identical request, or refused):
+        # they are not investigation either.
+        skipped = request.uncounted_tool_turns - self._uncounted_seen
+        if skipped > 0:
+            self._uncounted_seen = request.uncounted_tool_turns
+            self._investigating = max(0, self._investigating - skipped)
+            self._tool_turns = max(0, self._tool_turns - skipped)
         messages = self.messages(request)
         started = self.clock()
         text, finish, usage = self.complete(messages)
+        calls = [{"finish_reason": finish, "completion_tokens": usage.get("output_tokens")}]
         self._record_known_usage(usage)
         correcting = request.edit_validation_feedback.startswith(FOCUSED_PREFIX)
         allow_tools = self.config.use_tools and (correcting or self._tools_left())
@@ -408,10 +440,13 @@ class ModelAdapter:
                     (TOOLS_OFF_FOLLOW_UP if refused else FOLLOW_UP)
                 )}])
             self._record_known_usage(more)
+            calls.append({"finish_reason": finish, "completion_tokens": more.get("output_tokens")})
             usage = _add(usage, more)
             turn = parse_turn(text, finish_reason=finish, allow_tools=allow_tools,
                               allow_review=bool(request.proposal_review))
         self._last_turn = turn
+        self._last_messages, self._last_reply = messages, text
+        self._last_state = self._state(request)
         if turn.action == "tool" and not correcting:
             self._investigating += 1
             self._tool_turns += 1
@@ -428,6 +463,8 @@ class ModelAdapter:
             "repair_strategy": self.repair_strategy,
             "tools": [r.tool for r in turn.tool_requests], "edits": len(turn.edits),
             "reason": turn.reason, "finish_reason": finish, "usage": dict(usage),
+            # One entry per model call of this turn (a follow-up is a second call).
+            "calls": calls, "completion_tokens": usage.get("output_tokens"),
             "follow_up": follow_up,
             "edit_validation_feedback": request.edit_validation_feedback,
             "proposal_review": request.proposal_review,
@@ -465,8 +502,34 @@ class ModelAdapter:
         self._last_turn = turn
         return turn, usage
 
+    @staticmethod
+    def _state(request: LoopRequest) -> tuple:
+        """What the model is shown besides controller notes; equal states mean a
+        rebuilt request would repeat the evidence the last one carried."""
+        return (request.latest_attempt.number if request.latest_attempt else 0,
+                len(request.tool_results), sum(len(r.text) for r in request.tool_results),
+                request.edit_validation_feedback, request.own_edits, request.proposal_review,
+                request.prediction)
+
+    def _continuation(self, request: LoopRequest) -> list[dict] | None:
+        """After a malformed reply, continue the conversation instead of
+        rebuilding it: the last request (which carried the evidence), the
+        reply, and a short message saying what was wrong. None when the state
+        changed or the last reply was unusable as a message."""
+        last = self._last_turn
+        if (last is None or last.action != "malformed" or not self._last_messages
+                or not self._last_reply.strip() or request.proposal_review
+                or request.controller_note or self.fresh_review
+                or request.edit_validation_feedback.startswith(FOCUSED_PREFIX)
+                or self._state(request) != self._last_state):
+            return None
+        return self._last_messages + [
+            {"role": "assistant", "content": self._last_reply},
+            {"role": "user", "content": _body(prompts.malformed_message(last, self.config))},
+        ]
+
     def messages(self, request: LoopRequest) -> list[dict]:
-        messages = self._repair_messages(request)
+        messages = self._continuation(request) or self._repair_messages(request)
         if request.output_verification_feedback:
             # Controller state, not attempt history: retain it even in fresh
             # review, malformed-response recovery, and focused edit correction.
@@ -531,7 +594,8 @@ class ModelAdapter:
 
         latest = request.latest_attempt
         if latest is not None and latest.number != self._seen_attempt:
-            self._new_attempt(latest, request.current_build, request.notes, request.prediction)
+            self._new_attempt(latest, request.current_build, request.notes, request.prediction,
+                              request.prediction_status, request.prediction_reason)
         if latest is not None:
             parts.append(
                 repair_strategy.attempt_summary(latest, request.current_build)
@@ -639,6 +703,8 @@ class ModelAdapter:
         if not request.tool_results:
             return ""
         distinct, repeats = _distinct(request.tool_results)
+        stubs = [r for r in request.tool_results if r.text.startswith(STUB_PREFIX)]
+        repeats += len(stubs)
         shown = distinct[-MAX_TOOL_RESULTS:]
         hidden = len(distinct) - len(shown)
         notes = []
@@ -646,6 +712,9 @@ class ModelAdapter:
             notes.append(f"{repeats} of your requests repeated an earlier one and "
                          f"{'are' if repeats != 1 else 'is'} shown once. A repeated request "
                          "returns the same result: try something different instead.")
+        for stub in stubs[-3:]:
+            args = json.dumps(stub.request.args, ensure_ascii=False, default=str)
+            notes.append(f"{stub.request.tool} {args}: {stub.text}.")
         if hidden:
             notes.append(f"{hidden} earlier tool result{'s' * (hidden != 1)} not shown again.")
         note = " ".join(notes)
@@ -735,7 +804,8 @@ class ModelAdapter:
         return "\n\n".join(blocks)
 
     def _new_attempt(self, attempt, current_build: BuildResult | None,
-                     notes: list[str] = (), prediction: str = "") -> None:
+                     notes: list[str] = (), prediction: str = "",
+                     status: str = "", reason: str = "") -> None:
         """Word the result of an attempt the model has not been told about yet."""
         self._seen_attempt = attempt.number
         rejections = self._rejections.messages[:]
@@ -754,11 +824,14 @@ class ModelAdapter:
             rejections=rejections,
             undone=undone,
             same_first_error=same,
+            verdict=prompts.verdict_line(attempt, status, reason),
+            notes=list(notes)[:prompts.MAX_NOTES],
+            prediction=prediction,
             note="\n\n".join(filter(None, [
-                ("=== Changes the controller made to this batch before applying it ===\n"
-                 + "\n".join(f"- {note}" for note in notes)) if notes else "",
+                ("=== More changes the controller made to this batch before applying it ===\n"
+                 + "\n".join(f"- {note}" for note in notes[prompts.MAX_NOTES:]))
+                if len(notes) > prompts.MAX_NOTES else "",
                 _edit_outcomes(attempt, rejections, undone=undone),
                 self._rejection_help(attempt, rejections),
-                prediction,
             ])),
         ))

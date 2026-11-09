@@ -384,10 +384,93 @@ Added for the next run (unit-tested):
 | pybigwig | correctly not repaired: no edit, 4 turns, 18 s, 51.6 k in | The model's stop reason: the static archive is not PIC, the package has no libBigWig sources, the runtime library package is broken; "the fix must be made in the libbigwig package". Nine turns and a wrong edit in round 10. |
 | libbpp-core | **build passes**, but by a degenerate edit: attempt budget (8), 25 turns, 323 k in | The model ignored the macro and prefixed `(arch=!amd64) ` to all 4,130 symbol lines without the leading space, so dpkg-gensymbols read each as a library header line named `(arch=!amd64)`; it then only warns ("some libraries disappeared: (arch=!amd64)", "new symbols appeared") and the package builds, with its amd64 symbols check effectively disabled. The validator counts it; a maintainer would not. Two causes found in the run: the symbols verdict counted every `-` line of the whole log ("202 missing") and the model took `#MISSING:` for file content. Both fixed; re-run queued. |
 
-Local tally: rcran, libunwind, rust-subversion, html-xml-utils, ectrans,
-libbpp-qt, python-intbitset, libbpp-core (degenerate) repaired (8 of 11).
+Local tally after round 11: rcran, libunwind, rust-subversion, html-xml-utils, ectrans,
+libbpp-qt, python-intbitset, libbpp-core (degenerate; see round 12) repaired (8 of 11).
 pybigwig and libmceliece cannot be repaired inside the package; libevtx
 needs the crash located.
+
+## Round 12: the symbols macro and deb_contents, live (9 November, 01:24 UTC)
+
+| Case | Outcome | What happened |
+| --- | --- | --- |
+| libbpp-core | **repaired properly**, 1 attempt, 17 turns, 248 k in, 2,340 s | The model sent the one macro edit; the agent tagged the 12 distinct symbols the log reports missing with `(arch=!amd64)` in dpkg's syntax and told the model so ("Macro edit expanded: tagged 12 of the 12 symbols"); the model stopped. 13 changed lines in a 4,131-line file, against 4,130 in the degenerate round-11 edit. |
+| pybigwig | correctly not repaired: no edit, 10 turns, 115 k in, 50 s | The model called `deb_contents` five times on its own and stopped with the exact cause: "the shared libBigWig.so provided by libbigwig-dev is a broken symlink (the actual shared library is missing in the runtime package). This cannot be fixed by editing pybigwig's source or build files." That is the fact the round-10 agent guessed wrong and the round-11 agent asserted from the log alone; now it is read from the dependency package. |
+
+Local tally after round 12: 8 of 11 build, all by edits a maintainer could
+accept (rcran, libunwind, rust-subversion, html-xml-utils, ectrans, libbpp-qt,
+python-intbitset, libbpp-core); pybigwig and libmceliece are correctly
+reported as not repairable inside the package; libevtx remains open.
+
+## Round 13: the multi-agent campaign (9 November, 00:30-04:30 UTC)
+
+Two orchestrated campaigns (76 Sonnet 5.5 agents, about 6 M tokens) audited every
+case, reviewed the agent, swept the literature and the Launchpad archive, and
+then settled the open cases by running candidate fixes through the real
+validator. The deliverables are in `docs/campaign-2026-11-09/`: `brief.md`,
+`case-table.md` (the authoritative per-case account, superseding the
+narratives in rounds 5-12 where they differ), `experiments.md`, and
+`master-plan.md`. The verified fixes are replay files in `harness/replays/`.
+
+What changed in the picture:
+
+- **Every local case has a validator-accepted fix (11 of 11).** Four were
+  thought unrepairable or unexplained. libmceliece: strip Ubuntu's default
+  `-Wl,-Bsymbolic-functions` (the BFD assertion's trigger; bindnow and LTO
+  are not). libevtx: the libyal fault-injection test harness under amd64's
+  default `-O3`; Ubuntu's own fix (`-O2` on amd64) and a one-token header
+  guard both pass. pybigwig: the archive need not be PIC; a hidden `stderr`
+  shim plus `-Wl,-Bsymbolic` links it, validator-verified. html-xml-utils:
+  a parallel-make race on `cexport`; a serial prebuild passes with LTO and
+  hardening kept.
+- **Two accepted repairs were accidents** (libbpp-qt: unparseable tag
+  silently dropped by dpkg; html-xml-utils: flags stripped). Both have
+  verified proper fixes now. "Validator pass" is not proof of a good edit.
+- **Structural defects in the agent**, from the reviews: the model never
+  sees its own earlier turns; 91 of 543 replies are reasoning-only with no
+  action; the symbols syntax guard rejected the valid form for 13 turns;
+  `search` stops after 100 files; our recognisers fire on 12.5 % of 200
+  public development logs. Hidden-set estimate from 108 classified Launchpad
+  failures: test-suite failures are the largest class (about 27 %).
+- **Wheels verified in the exact hosted image** on both architectures:
+  `zstandard==0.25.0` makes 3,305 of 3,394 dependency debs readable.
+
+Implementation of the master plan starts in round 14.
+
+## Round 14: 0.6.0-rc.4 live on all eleven cases (9 November, 06:09-07:48 UTC)
+
+The implemented plan (recipes, gates, readable dependencies, loop control;
+`docs/campaign-2026-11-09/implementation.md`), gpt-oss-120b, no build
+feedback, one run each. Instance runs dir `~/runs-060rc4`.
+
+| Case | rc.4 | rc.3 (round 8-12 best) |
+| --- | --- | --- |
+| rcran | repaired, 3 turns, 20 k in | repaired, 10 turns, 122 k |
+| libunwind | repaired, 4 turns, 37 k | repaired, 2 turns, 18 k |
+| rust-subversion | repaired, 13 turns, 227 k | repaired, 36 turns, 1.13 M |
+| ectrans | repaired, 5 turns, 57 k | repaired, 4 turns, 43 k |
+| libmceliece | **repaired**, 2 turns, 12 k (first time) | not repaired |
+| html-xml-utils | **repaired properly**, 4 turns, 46 k (serial cexport, LTO kept) | repaired by accident (0.3.2) |
+| libbpp-qt | repaired, 22 turns, 180 k | repaired by accident, 38 turns, 487 k |
+| python-intbitset | repaired, 3 turns, 26 k | repaired, 2 turns |
+| libbpp-core | **not repaired**: 11 of 12 symbols tagged, stopped with a NOT-fixed verdict outstanding, 26 turns, 426 k | repaired (macro), 17 turns |
+| pybigwig | **not repaired**: the model wrote its own partial unpack-the-archive edit without the stderr shim and -Bsymbolic, 15 turns, 150 k | correct stop (0) |
+| libevtx | not run: HTTP 401, the Bedrock key expired at 07:48 UTC | not repaired |
+
+Eight of ten that ran. The loop controls paid off (rust-subversion 36 to 13
+turns, libbpp-qt 38 to 22, rcran 10 to 3), the gates held (no degenerate pass),
+and two never-repaired cases repaired with maintainer-quality edits.
+
+The miss that matters: **the model never invoked a recipe.** In all eleven
+runs the `@@recipe:<id>@@` sentinel appears only inside its reasoning, where it
+reads it as "a placeholder I must replace with real file text" and then
+hand-writes the edits. libbpp-core and pybigwig were lost exactly there: the
+hand-written versions were incomplete (one symbol of twelve; no shim and no
+`-Bsymbolic`), the verdict named the remaining symbol truncated to 80
+characters so the model could not find it, and the model stopped with a
+NOT-fixed verdict outstanding. Round 15 makes the recipe path the obvious one
+(a dry-run diff preview in the opening message, an invocation the model cannot
+misread, controller completion of a partial symbols repair, a one-time stop
+bounce on an outstanding NOT-fixed verdict, and a static-shim verdict).
 
 ## x86-target cases on the arm64 instance (fixed 8 November)
 

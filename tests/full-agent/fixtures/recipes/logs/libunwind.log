@@ -1,0 +1,22 @@
+dpkg-buildpackage: info: host architecture arm64
+[...]
+libtool: link: gcc -fno-optimize-sibling-calls -g -O2 -Werror=implicit-function-declaration -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/<<PKGBUILDDIR>>=. -flto=auto -ffat-lto-objects -specs=/usr/share/dpkg/no-pie-compile.specs -Wformat -Werror=format-security -fno-stack-protector -fno-stack-clash-protection -mbranch-protection=none -fdebug-prefix-map=/<<PKGBUILDDIR>>=/u
+/bin/bash ../libtool  --tag=CC   --mode=link gcc -fno-optimize-sibling-calls -g -O2 -Werror=implicit-function-declaration -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/<<PKGBUILDDIR>>=. -flto=auto -ffat-lto-objects -specs=/usr/share/dpkg/no-pie-compile.specs -Wformat -Werror=format-security -fno-stack-protector -fno-stack-clash-protection -mbranch-protection=none -fdebug-
+libtool: link: gcc -fno-optimize-sibling-calls -g -O2 -Werror=implicit-function-declaration -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/<<PKGBUILDDIR>>=. -flto=auto -ffat-lto-objects -specs=/usr/share/dpkg/no-pie-compile.specs -Wformat -Werror=format-security -fno-stack-protector -fno-stack-clash-protection -mbranch-protection=none -fdebug-prefix-map=/<<PKGBUILDDIR>>=/u
+/usr/bin/ld: .libs/Lperf-simple: hidden symbol `__aarch64_cas8_acq_rel' in /usr/lib/gcc/aarch64-linux-gnu/14/libgcc.a(cas_8_4.o) is referenced by DSO
+/usr/bin/ld: final link failed: bad value
+collect2: error: ld returned 1 exit status
+make[3]: *** [Makefile:1399: Lperf-simple] Error 1
+make[3]: *** Waiting for unfinished jobs....
+/usr/bin/ld: .libs/Gperf-trace: hidden symbol `__aarch64_cas8_acq_rel' in /usr/lib/gcc/aarch64-linux-gnu/14/libgcc.a(cas_8_4.o) is referenced by DSO
+/usr/bin/ld: final link failed: bad value
+collect2: error: ld returned 1 exit status
+make[3]: *** [Makefile:1339: Gperf-trace] Error 1
+/usr/bin/ld: .libs/Lperf-trace: hidden symbol `__aarch64_cas8_acq_rel' in /usr/lib/gcc/aarch64-linux-gnu/14/libgcc.a(cas_8_4.o) is referenced by DSO
+/usr/bin/ld: final link failed: bad value
+collect2: error: ld returned 1 exit status
+make[3]: *** [Makefile:1403: Lperf-trace] Error 1
+libtool: link: gcc -fno-optimize-sibling-calls -g -O2 -Werror=implicit-function-declaration -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/<<PKGBUILDDIR>>=. -flto=auto -ffat-lto-objects -specs=/usr/share/dpkg/no-pie-compile.specs -Wformat -Werror=format-security -fno-stack-protector -fno-stack-clash-protection -mbranch-protection=none -fdebug-prefix-map=/<<PKGBUILDDIR>>=/u
+make[3]: Leaving directory '/<<PKGBUILDDIR>>/tests'
+make[2]: *** [Makefile:624: all-recursive] Error 1
+make[2]: Leaving directory '/<<PKGBUILDDIR>>'

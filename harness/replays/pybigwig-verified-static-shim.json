@@ -1,0 +1,16 @@
+{
+ "case_id": "launchpad-resolute-arm64-amd64-pybigwig-56ac842288ce",
+ "rationale": "Link libBigWig.a objects directly with a hidden stderr shim and -Bsymbolic, because libbigwig0t64 ships no libBigWig.so.",
+ "edits": [
+  {
+   "path": "input/setup.py",
+   "old_text": "libs=[\"BigWig\", \"m\", \"z\"]\n",
+   "new_text": "import os, shlex, shutil, subprocess\n\ndef _static_libbigwig():\n    \"\"\"libbigwig0t64 ships no libBigWig.so on amd64, so -lBigWig falls back to the\n    non-PIC libBigWig.a, which ld refuses to put into a shared object\n    (R_X86_64_PC32 against stderr).  Unpack the archive and link its objects\n    directly; a hidden stderr defined in a tiny shim makes the PC32 references legal.\"\"\"\n    cc = shlex.split(os.environ.get(\"CC\") or \"gcc\")\n    def find(name):\n        p = subprocess.run(cc + [\"-print-file-name=\" + name], capture_output=True, text=True).stdout.strip()\n        return p if os.path.isabs(p) and os.path.exists(p) else None\n    archive = find(\"libBigWig.a\")\n    if find(\"libBigWig.so\") or not archive:\n        return [], []\n    d = os.path.join(\"build\", \"libbigwig-static\")\n    shutil.rmtree(d, ignore_errors=True)\n    os.makedirs(d)\n    subprocess.check_call([\"ar\", \"x\", archive], cwd=d)\n    shim = os.path.join(d, \"stderr_shim.c\")\n    with open(shim, \"w\") as f:\n        f.write(\"struct _IO_FILE; typedef struct _IO_FILE FILE;\\n\"\n                \"extern FILE *fdopen(int, const char *);\\n\"\n                \"extern int setvbuf(FILE *, char *, int, unsigned long);\\n\"\n                \"__attribute__((visibility(\\\"hidden\\\"))) FILE *stderr;\\n\"\n                \"__attribute__((constructor)) static void bb_init(void) { stderr = fdopen(2, \\\"w\\\"); if (stderr) setvbuf(stderr, 0, 2, 0); }\\n\")\n    objs = sorted(os.path.join(d, n) for n in os.listdir(d) if n.endswith(\".o\"))\n    return objs, [shim]\n\n_extra_objs, _extra_srcs = _static_libbigwig()\nsrcs.extend(_extra_srcs)\nextra_link = [\"-Wl,-Bsymbolic\"] if _extra_objs else []\nlibs = [\"m\", \"z\"] if _extra_objs else [\"BigWig\", \"m\", \"z\"]\n"
+  },
+  {
+   "path": "input/setup.py",
+   "old_text": "                    sources = srcs,\n",
+   "new_text": "                    sources = srcs,\n                    extra_objects = _extra_objs,\n                    extra_link_args = extra_link,\n"
+  }
+ ]
+}

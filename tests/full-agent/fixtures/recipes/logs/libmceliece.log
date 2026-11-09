@@ -1,0 +1,36 @@
+dpkg-buildpackage: info: host architecture arm64
+[...]
+scripts/compiledefault dispatch-auto kem_348864pc c
+scripts/compiledefault dispatch-auto kem_348864pcf c
+scripts/compiledefault dispatch-manual xof_shake256 c
+scripts/compiledefault dispatch-manual sort_int32 c
+scripts/compiledefault dispatch-manual kem_6960119 c
+scripts/compiledefault dispatch-manual kem_6960119f c
+scripts/compiledefault dispatch-manual kem_6960119pc c
+scripts/compiledefault dispatch-manual kem_6960119pcf c
+scripts/compiledefault dispatch-manual kem_6688128 c
+scripts/compiledefault dispatch-manual kem_6688128f c
+scripts/compiledefault dispatch-manual kem_6688128pc c
+scripts/compiledefault dispatch-manual kem_6688128pcf c
+scripts/compiledefault dispatch-manual kem_8192128 c
+scripts/compiledefault dispatch-manual kem_8192128f c
+scripts/compiledefault dispatch-manual kem_8192128pc c
+scripts/compiledefault dispatch-manual kem_8192128pcf c
+scripts/compiledefault dispatch-manual kem_460896 c
+scripts/compiledefault dispatch-manual kem_460896f c
+scripts/compiledefault dispatch-manual kem_460896pc c
+scripts/compiledefault dispatch-manual kem_460896pcf c
+scripts/compiledefault dispatch-manual kem_348864 c
+scripts/compiledefault dispatch-manual kem_348864f c
+scripts/compiledefault dispatch-manual kem_348864pc c
+scripts/compiledefault dispatch-manual kem_348864pcf c
+( cat usedimplementations; echo dispatch-auto; echo dispatch-manual; echo compilers; echo cpuid ) > odirs
+touch dispatch-auto-all
+touch dispatch-manual-all
+scripts/ofiles < odirs
+scripts/staticlib libmceliece
+scripts/sharedlib libmceliece -lrandombytes
+/usr/bin/ld: BFD (GNU Binutils for Ubuntu) 2.41.50.20231214 assertion fail ../../bfd/elfnn-aarch64.c:9754
+/usr/bin/ld: BFD (GNU Binutils for Ubuntu) 2.41.50.20231214 assertion fail ../../bfd/elfnn-aarch64.c:9754
+/usr/bin/ld: BFD (GNU Binutils for Ubuntu) 2.41.50.20231214 assertion fail ../../bfd/elfnn-aarch64.c:9754
+/usr/bin/ld: BFD (GNU Binutils for Ubuntu) 2.41.50.20231214 assertion fail ../../bfd/elfnn-aarch64.c:9754

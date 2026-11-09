@@ -404,6 +404,46 @@ def replacement(before: str, edit: Edit) -> tuple[str, int]:
     return before[:first] + edit.new_text + before[first + len(edit.old_text):], 1
 
 
+_SYMBOLS_FILE = re.compile(r"(?:.+\.)?symbols(?:\.[a-z0-9-]+)?")
+_TAG_THEN_SPACE = re.compile(r"^([ \t]+\([^()\n]*\))[ \t]+(?=[^\s(])")
+
+
+def is_symbols_path(path: str) -> bool:
+    pure = PurePosixPath(path)
+    return pure.parent.name == "debian" and _SYMBOLS_FILE.fullmatch(pure.name) is not None
+
+
+def normalise_symbols(path: str, before: str, after: str) -> str:
+    """Glue a tag group to its symbol in the lines an edit added to debian/*.symbols*.
+
+    dpkg-gensymbols reads ' (optional) sym@Base 1.0' as a symbol named "(optional)"
+    with version "sym@Base" and drops the line ("failed to parse line"; libbpp-qt,
+    8 November). The repair is mechanical, so it is made here rather than left to
+    the model: whitespace between a closing ')' and the symbol name is removed.
+    Only lines that are new in ``after`` are touched, and only a tag group followed
+    by whitespace and a symbol-looking word, so a line that parses is never changed.
+    Never raises; returns ``after`` unchanged on any problem.
+    """
+    try:
+        if not is_symbols_path(path) or before == after:
+            return after
+        known = Counter(before.split("\n"))
+        out = []
+        for line in after.split("\n"):
+            if known.get(line, 0) > 0:
+                known[line] -= 1
+                out.append(line)
+                continue
+            fixed = _TAG_THEN_SPACE.sub(r"\1", line, count=1)
+            if fixed != line and "@" not in fixed and '"' not in fixed:
+                fixed = line
+            out.append(fixed)
+        return "\n".join(out)
+    except Exception:  # noqa: BLE001 - a normaliser must not break the edit
+        LOGGER.warning("symbols_normaliser_failed path=%r", path)
+        return after
+
+
 def _apply_one(root_fd: int, edit: Edit, allowed_prefix: str, patch_policy: Mapping | None) -> None:
     if not all(isinstance(getattr(edit, field, None), str) for field in ("path", "old_text", "new_text")):
         raise EditRejected("invalid_edit: path, old_text and new_text must be strings")
@@ -421,6 +461,10 @@ def _apply_one(root_fd: int, edit: Edit, allowed_prefix: str, patch_policy: Mapp
     with _parent_directory(root_fd, parts) as parent_fd:
         before, info = _read_file(parent_fd, parts[-1])
         after, count = replacement(before, edit)
+        glued = normalise_symbols(edit.path, before, after)
+        if glued != after:
+            LOGGER.info("symbols_tags_glued path=%r", edit.path)
+            after = glued
         reason = _policy_reason(edit.path, before, after)
         if reason:
             raise EditRejected(reason)

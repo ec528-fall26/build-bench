@@ -16,6 +16,15 @@ under .pc/ (quilt's record of applied patches; pyfftw) and under
 debian/patches/ (dpkg-source refuses a hand-edited patch; pybigwig). A change
 to the patched source is recorded as a patch automatically.
 
+debian/rules additions (campaign 9 November): CFLAGS=/CXXFLAGS=/LDFLAGS= on a
+dh_auto_* or make command line replace what dpkg-buildflags provides
+(hardening, -g, -O2, architecture flags; html-xml-utils v032); noopt/nolto are
+DEB_BUILD_OPTIONS tokens that DEB_BUILD_MAINT_OPTIONS does not understand (the
+valid form is optimize=-lto); "|| true" after rm, mkdir, ln or dh_clean is
+ordinary cleanup and is allowed, but it stays refused after any build or test
+command. The small dpkg-buildflags validity table at the end of the file is
+shared with verify.py.
+
 The checks look only at the edit itself (old_text against new_text), so they
 are cheap and never read the worktree. They are deliberately narrow: a
 legitimate fix of a test's expectation keeps its assertions and is allowed.
@@ -69,6 +78,75 @@ _TEST_LIST = re.compile(
     r"\bAT_SETUP\b|\bm4_include\s*\(\s*\[?[\w./-]*test", re.IGNORECASE)
 _LIST_FILE = re.compile(r"(?:^|/)(?:Makefile\.am|Makefile\.in|meson\.build|CMakeLists\.txt|"
                         r"[\w.-]+\.at|testsuite\.\w+)$")
+
+
+_BUILD_COMMAND = re.compile(
+    r"(?:^|[\s;&|(])[@+-]*(?:dh_auto_\w+|\$\(MAKE\)|\$\{MAKE\}|g?make)(?=\s|$)")
+_FLAG_ASSIGN = re.compile(
+    r"(?:^|\s)(?P<name>CFLAGS|CXXFLAGS|LDFLAGS|CPPFLAGS)=(?P<value>\"[^\"]*\"|'[^']*'|\S*)")
+_BENIGN_COMMANDS = {"rm", "rmdir", "mkdir", "ln", "dh_clean", "$(RM)", "${RM}"}
+_NEUTRAL_WORDS = {"done", "fi", "for", "if", "test", "[", "true", ":", "do", "then", "else", "{", "("}
+
+
+def _logical(text: str) -> list[str]:
+    """Lines with backslash continuations joined (a recipe command may span several)."""
+    out, pending = [], []
+    for line in text.splitlines():
+        if line.rstrip().endswith("\\"):
+            pending.append(line.rstrip()[:-1])
+            continue
+        out.append(" ".join(pending + [line]))
+        pending = []
+    if pending:
+        out.append(" ".join(pending))
+    return out
+
+
+def _flag_override(old_text: str, new_text: str) -> str | None:
+    """A new CFLAGS=... on a dh_auto_*/make command line that drops the build flags."""
+    old = set(_logical(old_text))
+    for line in _logical(new_text):
+        if line in old or line.lstrip().startswith("#") or not _BUILD_COMMAND.search(line):
+            continue
+        for match in _FLAG_ASSIGN.finditer(line):
+            name, value = match["name"], match["value"]
+            keeps = re.search(r"dpkg-buildflags|[$][({]?" + name + r"\b", value)
+            if not keeps:
+                return (f"it passes {name}=... on a {_BUILD_COMMAND.search(line).group().strip()} "
+                        "command line, which replaces the flags dpkg-buildflags provides "
+                        "(hardening, -g, -O2 and the architecture flags) instead of adding to "
+                        f"them. Export DEB_{name}_MAINT_APPEND (or _STRIP) instead")
+    return None
+
+
+def _benign_true(line: str, match: re.Match) -> bool:
+    """Whether every command on a line with "|| true" is plain cleanup (rm, mkdir, ln, dh_clean)."""
+    rest = line[:match.start()] + " ; " + line[match.end():]
+    seen = False
+    for segment in re.split(r"&&|;|\|\|", rest):
+        words = segment.split()
+        while words and words[0].lstrip("@-+") in {"do", "then", "else", "{", "("}:
+            words = words[1:]
+        if not words:
+            continue
+        head = words[0].lstrip("@-+")
+        head = head if head.startswith(("$(", "${")) else head.rsplit("/", 1)[-1]
+        if head in _BENIGN_COMMANDS:
+            seen = True
+        elif head not in _NEUTRAL_WORDS:
+            return False
+    return seen
+
+
+def _suppressing_true(regex, old_text: str, new_text: str, added_text: str) -> bool:
+    """The "|| true" test: new in the edit and not after a cleanup-only line."""
+    if regex.search(old_text):
+        return False
+    for line in _logical(added_text):
+        match = regex.search(line)
+        if match and not _benign_true(line, match):
+            return True
+    return False
 
 
 def _lines(text: str) -> list[str]:
@@ -175,9 +253,25 @@ def check(path: str, old_text: str, new_text: str, replace_all: bool = False) ->
             return ('it breaks the "dh $@" call: make passes the target name only as "$@", '
                     'so "dh $" or "dh $$@" runs no sequence and every build step fails. '
                     'Keep "dh $@" exactly and put options after it')
-        for regex, why in _RULES_SUPPRESS:
-            if regex.search(added_text) and not regex.search(old_text):
+        for number, (regex, why) in enumerate(_RULES_SUPPRESS):
+            if number == 0:
+                if _suppressing_true(regex, old_text, new_text, added_text):
+                    return why + "; the rules forbid suppressing failures to obtain a build"
+            elif regex.search(added_text) and not regex.search(old_text):
                 return why + "; the rules forbid suppressing failures to obtain a build"
+        if (re.search(r"^\t[@+]*-[@+]*\s*dh_auto_test\b", added_text, re.MULTILINE)
+                and not re.search(r"^\t[@+]*-[@+]*\s*dh_auto_test\b", old_text, re.MULTILINE)):
+            return ('it prefixes dh_auto_test with "-" so that make ignores its failure; '
+                    "the rules forbid suppressing failures to obtain a build")
+        override = _flag_override(old_text, new_text)
+        if override:
+            return override
+        tokens = _bad_maint_option_tokens(old_text, new_text)
+        if tokens:
+            return (f"{', '.join(tokens)} {'is a' if len(tokens) == 1 else 'are'} DEB_BUILD_OPTIONS "
+                    "token(s), not (a) DEB_BUILD_MAINT_OPTIONS feature(s), so dpkg-buildflags "
+                    "ignores or rejects them. To drop LTO write DEB_BUILD_MAINT_OPTIONS = "
+                    "optimize=-lto; to lower optimisation use DEB_CFLAGS_MAINT_APPEND = -O1")
         if (re.search(r"^override_dh_auto_test\w*:", new_text, re.MULTILINE)
                 and not re.search(r"^override_dh_auto_test\w*:", old_text, re.MULTILINE)):
             body = re.search(r"^override_dh_auto_test\w*:[^\n]*\n((?:\t[^\n]*\n?)*)",
@@ -212,3 +306,95 @@ def check(path: str, old_text: str, new_text: str, replace_all: bool = False) ->
         return None
 
     return None
+
+
+# --- dpkg-buildflags validity (dpkg-buildflags(1); shared with verify.py) ----------
+
+# DEB_BUILD_MAINT_OPTIONS = area=feature,-feature area=...: the areas and features
+# dpkg-buildflags knows. None: any feature is accepted (the area is real, the
+# feature list is long and version dependent).
+BUILDFLAGS_AREAS: dict[str, frozenset[str] | None] = {
+    "future": frozenset({"lfs"}),
+    "qa": frozenset({"bug", "bug-implicit", "canary"}),
+    "sanitize": frozenset({"address", "thread", "leak", "undefined"}),
+    "optimize": frozenset({"lto"}),
+    "hardening": frozenset({"all", "format", "fortify", "stackprotector", "stackprotectorstrong",
+                            "stackclash", "pie", "bindnow", "relro", "branch-protection"}),
+    "reproducible": frozenset({"all", "timeless", "fixfilepath", "fixdebugpath"}),
+    "abi": None,
+}
+# DEB_<FLAG>_MAINT_<OP>: the flag names dpkg-buildflags --list prints, and the operations.
+BUILDFLAGS_NAMES = frozenset({"ASFLAGS", "CFLAGS", "CPPFLAGS", "CXXFLAGS", "DFLAGS", "FCFLAGS",
+                              "FFLAGS", "GCJFLAGS", "LDFLAGS", "OBJCFLAGS", "OBJCXXFLAGS"})
+BUILDFLAGS_OPERATIONS = frozenset({"APPEND", "STRIP", "SET", "PREPEND"})
+# Tokens of DEB_BUILD_OPTIONS (policy 4.9.1) that people mistake for maint options.
+BUILD_OPTIONS_TOKENS = frozenset({"noopt", "nolto", "nostrip", "nocheck", "nodoc", "nodocs",
+                                  "terse", "notrace", "noautodbgsym", "parallel"})
+_MAINT_ASSIGN = re.compile(
+    r"^[ ]*(?:export[ \t]+)?(?P<name>DEB_[A-Z0-9_]*_MAINT_[A-Z_]+|DEB_BUILD_MAINT_OPTIONS)"
+    r"[ \t]*[:+?]?=[ \t]*(?P<value>[^#\n]*)", re.MULTILINE)
+_MAINT_NAME = re.compile(r"^DEB_(?P<flag>[A-Z0-9]+)(?:_FOR_BUILD)?_MAINT_(?P<op>[A-Z]+)$")
+
+
+def maint_variable_valid(name: str) -> bool:
+    """Whether DEB_<FLAG>_MAINT_<OP> names a real flag and operation."""
+    if name == "DEB_BUILD_MAINT_OPTIONS":
+        return True
+    m = _MAINT_NAME.match(name)
+    return bool(m and m["flag"] in BUILDFLAGS_NAMES and m["op"] in BUILDFLAGS_OPERATIONS)
+
+
+def maint_option_problems(value: str) -> list[str]:
+    """What dpkg-buildflags would reject in a DEB_BUILD_MAINT_OPTIONS value."""
+    found = []
+    for token in value.split():
+        if "$" in token:
+            continue
+        area, equals, features = token.partition("=")
+        if token in BUILD_OPTIONS_TOKENS or area in BUILD_OPTIONS_TOKENS:
+            found.append(f"'{token}' is a DEB_BUILD_OPTIONS token, not a maint option "
+                         "(for LTO off use optimize=-lto)")
+        elif not equals:
+            found.append(f"'{token}' is not area=feature (areas: {', '.join(BUILDFLAGS_AREAS)})")
+        elif area not in BUILDFLAGS_AREAS:
+            found.append(f"'{area}' is not a dpkg-buildflags area (areas: {', '.join(BUILDFLAGS_AREAS)})")
+        else:
+            allowed = BUILDFLAGS_AREAS[area]
+            bad = [f for f in features.split(",") if f and allowed is not None
+                   and f.lstrip("+-") not in allowed and "$" not in f]
+            if bad or not features:
+                found.append(f"'{token}' has no valid {area} feature "
+                             f"(valid: {', '.join(sorted(allowed)) if allowed else 'any'})")
+    return found
+
+
+def buildflags_problems(text: str) -> list[tuple[int, str]]:
+    """(line number, message) for DEB_*_MAINT_* assignments dpkg-buildflags would not honour."""
+    found = []
+    try:
+        for m in _MAINT_ASSIGN.finditer(text[:2_000_000]):
+            line = text.count("\n", 0, m.start()) + 1
+            name = m["name"]
+            if not maint_variable_valid(name):
+                found.append((line, f"{name} is not a dpkg-buildflags variable (DEB_<FLAG>_MAINT_"
+                                    "{APPEND,STRIP,SET,PREPEND}, FLAG one of "
+                                    + ", ".join(sorted(BUILDFLAGS_NAMES)) + ")"))
+            elif name == "DEB_BUILD_MAINT_OPTIONS":
+                found.extend((line, f"DEB_BUILD_MAINT_OPTIONS: {msg}")
+                             for msg in maint_option_problems(m["value"]))
+    except Exception:  # noqa: BLE001 - a validity table must not raise
+        return found
+    return found
+
+
+def _bad_maint_option_tokens(old_text: str, new_text: str) -> list[str]:
+    """DEB_BUILD_OPTIONS-only tokens that the edit newly puts in DEB_BUILD_MAINT_OPTIONS."""
+    def tokens(text):
+        out = []
+        for m in _MAINT_ASSIGN.finditer(text):
+            if m["name"] == "DEB_BUILD_MAINT_OPTIONS":
+                out += [t for t in m["value"].split()
+                        if t in BUILD_OPTIONS_TOKENS or t.partition("=")[0] in BUILD_OPTIONS_TOKENS]
+        return out
+    before = set(tokens(old_text))
+    return [t for t in dict.fromkeys(tokens(new_text)) if t not in before]

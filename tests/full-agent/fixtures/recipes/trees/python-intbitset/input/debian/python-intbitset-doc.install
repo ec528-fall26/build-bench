@@ -1,0 +1,2 @@
+./docs/*.rst usr/share/doc/python-intbitset-doc/
+./docs/_build/html/ usr/share/doc/python-intbitset-doc/

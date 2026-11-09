@@ -151,7 +151,7 @@ class Verdicts(Worktree):
     def test_moved_or_removed_failing_line(self):
         self.write("input/src/crc32c/crc32c_prefetch.h", PREFETCH.replace("#include <xmmintrin.h>\n", ""))
         [v] = verify.predict(self.root, [self.INCLUDE], ARM, changed={"input/src/crc32c/crc32c_prefetch.h"})
-        self.assertIs(v.ok, True)
+        self.assertIsNone(v.ok)
         self.assertIn("no longer in the file", v.text)
 
     def test_rust_signedness_counts_what_remains(self):
@@ -227,7 +227,7 @@ class InTheLoop(Worktree):
 
     def test_prediction_says_not_fixed_for_an_irrelevant_edit(self):
         self.run_script([turn([edit("#if defined(_MSC_VER)", "#if defined(_MSC_VER) /* x */",
-                                    "input/src/crc32c/crc32c_prefetch.h")]), STOP])
+                                    "input/src/crc32c/crc32c_prefetch.h")]), STOP, STOP])   # the first stop is bounced once
         self.assertIn("[NOT fixed]", self.requests[1].prediction)
         self.assertIn("HAVE_MM_PREFETCH is defined at input/src/crc32c/crc32c_config.h:1", self.requests[1].prediction)
 
@@ -366,7 +366,7 @@ class SymbolsMacroInTheLoop(Worktree):
                  initial_diagnostics=[diagnostic("dh_makeshlibs: error: failing due to earlier errors")], log_path=log)
         text = (self.root / path).read_text()
         self.assertIn(" (optional)_ZN3bppA@Base 1.0\n (optional)_ZN3bppB@Base 1.0\n _ZN3bppC@Base 1.0\n", text)
-        self.assertIn("[fixed] input/debian/libp.symbols.amd64: every symbol the log reports missing is now tagged",
+        self.assertIn("[fixed] input/debian/libp.symbols.amd64: every reported-missing symbol tagged (2); nothing else changed.",
                       requests[1].prediction)
 
     def test_a_tag_after_the_version_is_not_fixed(self):

@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
+import json
 import re
 from time import monotonic
 
@@ -28,10 +29,18 @@ from . import arch_model, patterns, verify
 from .tools import run_tool
 from .types import CaseContext, Edit
 from .proposal_review import render_review, signature, edit_identity
-from . import ffi_analysis, rules_guard, syntax_guard, output_verification
+from . import ffi_analysis, rules_guard, syntax_guard, output_verification, completion
 
 
 OWN_EDITS_CHARS = 6000
+# Controller completion of a partial mechanical repair (libbpp-core, 9 Nov live run: 11 of 12
+# symbols hand-tagged, then stop). Symbols only; applied through the normal edit gates.
+COMPLETE_MECHANICAL_REPAIRS = True
+UNFIXED_STOP = (
+    "Controller: you replied stop, but the latest static prediction still reports a construct "
+    "NOT fixed, and a build with it fails the same way. The unresolved verdict(s), in full:\n{lines}\n"
+    "Address them in your next edit. If you are certain the prediction is wrong, reply stop again "
+    "and it will be accepted.")
 EMPTY_STOP = (
     "You stopped without changing any file. An unchanged package always fails: the "
     "platform rejects a run with no change under input/, so stopping now cannot be "
@@ -39,6 +48,28 @@ EMPTY_STOP = (
     "edit most likely to fix the failure (investigate further first if a specific "
     "file is still needed). Stop again only if you are certain that no edit under "
     "input/ can repair this build.")
+# Loop control (campaign 2026-11-09, M5). Evidence: rust-subversion spent 23
+# turns after an all-fixed prediction, libbpp-qt issued 11 identical requests,
+# and replies with no action wasted 91 of 543 turns.
+ALL_FIXED_TOOL_TURNS = 2     # tool turns still allowed once every verdict is ok
+ALL_FIXED_REFUSALS = 3       # refused tool turns after which the run ends
+ALL_FIXED_STOP = (
+    "Controller verdict: every construct the errors came from is predicted fixed. "
+    "Required next action: stop. Call a tool only if you can name a specific error "
+    "line this edit does not address.")
+STUB_PREFIX = "Identical to your request at turn"
+INVESTIGATION_NUDGE_AT = 8
+INVESTIGATION_FINAL_AT = 12
+INVESTIGATION_NUDGE = (
+    "You have used 8 investigation turns without proposing an edit. State the most "
+    "probable cause and the edit, or stop and name the evidence that is missing.")
+INVESTIGATION_FINAL = (
+    "You have used {n} investigation turns without proposing an edit. Your next reply "
+    "must be an edit or a stop.")
+MAX_CACHED_REQUESTS = 400
+# Distinct tool results the adapter shows (model_adapter.MAX_TOOL_RESULTS is this value). A repeat
+# of a request whose result has scrolled out of that window must run again, not be stubbed.
+SHOWN_TOOL_RESULTS = 12
 
 
 @dataclass
@@ -66,6 +97,14 @@ class LoopRequest:
     verification_format_feedback: str = ""
     # verify.render's static prediction for the latest unbuilt batch, or "".
     prediction: str = ""
+    # That prediction in one word ("fixed", "not_fixed", "unknown", or "" when
+    # there is none) and the reason for it, for the attempt's VERDICT line.
+    prediction_status: str = ""
+    prediction_reason: str = ""
+    # Cumulative tool turns the loop did not count (an all-stub turn, or one
+    # refused after an all-fixed verdict); the adapter keeps them out of its
+    # own investigation counters.
+    uncounted_tool_turns: int = 0
 
 @dataclass
 class LoopResult:
@@ -267,6 +306,7 @@ class _Loop:
         self.malformed_count = 0
         self.empty_edit_streak = 0
         self.empty_stop_refused = False
+        self.unfixed_stop_refused = False
         self.controller_note = ""
         # Edits the syntax guard sent back once; resent unchanged, they apply.
         self.syntax_allowed: set[tuple] = set()
@@ -281,11 +321,30 @@ class _Loop:
         self.latest_attempt_feedback = ""
         self.batch_notes: list[str] = []
         self.prediction = ""                 # verify.render for the latest unbuilt batch
+        self.prediction_status = ""          # "fixed" | "not_fixed" | "unknown" | ""
+        self.prediction_reason = ""
+        # Loop control
+        self.model_turns = 0
+        self.all_fixed = False               # every verdict of the latest prediction is ok
+        self.fixed_tool_turns = 0
+        self.fixed_refusals = 0
+        self.files_read: set[str] = set()
+        self.tool_cache: dict[tuple, tuple[int, int]] = {}   # request -> (turn, edit serial)
+        self.edit_serial = 0                 # bumped whenever the worktree may have changed
+        self.path_serial: dict[str, int] = {}
+        self.investigation_turns = 0         # counted tool turns since the last applied edit
+        self.uncounted_tool_turns = 0
         self.edit_validation_feedback = ""
         self.proposal_review = ""
         # The target architecture, for the static prediction of an unbuilt batch.
         metadata = getattr(context, "task_metadata", None) or {}
         self.target = arch_model.lookup(str(metadata.get("target_arch") or ""))
+        self.recipe_hint = ""   # the best verified recipe's invocation, from the pristine tree
+        try:
+            self.recipe_hint = completion.stop_hint(
+                context.worktree, patterns._log_lines(log_path), str(metadata.get("target_arch") or ""))
+        except Exception:
+            self.recipe_hint = ""
         if self.target is None:
             pair = arch_model.pair_from_case_id(getattr(context, "case_id", None))
             self.target = arch_model.lookup(pair[1]) if pair else None
@@ -332,7 +391,7 @@ class _Loop:
                 self._malformed()
                 continue
             if action == "stop":
-                if self._refuse_empty_stop():
+                if self._refuse_empty_stop() or self._refuse_unfixed_stop():
                     continue
                 return self.finish("model_stop", self.turn.reason)
             if self.clock() >= self.work_deadline:
@@ -428,6 +487,59 @@ class _Loop:
         self.controller_note = EMPTY_STOP
         return True
 
+    def _refuse_unfixed_stop(self) -> bool:
+        """Once per run, send back a stop while the latest prediction holds a NOT-fixed
+        verdict (libbpp-core: "1 of 12 still untagged", then "no further edits needed").
+        The message quotes the verdict lines whole and repeats the recipe invocation when
+        the log shows a verified recipe. The empty-stop bounce is separate; each fires at
+        most once, and a second stop is accepted."""
+        if self.unfixed_stop_refused:
+            return False
+        lines = [line for line in (self.prediction or "").split("\n") if line.startswith("- [NOT fixed]")]
+        if not lines:
+            return False
+        self.unfixed_stop_refused = True
+        text = UNFIXED_STOP.format(lines="\n".join(lines))
+        if self.recipe_hint:
+            text += "\n" + self.recipe_hint
+        self.controller_note = "\n".join(part for part in (self.controller_note, text) if part)
+        self.review_events.append({"event": "unfixed_stop_refused", "verdicts": len(lines)})
+        return True
+
+    def _complete_symbols(self, snapshot, applied: int) -> list[str]:
+        """After an applied batch: tag the symbols the model left untagged, through the
+        normal gates, when the symbols-tag recipe matches this case. Returns notes for
+        the model; never raises, touches only the symbols file the log names."""
+        if (not COMPLETE_MECHANICAL_REPAIRS or not applied
+                or "still listed without an (arch=...) or (optional) tag" not in (self.prediction or "")):
+            return []
+        saved_turn, saved_index = self.turn, self.pending_index
+        try:
+            log_lines = patterns._log_lines(self.log_path)
+            edits, names = completion.symbols_completion(
+                self.context.worktree, log_lines,
+                str((getattr(self.context, "task_metadata", None) or {}).get("target_arch", "")),
+                {edit.path for edit in self.turn.edits})
+            if not edits:
+                return []
+            self.turn = deepcopy(self.turn)
+            self.turn.edits = edits
+            gated, feedback = self._preflight_batch(None, [])
+            if feedback or gated is None or len(self.turn.edits) != len(edits):
+                return []
+            if apply_edits(self.context.worktree, self.turn.edits,
+                           patch_policy=self.patch_policy) != len(edits):
+                return []
+            note = (f"Controller completed the symbols-tag recipe: tagged {len(names)} remaining "
+                    f"symbol(s): {', '.join(names)}")
+            self.review_events.append({"event": "controller_completed", "recipe": completion.RECIPE,
+                                       "symbols": list(names)})
+            return [note]
+        except Exception:
+            return []
+        finally:
+            self.turn, self.pending_index = saved_turn, saved_index
+
     # --- before the model is asked ------------------------------------------
 
     def _exhausted(self) -> LoopResult | None:
@@ -472,9 +584,17 @@ class _Loop:
             output_verification=(deepcopy(self.review_turn.edits)
                                  if self.verification_pending and self.review_turn else []),
             prediction=self.prediction,
+            prediction_status=self.prediction_status,
+            prediction_reason=self.prediction_reason,
+            uncounted_tool_turns=self.uncounted_tool_turns,
         )
 
+    def _note(self, text: str) -> None:
+        """Add a one-off controller message for the next request."""
+        self.controller_note = "\n".join(part for part in (self.controller_note, text) if part)
+
     def _ask_model(self) -> LoopResult | None:
+        self.model_turns += 1
         try:
             request = self._request()
             self.controller_note = ""  # delivered with this request
@@ -520,17 +640,116 @@ class _Loop:
                     "run. Return the corrected edit (its old_text copied from the text you were shown), "
                     "an empty edit list to drop the item, or stop.")
                 return _CONTINUE
-        for tool_request in self.turn.tool_requests:
+        requests = self.turn.tool_requests
+        if self.all_fixed and self.pending_turn is None:
+            requests = self._after_all_fixed(requests)
+            if not requests:
+                self.uncounted_tool_turns += 1
+                self.fixed_refusals += 1
+                self._note(ALL_FIXED_STOP)
+                if self.fixed_refusals >= ALL_FIXED_REFUSALS:
+                    return self.finish(
+                        "model_stop", "Stopped by the controller: every construct was predicted "
+                        "fixed and the model kept requesting tools.")
+                return _CONTINUE
+            self.fixed_tool_turns += 1
+        ran = 0
+        for tool_request in requests:
             if self._out_of_time():
                 return self.finish("time_budget", "No time remains to start another tool.")
+            earlier = self._repeat_of(tool_request)
+            if earlier is not None:
+                self.tool_results.append(ToolResult(
+                    tool_request, f"{STUB_PREFIX} {earlier}; the result has not changed", False))
+                continue
             if self.tool_calls >= self.max_tool_calls:
                 return self.finish("tool_budget", "The tool-call limit was reached.")
             self.tool_calls += 1
+            ran += 1
             self.tool_results.append(run_tool(
                 tool_request, self.context.worktree,
                 diff_tracker=self.tracker, log_path=self.log_path,
             ))
+            self._remember(tool_request)
+        if self.pending_turn is None:
+            self._investigation(counted=ran > 0)
         return _CONTINUE
+
+    @staticmethod
+    def _request_key(tool_request) -> tuple:
+        return (tool_request.tool, json.dumps(tool_request.args, sort_keys=True, default=str))
+
+    def _touch(self, paths) -> None:
+        """The worktree changed: cached results for these files, and every
+        search, are no longer known to be true."""
+        self.edit_serial += 1
+        for path in paths:
+            self.path_serial[path] = self.edit_serial
+
+    def _remember(self, tool_request) -> None:
+        if len(self.tool_cache) >= MAX_CACHED_REQUESTS:
+            return
+        self.tool_cache[self._request_key(tool_request)] = (self.model_turns, self.edit_serial)
+        if tool_request.tool == "read_file":
+            path = tool_request.args.get("path")
+            if isinstance(path, str):
+                self.files_read.add(path)
+
+    def _repeat_of(self, tool_request) -> int | None:
+        """The turn of an identical earlier request whose result is still true.
+
+        libbpp-qt issued the same request 11 times. A listing or a log search
+        cannot change; a file read changes only if that file was edited; any
+        other result may change with any edit.
+        """
+        try:
+            entry = self.tool_cache.get(self._request_key(tool_request))
+        except (TypeError, ValueError):
+            return None
+        if entry is None:
+            return None
+        turn, serial = entry
+        if not self._still_shown(tool_request):
+            return None
+        if tool_request.tool in _EDIT_PROOF:
+            return turn
+        if tool_request.tool == "read_file":
+            path = tool_request.args.get("path")
+            return turn if self.path_serial.get(path, 0) <= serial else None
+        return turn if self.edit_serial == serial else None
+
+    def _still_shown(self, tool_request) -> bool:
+        """Whether the earlier result of this request is among the results the model is
+        still shown; a stub pointing at a result it can no longer see would hide it for good."""
+        key = self._request_key(tool_request)
+        distinct: dict[tuple, bool] = {}
+        for result in self.tool_results:
+            if result.text.startswith(STUB_PREFIX):
+                continue
+            k = self._request_key(result.request)
+            distinct.pop(k, None)
+            distinct[k] = True
+        return key in list(distinct)[-SHOWN_TOOL_RESULTS:]
+
+    def _after_all_fixed(self, requests) -> list:
+        """The requests still run once every verdict is ok: at most
+        ALL_FIXED_TOOL_TURNS tool turns, each only to read a file not yet read."""
+        if self.fixed_tool_turns >= ALL_FIXED_TOOL_TURNS:
+            return []
+        return [r for r in requests if r.tool == "read_file"
+                and isinstance(r.args.get("path"), str) and r.args["path"] not in self.files_read]
+
+    def _investigation(self, *, counted: bool) -> None:
+        """Soft cap on investigating before the first edit: a nudge at 8 turns,
+        a firmer message from 12. Nothing is forced."""
+        if not counted:
+            self.uncounted_tool_turns += 1
+            return
+        self.investigation_turns += 1
+        if self.investigation_turns == INVESTIGATION_NUDGE_AT:
+            self._note(INVESTIGATION_NUDGE)
+        elif self.investigation_turns >= INVESTIGATION_FINAL_AT:
+            self._note(INVESTIGATION_FINAL.format(n=self.investigation_turns))
 
     def _resolve_review(self):
         """Approve: the reviewed batch becomes this turn's edit. Returns the
@@ -731,7 +950,9 @@ class _Loop:
         before extraction. No files are written at this stage.
         """
         worktree, policy = self.context.worktree, self.patch_policy
-        expanded, more = expand_macros(self.turn.edits, worktree, patterns._log_lines(self.log_path))
+        expanded, more = expand_macros(
+            self.turn.edits, worktree, patterns._log_lines(self.log_path),
+            target_arch=str((getattr(self.context, "task_metadata", None) or {}).get("target_arch", "")))
         if more:
             notes.extend(more)
             self.turn = deepcopy(self.turn)
@@ -748,14 +969,18 @@ class _Loop:
             return snapshot, feedback
         snapshot = CandidateSnapshot.capture(
             worktree, [edit.path for edit in self.turn.edits], patch_policy=policy)
-        kept, more, _ = prune_batch(snapshot, self.turn.edits)
+        try:
+            missing = len(patterns.missing_symbols(patterns._log_lines(self.log_path)))
+        except Exception:
+            missing = None
+        kept, more, _ = prune_batch(snapshot, self.turn.edits, missing_symbol_count=missing)
         notes.extend(more)
         self.turn = deepcopy(self.turn)
         self.turn.edits = kept
         if not self.turn.edits:
             return snapshot, feedback
         self.pending_index, feedback = focused_feedback(
-            snapshot, self.turn.edits, self.turn.hypothesis)
+            snapshot, self.turn.edits, self.turn.hypothesis, missing_symbol_count=missing)
         if feedback:
             return snapshot, feedback
         self.pending_index, feedback = self._syntax_check(snapshot)
@@ -950,6 +1175,10 @@ class _Loop:
         self.feedback = f"Accepted {applied} of {len(self.turn.edits)} proposed edit operations."
         self.batch_notes = notes + [f"Warning (the edit was applied): {w}" for w in warnings]
         self.prediction = self._predict(snapshot) if applied else ""
+        completed = self._complete_symbols(snapshot, applied)
+        if completed:
+            self.batch_notes += completed
+            self.prediction = self._predict(snapshot)
         if self.batch_notes:
             self.feedback += " " + " ".join(self.batch_notes)
         # Record the attempt before requesting a build.
@@ -961,11 +1190,15 @@ class _Loop:
                 'coverage': self.ffi.report(current, 'actual applied source')})
         # Drop only the tool results the edit may have made outdated.
         self.tool_results[:] = _still_valid(self.tool_results, {e.path for e in self.turn.edits})
+        self._touch({e.path for e in self.turn.edits})
+        self.investigation_turns = 0
         return applied
 
     def _predict(self, snapshot) -> str:
         """verify.render for the batch just applied, in a run with no build
         feedback: the edited files evaluated under the target's facts."""
+        self.all_fixed, self.fixed_tool_turns, self.fixed_refusals = False, 0, 0
+        self.prediction_status = self.prediction_reason = ""
         if self.config.use_build_feedback and self.build_feedback is not None:
             return ""
         if self.target is None or not self.initial_diagnostics:
@@ -976,9 +1209,27 @@ class _Loop:
                 self.context.worktree, self.initial_diagnostics, self.target,
                 changed={edit.path for edit in self.turn.edits}, originals=originals,
                 log_lines=patterns._log_lines(self.log_path))
+            self._summarise(verdicts)
             return verify.render(verdicts, self.target)
         except Exception:  # a prediction must never end a run
+            self.all_fixed = False
             return ""
+
+    def _summarise(self, verdicts) -> None:
+        """The prediction in one word and one reason; arms the all-fixed stop gate."""
+        if verdicts and all(v.ok is True for v in verdicts):
+            self.all_fixed = True
+            self.prediction_status = "fixed"
+            self.prediction_reason = "every construct the errors came from is predicted fixed"
+            return
+        failing = next((v for v in verdicts if v.ok is False), None)
+        if failing is not None:
+            self.prediction_status = "not_fixed"
+            self.prediction_reason = failing.text
+            return
+        unclear = next((v for v in verdicts if v.ok is None), None)
+        self.prediction_status = "unknown"
+        self.prediction_reason = unclear.text if unclear else "no static check covers this edit"
 
     def _build(self, snapshot, applied: int) -> LoopResult | None:
         """Build if feedback is available, keep or restore the candidate."""
@@ -1008,6 +1259,7 @@ class _Loop:
                     return self.finish("restoration_error",
                                        f"Could not fully restore the retained candidate: {exc}")
                 restored = True
+                self._touch({e.path for e in attempt.edits})
             else:
                 self.kept_attempts.append(attempt.number)
                 self.best_build = deepcopy(build)

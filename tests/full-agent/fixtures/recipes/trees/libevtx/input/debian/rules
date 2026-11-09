@@ -1,0 +1,16 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+%:
+	dh $@ --with python3 --buildsystem=autoconf
+
+override_dh_auto_configure:
+	dh_auto_configure -- --enable-python
+
+override_dh_install:
+	dh_install -X.la -X/pyevtx.a

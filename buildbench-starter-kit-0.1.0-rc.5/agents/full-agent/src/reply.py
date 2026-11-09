@@ -32,6 +32,9 @@ CUT_OFF = "length"  # finish_reason when the reply hit the output limit
 # Blocks some models think aloud in. Stripping them is tolerance, not a format
 # we ask for: the prompts never mention these tags.
 _THINKING = re.compile(r"<(reasoning|think|thinking)>.*?</\1>", re.IGNORECASE | re.DOTALL)
+# A block that was opened and never closed (the output was cut off, or the model
+# forgot): everything after the tag is reasoning, drafts included.
+_UNCLOSED = re.compile(r"<(reasoning|think|thinking)>.*\Z", re.IGNORECASE | re.DOTALL)
 # Arguments Part B requires as integers; a model may send "40" or 40.0.
 _INTEGER_ARGS = {"read_file": ("start_line", "end_line")}
 
@@ -45,6 +48,11 @@ def _turn(action: str, *, requests=None, hypothesis: str = "", evidence=None,
     return ModelTurn(action, requests or [], hypothesis, evidence or [], edits or [], reason)
 
 
+def strip_reasoning(text: str) -> str:
+    """The reply without its reasoning blocks, closed or not."""
+    return _UNCLOSED.sub("", _THINKING.sub("", text))
+
+
 def extract_action_json(text: str) -> dict:
     """Return the last JSON object with an "action" key, ignoring what surrounds it.
 
@@ -53,7 +61,7 @@ def extract_action_json(text: str) -> dict:
     at all, the last object with an "edits" key is returned: the baseline's
     format, which a model may fall back to.
     """
-    text = _THINKING.sub("", text)
+    text = strip_reasoning(text)
     # strict=False accepts a literal newline or tab inside a string and keeps it.
     decoder = json.JSONDecoder(strict=False)
     found = legacy = None

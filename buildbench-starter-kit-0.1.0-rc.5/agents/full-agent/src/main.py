@@ -131,6 +131,44 @@ def _failed(output_dir: Path, stage: str, exc: Exception, message: str = "") -> 
     return 1
 
 
+FINGERPRINT_MAX_FILES = 50_000
+
+
+def worktree_fingerprint(worktree: Path) -> dict | None:
+    """(size, mtime) of every file under input/, or None when the tree is too large to tell.
+
+    run_agent applies edits in place and keeps no list main can see, so an exception
+    out of it is judged by whether the tree changed since before it started.
+    """
+    prints: dict[str, tuple[int, int]] = {}
+    try:
+        for directory, _dirs, names in os.walk(worktree / "input"):
+            for name in names:
+                if len(prints) >= FINGERPRINT_MAX_FILES:
+                    return None
+                path = os.path.join(directory, name)
+                stat = os.lstat(path)
+                prints[path] = (stat.st_size, stat.st_mtime_ns)
+    except OSError:
+        return None
+    return prints
+
+
+def _keep_edits(output_dir: Path, result: dict, exc: Exception) -> int:
+    """An error after edits were applied: keep the worktree and report a completed run.
+
+    The platform derives the patch from the worktree, so reverting would throw away a
+    repair that a later transient failure (a model 5xx, a tool bug) did not undo.
+    """
+    result = dict(result)
+    result["status"] = "completed"
+    result["error"] = {"error_type": type(exc).__name__, "message": str(exc)[:500]}
+    result.setdefault("message", f"Stopped by {type(exc).__name__} after edits were applied; worktree kept.")
+    write_json(output_dir / "agent-result.json", result)
+    print(json.dumps({"status": "completed_with_error", **result["error"]}), file=sys.stderr)
+    return 0
+
+
 def main() -> int:
     started = monotonic()
     # Use BB_WORKSPACE when set, otherwise use /workspace.
@@ -143,6 +181,9 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, stream=sys.stderr,
                         format="%(levelname)s %(name)s %(message)s")
 
+    result: dict = {}
+    before = None
+    agent_started = False
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
         for path in (input_dir / "task.json", input_dir / "initial-build.log"):
@@ -177,6 +218,8 @@ def main() -> int:
             # Like the baseline: finish without a request and without edits.
             result["message"] = "No model API key configured (set BB_MODEL_API_KEY)."
         else:
+            before = worktree_fingerprint(worktree)
+            agent_started = True
             loop_result, adapter = run_agent(
                 context, case.log_path, client_completion(model), config=config,
                 budget=budget, patch_policy=policy if isinstance(policy, dict) else None,
@@ -196,6 +239,14 @@ def main() -> int:
         return 0
 
     except Exception as exc:
+        if agent_started:
+            now = worktree_fingerprint(worktree)
+            # An unreadable or oversized tree cannot prove "unchanged": keep, never revert.
+            if before is None or now is None or now != before:
+                try:
+                    return _keep_edits(output_dir, result, exc)
+                except OSError as output_error:
+                    print(f"Could not write agent-result.json: {output_error}", file=sys.stderr)
         diagnostic = {"status": "agent_error", "error_type": type(exc).__name__,
                       "message": str(exc)}
         print(json.dumps(diagnostic), file=sys.stderr)

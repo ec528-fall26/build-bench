@@ -32,6 +32,98 @@ TITLE = "=== Recognised cross-architecture pattern (evidence, with the usual rep
 END = "=== End of pattern ==="
 
 
+def _invoke(recipe_id: str, path: str, hypothesis: str, new_text: str = "") -> str:
+    """The exact one-line edit that makes the agent apply a recipe (recipes/registry.py)."""
+    from .recipes import registry
+    return registry.invocation(recipe_id, path, hypothesis, new_text)
+
+
+def _recipe_applies(recipe_id: str, log_lines, worktree: Path, target_arch: str) -> bool:
+    """Whether the recipe recognises the log and can compute its edit on this tree."""
+    try:
+        from .recipes import registry
+        edits, _ = registry.run(recipe_id, worktree, log_lines, target_arch)
+        return bool(edits)
+    except Exception:
+        return False
+
+
+PREVIEW_TIERS = ("verified", "verified-template")
+PREVIEW_DIFF_LINES = 40
+INVOCATION_LEAD = ("To apply exactly these edits, reply with this single edit; its old_text is a command to "
+                   "the controller, not text in the file, and new_text may be left empty: ")
+INVOCATION_TAIL = " Do not retype the lines yourself."
+
+
+def invocation_paragraph(recipe_id: str, path: str, hypothesis: str) -> str:
+    """The paragraph that tells the model to invoke a recipe (empty new_text)."""
+    import json
+    from .recipes import registry
+    edit = {"action": "edit", "hypothesis": hypothesis,
+            "edits": [{"path": path, "old_text": registry.macro_token(recipe_id), "new_text": ""}]}
+    return INVOCATION_LEAD + json.dumps(edit, separators=(",", ":")) + "." + INVOCATION_TAIL
+
+
+def recipe_preview(recipe_id: str, log_lines, worktree: Path, target_arch: str) -> str:
+    """A dry run of the recipe: how many edits in how many files and a bounded
+    unified diff of what they change. Nothing is written. "" when the recipe
+    refuses, is unknown, or is not of a verified tier."""
+    try:
+        import difflib
+        from .recipes import registry
+        recipe = registry.get(recipe_id)
+        if recipe is None or recipe.tier not in PREVIEW_TIERS:
+            return ""
+        edits, _ = registry.run(recipe_id, worktree, log_lines, target_arch)
+        if not edits:
+            return ""
+        paths = list(dict.fromkeys(edit.path for edit in edits))
+        diff: list[str] = []
+        for path in paths:
+            before = registry.read(worktree, path)
+            after = before
+            for edit in edits:
+                if edit.path == path and edit.old_text in after:
+                    after = after.replace(edit.old_text, edit.new_text, 1)
+            diff.extend(line.rstrip("\n") for line in difflib.unified_diff(
+                before.splitlines(), after.splitlines(), f"a/{path}", f"b/{path}", lineterm="", n=1))
+        shown = diff[:PREVIEW_DIFF_LINES]
+        if len(diff) > len(shown):
+            shown.append(f"... {len(diff) - len(shown)} more diff lines not shown")
+        return (f"Dry run of recipe `{recipe_id}` ({recipe.tier}): it would make {len(edits)} edit(s) in "
+                f"{len(paths)} file(s), shown here as a diff (nothing has been written):\n" + "\n".join(shown))
+    except Exception:  # advice must never break a run
+        return ""
+
+
+def recipe_lines(recipe_id: str, path: str, hypothesis: str, log_lines, worktree: Path,
+                 target_arch: str) -> list[str]:
+    """The preview (when the tier allows) and the invocation paragraph: the
+    first lines of the repair section of every recipe-backed block."""
+    out = []
+    preview = recipe_preview(recipe_id, log_lines, worktree, target_arch)
+    if preview:
+        out.append(preview)
+    out.append(invocation_paragraph(recipe_id, path, hypothesis))
+    return out
+
+
+_FATAL = re.compile(r"(?:(?:^|[:\s])error[:\s\[]|fatal error|\*\*\* \[|Segmentation fault|assertion fail"
+                    r"|internal compiler error|returned exit code|\bFAIL\b|CMake Error|ld returned"
+                    r"|final link failed|undefined reference|can not be used when making|referenced by DSO"
+                    r"|Imported target \")")
+_NOT_FATAL = re.compile(r"conftest|configure:|^checking |config\.log|warning:")
+
+
+def first_fatal_index(log_lines: Sequence[str]) -> int:
+    """Index of the first line that reports a build-stopping error (0 when none),
+    ignoring configure probes and warnings, which fail without meaning anything."""
+    for index, line in enumerate(log_lines[:400_000]):
+        if isinstance(line, str) and _FATAL.search(line) and not _NOT_FATAL.search(line):
+            return index
+    return 0
+
+
 def _text(diagnostics: Sequence) -> str:
     return "\n".join(f"{d.message}\n{getattr(d, 'compiler_details', '')}" for d in diagnostics)
 
@@ -235,9 +327,12 @@ def arm_outline_atomics(log_lines: Sequence[str], worktree: Path, target_arch: s
         "-Wl,--no-undefined) cannot export it, and every program that links that library "
         "fails as shown."
         + (" Failing links: " + ", ".join(dict.fromkeys(objects[:6])) + "." if objects else ""),
+        *recipe_lines("arch-flags", "input/debian/rules", "outline-atomics helpers are hidden in libgcc on arm64",
+                      log_lines, worktree, target_arch),
         "Repair: compile the package with -mno-outline-atomics on arm64, which makes the "
-        "compiler inline the atomics instead. In debian/rules, at make level (not inside a "
-        "recipe), add:",
+        "compiler inline the atomics instead. The agent writes the "
+        "debian/rules lines itself (exported, at make level, after DEB_BUILD_MAINT_OPTIONS).",
+        "By hand, only if it refuses: in debian/rules, at make level (not inside a recipe), add:",
         "ifeq ($(DEB_HOST_ARCH),arm64)",
         "export DEB_CFLAGS_MAINT_APPEND += -mno-outline-atomics",
         "export DEB_CXXFLAGS_MAINT_APPEND += -mno-outline-atomics",
@@ -253,6 +348,8 @@ def arm_outline_atomics(log_lines: Sequence[str], worktree: Path, target_arch: s
 # --- Debian symbols files ----------------------------------------------------
 
 _SYMBOLS_ERROR = re.compile(r"dpkg-gensymbols: (?:error|warning): some (?:new )?symbols")
+# "some new symbols appeared" alone is a harmless warning; only the error fails the build.
+_SYMBOLS_DISAPPEARED = re.compile(r"dpkg-gensymbols: error: some symbols or patterns disappeared")
 _SYMBOLS_FILE = re.compile(r"doesn't match completely (?P<path>\S+)")
 _DIFF_LINE = re.compile(r"^[-+](?![-+]{2})")
 
@@ -281,7 +378,7 @@ def missing_symbols(log_lines: Sequence[str]) -> list[str]:
 
 def debian_symbols(log_lines: Sequence[str], worktree: Path, target_arch: str) -> str:
     start = next((i for i, line in enumerate(log_lines) if _SYMBOLS_ERROR.search(line)), None)
-    if start is None:
+    if start is None or not any(_SYMBOLS_DISAPPEARED.search(line) for line in log_lines):
         return ""
     files = []
     diff = []
@@ -312,21 +409,20 @@ def debian_symbols(log_lines: Sequence[str], worktree: Path, target_arch: str) -
     # Symbols tags take Debian names (arm64, amd64): (arch=!aarch64) never matches.
     tag_arch = archnames.debian(target_arch) or "arm64"
     target_file = ("input/debian/" + PurePosixPath(files[0]).name) if files else "input/debian/<package>.symbols"
+    lines.extend(recipe_lines("symbols-tag", target_file, f"these symbols are not exported on {tag_arch}",
+                              log_lines, worktree, target_arch))
     lines.append("`#MISSING: <version>#` is dpkg's diff notation for a symbol the build did not export; "
                  "it does not appear in the file, and must not be written into it.")
-    lines.append("Repair: each missing symbol's line gets a tag in parentheses before the symbol name, "
-                 "`(arch=!" + tag_arch + ")` if the symbol exists on every other architecture or `(optional)` "
-                 "otherwise, following the file's existing tag style (`(c++)\"...\"` becomes "
+    lines.append("Repair: the agent tags every missing symbol itself, glued to the "
+                 "name, and reports how many lines it tagged.")
+    lines.append("It writes `(optional=templinst)` for template instantiations and std/Qt internals, "
+                 "`(optional)` in an architecture-specific file (*.symbols.<arch>), and `(arch=!" + tag_arch
+                 + ")` in a generic file, following the file's tag style (`(c++)\"...\"` becomes "
                  "`(c++|optional)\"...\"`). The tag never goes after the version. The other "
                  f"{'lines stay' if len(missing) < 50 else 'thousands of lines stay'} as they are; do not delete the "
-                 "file, do not change debian/control, and do not retype the file.")
-    lines.append("The agent makes these line edits itself from the diff above when you send this single edit "
-                 "(it reports how many lines it tagged):")
-    lines.append('{"action": "edit", "hypothesis": "<why these symbols are absent on ' + tag_arch + '>", '
-                 '"edits": [{"path": "' + target_file + '", "old_text": "' + SYMBOLS_MACRO
-                 + '", "new_text": "optional"}]}')
-    lines.append("Use \"new_text\": \"arch=!" + tag_arch + "\" instead of \"optional\" to tag them as "
-                 "architecture-specific. Then reply stop once the prediction reads fixed.")
+                 "file, do not change debian/control, and do not retype the file. Send `new_text` "
+                 "optional or arch=!" + tag_arch + " only to force one tag. Then reply stop once the "
+                 "prediction reads fixed.")
     lines.append(END)
     return "\n".join(lines)
 
@@ -447,12 +543,18 @@ def cmake_imported_target(log_lines: Sequence[str], worktree: Path, target_arch:
         "2. Clearing the property is not enough: the directory holds the Fortran .mod files (or headers) "
         "the compile needs, so a `use` statement then fails with 'Cannot open module file'. Replace each "
         "missing directory with the one that exists. On Debian/Ubuntu, dh-fortran-mod installs modules "
-        "under /usr/include/<triplet>/fortran/gfortran-mod-NN/<name> or /usr/lib/<triplet>/fortran/"
-        "gfortran-mod-NN/<name>; a glob over fortran/*/<name> under both prefixes finds it without "
-        "naming the compiler version.",
+        "under /usr/include/<triplet>/fortran/gfortran-mod-NN/<name>; a glob over gfortran-mod-*/<name> "
+        "there finds it without naming the compiler version (do not use $(FMODDIR), which is empty on "
+        "arm64, and do not symlink the missing directory: both failed the validator).",
     ]
     where = facts["find_package"]
     if where:
+        lines.extend(recipe_lines("cmake-redirect-imported-dirs", where[0],
+                                  "the imported targets name include directories this architecture lacks",
+                                  log_lines, worktree, target_arch))
+        lines.append("Repair: the agent inserts the loop after the find_package "
+                     "call itself, covering the targets above.")
+        lines.append("By hand, only if it refuses:")
         lines.append(f"Place the repair in {where[0]} immediately after line {where[1]} "
                      f"(`{where[2]}`), so it runs after the targets are imported and before any "
                      "add_subdirectory. One edit, in that file; do not edit the subdirectories' "
@@ -461,39 +563,45 @@ def cmake_imported_target(log_lines: Sequence[str], worktree: Path, target_arch:
         lines.append("Place the repair in the top-level input/CMakeLists.txt immediately after the "
                      "find_package call that imports the target.")
     lines.append("Repair (adjust only the target list):")
-    lines.append(cmake_repair_snippet(all_targets))
+    lines.append(cmake_repair_snippet(all_targets, package=_package_name(where)))
     lines.append(END)
     return "\n".join(lines)
 
 
-def cmake_repair_snippet(targets: Sequence[str]) -> str:
+def _package_name(find_call) -> str:
+    found = _FIND_PACKAGE.search(find_call[2]) if find_call else None
+    return found.group("name") if found else ""
+
+
+def cmake_repair_snippet(targets: Sequence[str], package: str = "") -> str:
+    """The verified loop (ectrans variant A, 441 s): the glob is restricted to
+    /usr/include/<triplet>/fortran/gfortran-mod-*/<leaf>; $(FMODDIR) is empty on
+    arm64 and a symlink variant failed."""
     names = " ".join(targets) or "<imported targets>"
+    who = f"{package}-targets.cmake" if package else "the dependency's exported targets file"
     return "\n".join([
-        "# The dependency's exported targets name include directories that do not exist",
-        "# on this architecture; point each at the directory that does.",
-        f"foreach( _dep_target {names} )",
-        "  if( TARGET ${_dep_target} )",
-        "    get_target_property( _dep_dirs ${_dep_target} INTERFACE_INCLUDE_DIRECTORIES )",
-        "    if( _dep_dirs )",
-        "      set( _dep_fixed )",
-        "      foreach( _dep_dir ${_dep_dirs} )",
-        "        if( NOT EXISTS \"${_dep_dir}\" )",
-        "          get_filename_component( _dep_leaf \"${_dep_dir}\" NAME )",
-        "          string( REGEX REPLACE \"^/usr/(lib|include)/([^/]+)/.*$\" \"\\\\2\" _dep_triplet \"${_dep_dir}\" )",
-        "          file( GLOB _dep_found \"/usr/include/${_dep_triplet}/fortran/*/${_dep_leaf}\"",
-        "                               \"/usr/lib/${_dep_triplet}/fortran/*/${_dep_leaf}\" )",
-        "          if( _dep_found )",
-        "            list( GET _dep_found 0 _dep_dir )",
-        "          else()",
-        "            set( _dep_dir \"\" )",
-        "          endif()",
+        f"# {who} points at fortran module directories this package does not ship;",
+        "# redirect each missing directory to the dh-fortran-mod location under /usr/include.",
+        f"foreach(_dep_target {names})",
+        "  if(TARGET ${_dep_target})",
+        "    get_target_property(_dep_dirs ${_dep_target} INTERFACE_INCLUDE_DIRECTORIES)",
+        "    set(_dep_fixed \"\")",
+        "    foreach(_dep_dir ${_dep_dirs})",
+        "      if(NOT EXISTS \"${_dep_dir}\")",
+        "        get_filename_component(_dep_leaf \"${_dep_dir}\" NAME)",
+        "        string(REGEX REPLACE \"^/usr/(lib|include)/([^/]+)/.*$\" \"\\\\2\" _dep_triplet \"${_dep_dir}\")",
+        "        file(GLOB _dep_found \"/usr/include/${_dep_triplet}/fortran/gfortran-mod-*/${_dep_leaf}\")",
+        "        if(_dep_found)",
+        "          list(GET _dep_found 0 _dep_dir)",
+        "        else()",
+        "          set(_dep_dir \"\")",
         "        endif()",
-        "        if( _dep_dir )",
-        "          list( APPEND _dep_fixed \"${_dep_dir}\" )",
-        "        endif()",
-        "      endforeach()",
-        "      set_target_properties( ${_dep_target} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES \"${_dep_fixed}\" )",
-        "    endif()",
+        "      endif()",
+        "      if(_dep_dir)",
+        "        list(APPEND _dep_fixed \"${_dep_dir}\")",
+        "      endif()",
+        "    endforeach()",
+        "    set_target_properties(${_dep_target} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES \"${_dep_fixed}\")",
         "  endif()",
         "endforeach()",
     ])
@@ -575,8 +683,12 @@ def sphinx_build_command(log_lines: Sequence[str], worktree: Path, target_arch: 
         + (" That directory is an output contract: " + "; ".join(expects[:3])
            + ". Disabling, renaming or deleting the step makes dh_install fail with \"missing files\" "
            "instead." if expects else ""),
+        *recipe_lines("replace-removed-command", "input/debian/rules", "setup.py build_sphinx was removed by Sphinx 7",
+                      log_lines, worktree, target_arch),
         "Repair: keep the override target exactly as named and replace only its command with the "
-        "equivalent direct Sphinx invocation (python3-sphinx is already in Build-Depends):",
+        "equivalent direct Sphinx invocation (python3-sphinx is already in Build-Depends); "
+        "the agent replaces the line itself.",
+        "By hand, only if it refuses:",
         f"\tpython3 -m sphinx -b html {source} {html}",
         "(a recipe line starts with a tab). Nothing else needs to change.",
         END,
@@ -623,6 +735,18 @@ def nonpic_static_archive(log_lines: Sequence[str], worktree: Path, target_arch:
                      + (": a shared-library package that small ships no library, so the -dev package's "
                         f"`lib{name}.so` symlink points at nothing and ld fell back to the archive."
                         if size < 20_000 else "."))
+    if _recipe_applies("static-archive-shim", log_lines, worktree, target_arch):
+        lines.extend(recipe_lines("static-archive-shim", "input/setup.py",
+                                  f"lib{name}.so is missing so the non-PIC archive is linked into the extension",
+                                  log_lines, worktree, target_arch))
+        lines.append("Adding -fPIC to this package's flags does not recompile the archive. Repair: the fix that "
+                     "passed the validator (pybigwig) makes setup.py unpack the archive at build time and link "
+                     "its objects directly, with a hidden shim for the C standard stream and -Wl,-Bsymbolic; "
+                     "all of those pieces are needed, and the agent writes the setup.py change itself.")
+        lines.append("If it refuses (setup.py has another shape), adapt setup.py by the same idea or make no "
+                     "edit and reply stop with the reason.")
+        lines.append(END)
+        return "\n".join(lines)
     lines.append("Adding -fPIC to this package's CFLAGS or LDFLAGS does not recompile the archive, so the error "
                  "recurs unchanged. The repair belongs in the library's package (ship the shared library or build "
                  "the archive with -fPIC), not here; the only in-package route is compiling the library's sources "
@@ -630,6 +754,83 @@ def nonpic_static_archive(log_lines: Sequence[str], worktree: Path, target_arch:
     lines.append("If no bundled sources exist, make no edit and reply stop with that reason; if asked to "
                  "reconsider, reply stop again.")
     lines.append(END)
+    return "\n".join(lines)
+
+
+# --- recipe-backed blocks: signatures with no advice of their own before M2 ---
+
+def bfd_assertion(log_lines: Sequence[str], worktree: Path, target_arch: str) -> str:
+    from .recipes import registry
+    recipe = registry.get("strip-bsymbolic-functions")
+    match = recipe.recognise(list(log_lines), worktree, target_arch) if recipe else None
+    if match is None:
+        return ""
+    lines = [
+        TITLE,
+        "Linker crash on aarch64: ld (GNU Binutils 2.41) stops with \"BFD assertion fail "
+        "elfnn-aarch64.c\" while linking a shared library. " + match.evidence[1].strip("()") + ". Ubuntu's default "
+        "-Wl,-Bsymbolic-functions triggers it for this link; stripping that one flag fixed it on the real "
+        "validator (libmceliece).",
+        *recipe_lines("strip-bsymbolic-functions", "input/debian/rules",
+                      "the BFD assertion comes from -Bsymbolic-functions", log_lines, worktree, target_arch),
+        "Repair: the agent adds `export DEB_LDFLAGS_MAINT_STRIP = "
+        "-Wl,-Bsymbolic-functions` to debian/rules after the existing export block.",
+        "Do not add -z now, bindnow, LTO changes or -fPIC for this signature: all of them were tried and "
+        "the assertion remained.",
+        END,
+    ]
+    return "\n".join(lines)
+
+
+def segfault_optimisation(log_lines: Sequence[str], worktree: Path, target_arch: str) -> str:
+    from .recipes import registry
+    recipe = registry.get("o2-on-test-segfault")
+    match = recipe.recognise(list(log_lines), worktree, target_arch) if recipe else None
+    if match is None:
+        return ""
+    arch = match.params.get("arch", "")
+    lines = [
+        TITLE,
+        f"Test-suite segmentation fault on {arch} in a package compiled with -O3. Evidence: "
+        + " | ".join(match.evidence) + ". Ubuntu fixed the same signature in libevtx by compiling with -O2 "
+        "on amd64 and ppc64el.",
+        *recipe_lines("o2-on-test-segfault", "input/debian/rules", "the test crashes under -O3 on " + arch,
+                      log_lines, worktree, target_arch),
+        "Repair: the agent adds the ifneq/export lines to debian/rules "
+        "(-O3 stripped, -O2 appended).",
+    ]
+    guard = registry.get("optimize-guard-test-memory")
+    second = guard.recognise(list(log_lines), worktree, target_arch) if guard else None
+    if second is not None:
+        site = second.params["sites"][0]
+        lines.append("Second choice, if that edit is refused or the test still crashes (the test's own "
+                     "memory-fault wrappers are not safe when optimised):")
+        lines.append(_invoke("optimize-guard-test-memory", site[0], "the HAVE_*_TEST_MEMORY wrappers crash when optimised"))
+    lines.append("Do not delete or skip the failing test, and do not remove hardening flags.")
+    lines.append(END)
+    return "\n".join(lines)
+
+
+def serial_helper_race(log_lines: Sequence[str], worktree: Path, target_arch: str) -> str:
+    from .recipes import registry
+    recipe = registry.get("serial-helper-build")
+    match = recipe.recognise(list(log_lines), worktree, target_arch) if recipe else None
+    if match is None:
+        return ""
+    helper = match.params["helper"]
+    lines = [
+        TITLE,
+        f"Parallel-make race on a helper program: {match.evidence[0]}. Under make -j every instance of that "
+        f"rule rebuilds `{helper}` at the same time, which fails as an lto1 internal compiler error, "
+        "\"Text file busy\" or \"file too short\". Evidence: " + " | ".join(match.evidence[1:]),
+        *recipe_lines("serial-helper-build", "input/debian/rules",
+                      f"{helper} is rebuilt concurrently by the pattern rule", log_lines, worktree, target_arch),
+        f"Repair: the agent adds override_dh_auto_build to debian/rules that builds "
+        f"`{helper}` first (`dh_auto_build -- {helper}`) and then runs the normal build.",
+        "Keep LTO, -O2 and hardening as they are (this passed the validator with all three on); "
+        "`dh_auto_build --no-parallel` is the slower fallback.",
+        END,
+    ]
     return "\n".join(lines)
 
 
@@ -642,7 +843,7 @@ def _read_text(path: Path) -> str:
 
 def recognise(diagnostics: Sequence, log_path: Path | None, worktree: Path,
               target_arch: str = "", *, skip_rust: bool = False) -> str:
-    """One rendered block for the first recognised pattern, or ""."""
+    """One rendered block for the best-ranked recognised pattern, or ""."""
     for recogniser in (rust_char_signedness, x86_intrinsic_header):
         if skip_rust and recogniser is rust_char_signedness:
             continue
@@ -653,12 +854,34 @@ def recognise(diagnostics: Sequence, log_path: Path | None, worktree: Path,
         if block:
             return block
     log_lines = _log_lines(log_path)
-    for recogniser in (arm_outline_atomics, debian_symbols, cmake_imported_target,
-                       sphinx_build_command, nonpic_static_archive):
+    first = first_fatal_index(log_lines)
+    ranked = []
+    for order, (name, signature) in enumerate(_LOG_RECOGNISERS):
         try:
-            block = recogniser(log_lines, worktree, target_arch)
+            block = globals()[name](log_lines, worktree, target_arch)
         except Exception:
             block = ""
-        if block:
-            return block
-    return ""
+        if not block:
+            continue
+        try:
+            at = next((i for i, line in enumerate(log_lines) if signature.search(line)), first)
+        except Exception:
+            at = first
+        # A signature at or after the first fatal error ranks by its distance from it;
+        # one before it (a warning, a probe) ranks behind every real one.
+        ranked.append((at - first if at >= first else 10**6 + first - at, order, block))
+    return min(ranked)[2] if ranked else ""
+
+
+# (recogniser name, the log line that is its signature): the block whose signature
+# lies closest after the first fatal error wins; ties keep this order.
+_LOG_RECOGNISERS = (
+    ("arm_outline_atomics", _OUTLINE),
+    ("debian_symbols", _SYMBOLS_DISAPPEARED),
+    ("cmake_imported_target", re.compile(r'Imported target "')),
+    ("sphinx_build_command", _BUILD_SPHINX),
+    ("nonpic_static_archive", _NONPIC),
+    ("bfd_assertion", re.compile(r"BFD .*assertion fail .*elfnn-aarch64\.c")),
+    ("segfault_optimisation", re.compile(r"Segmentation fault|\(core dumped\)|exit status:? 139\b")),
+    ("serial_helper_race", re.compile(r"lto1: internal compiler error|Text file busy|file too short")),
+)

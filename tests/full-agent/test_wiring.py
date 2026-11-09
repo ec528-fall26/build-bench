@@ -122,7 +122,7 @@ class Adapter(unittest.TestCase):
         script = Script("no json here", "still none", reply(action="stop", reason="done"))
         result, _ = self.run_with(script)
         self.assertEqual(result.malformed_count, 1)
-        self.assertIn("Your last reply could not be used", script.user(2))
+        self.assertIn("Your last reply could not be used", script.sent[2][-1]["content"])
 
     def test_revises_after_a_failed_build(self):
         wrong = "#define HAVE_MM_PREFETCH 1  // tried\n"
@@ -234,7 +234,7 @@ class Adapter(unittest.TestCase):
         result, adapter = self.run_with(script)
         self.assertEqual(result.malformed_count, 1)
         self.assertFalse(adapter.turns[0]["follow_up"])
-        self.assertIn("unknown tool", script.user(1))
+        self.assertIn("unknown tool", script.sent[1][-1]["content"])
 
     def test_repeated_request_is_shown_once_with_a_note(self):
         search = {"tool": "search", "args": {"regex": "fiat", "path_glob": "input/**/*.cmake"}}
@@ -255,7 +255,7 @@ class Adapter(unittest.TestCase):
                                            {"tool": "search", "args": {"regex": "x",
                                                                        "path_glob": "input/**"}}]),
             edit("#define HAVE_MM_PREFETCH 1\n", "#define HAVE_MM_PREFETCH 0\n"),
-            reply(action="stop", reason="done"))
+            reply(action="stop", reason="done"), reply(action="stop", reason="done"))
         self.run_with(script)
         after = script.user(2).split("=== Results of your tool requests ===")[1]
         # Only the read of the unedited file survives the edit.
@@ -268,7 +268,7 @@ class Adapter(unittest.TestCase):
                                                          "args": {"path": f"input/{n}"}}])
         script = Script(look(1), look(2), look(3), look(4),
                         edit("#define HAVE_MM_PREFETCH 1\n", "#define HAVE_MM_PREFETCH 0\n"),
-                        reply(action="stop", reason="done"))
+                        reply(action="stop", reason="done"), reply(action="stop", reason="done"))
         self.run_with(script)
         nudged = ["turns investigating since your last edit" in script.user(n) for n in range(6)]
         # After the 4th tool turn, and not again once an edit was made.
@@ -280,7 +280,7 @@ class Adapter(unittest.TestCase):
                                                          "args": {"path": f"input/{n}"}}])
         script = Script(*[look(n) for n in range(6)], look(6),
                         edit("#define HAVE_MM_PREFETCH 1\n", "#define HAVE_MM_PREFETCH 0\n"),
-                        look(7), reply(action="stop", reason="done"))
+                        look(7), reply(action="stop", reason="done"), reply(action="stop", reason="done"))
         result, adapter = self.run_with(script)
         self.assertIn("Tools are switched off until your next edit", script.user(6))
         # The 7th tool request is refused, not run, and answered in the same turn;
@@ -288,7 +288,7 @@ class Adapter(unittest.TestCase):
         self.assertEqual(script.sent[7][-1]["content"], TOOLS_OFF_FOLLOW_UP)
         self.assertEqual([(t["action"], t["follow_up"]) for t in adapter.turns],
                          [("tool", False)] * 6 + [("edit", True), ("tool", False),
-                                                  ("stop", False)])
+                                                  ("stop", False), ("stop", False)])
         self.assertNotIn("switched off", script.user(8))
         self.assertEqual((result.termination_reason, result.malformed_count), ("model_stop", 0))
 
@@ -389,7 +389,7 @@ class Adapter(unittest.TestCase):
         script = Script(
             edit("repeat", "replacement"),
             edit("first repeat\n", "first replacement\n"),
-            reply(action="stop", reason="done"),
+            reply(action="stop", reason="done"), reply(action="stop", reason="done"),
         )
 
         result, _ = self.run_with(script)
@@ -436,7 +436,7 @@ class Adapter(unittest.TestCase):
 
     def test_without_build_feedback_edits_are_kept_untested(self):
         script = Script(edit("#define HAVE_MM_PREFETCH 1\n", "#define HAVE_MM_PREFETCH 0\n"),
-                        reply(action="stop", reason="complete"))
+                        reply(action="stop", reason="complete"), reply(action="stop", reason="complete"))
         result, _ = self.run_with(script)
         self.assertEqual(result.termination_reason, "model_stop")
         self.assertIn("No build was run for this attempt", script.user(1))

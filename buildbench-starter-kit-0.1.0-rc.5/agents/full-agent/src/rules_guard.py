@@ -62,6 +62,8 @@ _RULES_SUPPRESS = (
     (re.compile(r"\bexit\s+0\b", re.MULTILINE),
      'it adds "exit 0", which ends a step as successful whatever happened'),
 )
+_DH_TARGET = re.compile(r"^\t\s*dh\s+\$@", re.MULTILINE)
+_DH_BROKEN = re.compile(r"^\t\s*dh\s+(?:\$\$@|\$(?![@(]))", re.MULTILINE)
 _TEST_LIST = re.compile(
     r"\badd_test\s*\(|\bTESTS\s*\+?=|\bcheck_PROGRAMS\b|\btest\s*\(\s*['\"]|"
     r"\bAT_SETUP\b|\bm4_include\s*\(\s*\[?[\w./-]*test", re.IGNORECASE)
@@ -117,7 +119,21 @@ def _build_step_bypass(old_text: str, new_text: str) -> str | None:
             "then repair or replace the producer with a working equivalent")
 
 
-def check(path: str, old_text: str, new_text: str) -> str | None:
+# A symbols file: marking a few symbols the build reports as missing is a repair;
+# marking them all switches the check off (libbpp-core, 0.5.0 locally, 7
+# November: a replace_all made all 4,129 symbols "(optional)", three times over).
+_SYMBOLS_FILE = re.compile(r"(?:^|/)debian/[^/]+\.symbols(?:\.[\w-]+)?$")
+# Tags that excuse a symbol: (optional), and (arch=...), which rc.3 put on all 4,130
+# symbols of libbpp-core on 9 November, leaving the check effectively off.
+_OPTIONAL = re.compile(r"\(\s*(?:[\w=!|-]+\s*\|\s*)*(?:optional\b|arch=)")
+MAX_OPTIONAL_MARKS = 40
+
+
+def is_symbols_file(path: str) -> bool:
+    return _SYMBOLS_FILE.search(path) is not None
+
+
+def check(path: str, old_text: str, new_text: str, replace_all: bool = False) -> str | None:
     """Why this edit is refused, or None when it may be applied."""
     relative = path[len("input/"):] if path.startswith("input/") else path
     if relative.startswith(".pc/") or "/.pc/" in relative:
@@ -131,10 +147,34 @@ def check(path: str, old_text: str, new_text: str) -> str | None:
     removed = _removed(old_text, new_text)
     added_text = "\n".join(added)
 
+    if _SYMBOLS_FILE.search(relative):
+        marked = len(_OPTIONAL.findall(new_text)) - len(_OPTIONAL.findall(old_text))
+        # A replace_all on a family of symbols is fine (libleidenalg's " _ZNSt", the C++
+        # standard-library instantiations, passed); on a bare prefix such as " _" or
+        # " _Z" it matches every symbol (jsonnet, libbpp-core).
+        generic = len(re.sub(r"[\s()]|optional", "", old_text)) <= 4
+        if marked > 0 and replace_all and generic:
+            return ("a replace_all that adds a tag to a bare prefix excuses every symbol, "
+                    "which switches the symbols check off; the rules forbid suppressing "
+                    "failures. Mark only the symbols dpkg-gensymbols lists as missing (its "
+                    "diff lines starting with '-'), one edit per symbol or block")
+        if marked > MAX_OPTIONAL_MARKS:
+            return (f"it tags {marked} symbols at once, which switches the symbols "
+                    "check off; the rules forbid suppressing failures. Mark only the symbols "
+                    "dpkg-gensymbols lists as missing (its diff lines starting with '-')")
+        return None
+
     if relative == "debian/rules" or relative.endswith("/debian/rules"):
         bypass = _build_step_bypass(old_text, new_text)
         if bypass:
             return bypass
+        # html-xml-utils, 7 November: an edit turned "dh $@" into "dh $", and
+        # "debian/rules clean" failed before anything was built.
+        if len(_DH_TARGET.findall(new_text)) < len(_DH_TARGET.findall(old_text)) \
+                and _DH_BROKEN.search(new_text):
+            return ('it breaks the "dh $@" call: make passes the target name only as "$@", '
+                    'so "dh $" or "dh $$@" runs no sequence and every build step fails. '
+                    'Keep "dh $@" exactly and put options after it')
         for regex, why in _RULES_SUPPRESS:
             if regex.search(added_text) and not regex.search(old_text):
                 return why + "; the rules forbid suppressing failures to obtain a build"

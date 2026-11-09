@@ -189,7 +189,69 @@ def expand_macros(edits, worktree, log_lines, target_arch: str = "") -> tuple[li
         if made:
             expanded.add((recipe_id, path))
             out.extend(made)
+    if not expanded:  # a macro's edits carry the model's parameters; they are not copies
+        out, restored = restore_retyped(out, worktree, log_lines, target_arch)
+        notes.extend(restored)
     return out, notes
+
+
+RETYPE_MIN_LINES = 5     # a block of code; one symbols line hand-tagged is not a copy of the recipe
+RETYPE_SHARE = 0.8       # of the recipe's lines that appear in the hand edits
+
+
+def _lines(text: str) -> list[str]:
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def _retyped_paths(edits, made) -> list[str]:
+    """Paths where the hand edits hold most of a recipe's code block but are not the recipe's edits."""
+    own_keys = {(own.path, own.old_text, own.new_text) for own in made}
+    paths = []
+    for path in dict.fromkeys(own.path for own in made):
+        blocks = [own for own in made if own.path == path and own.new_text.count("\n") >= RETYPE_MIN_LINES]
+        hand = [edit for edit in edits if edit.path == path]
+        if not blocks or not hand or {(e.path, e.old_text, e.new_text) for e in hand} == {
+                key for key in own_keys if key[0] == path}:
+            continue
+        typed = {line for edit in hand for line in _lines(getattr(edit, "new_text", "") or "")}
+        wanted = [line for own in blocks for line in _lines(own.new_text)]
+        if sum(line in typed for line in wanted) >= RETYPE_SHARE * len(wanted):
+            paths.append(path)
+    return paths
+
+
+def restore_retyped(edits, worktree, log_lines, target_arch: str = "") -> tuple[list, list[str]]:
+    """Swap a hand-typed copy of a verified recipe for the recipe's own edits.
+
+    The model is shown a bounded preview of a verified recipe and told to send
+    the macro; sometimes it retypes the preview instead. pybigwig, 9 November:
+    in 0.6.0-rc.6 the copy wrote `labs =` for `libs =` and left out the second
+    edit, which the 40-line preview had cut off; in rc.5 a rearranged copy
+    built but no longer loaded. Hosted runs get one validation, so edits of a
+    file that are a copy of the recipe's code block are replaced by the recipe.
+    Only a verified recipe whose signature is in the log and whose edits still
+    compute on this tree is used; other files' edits stay. Never raises.
+    """
+    try:
+        from . import completion, patterns
+        from .recipes import registry
+        if not any((getattr(edit, "new_text", "") or "").count("\n") >= RETYPE_MIN_LINES for edit in edits):
+            return list(edits), []
+        out, notes = list(edits), []
+        for recipe, match in registry.menu(log_lines, worktree, target_arch):
+            if recipe.tier not in patterns.PREVIEW_TIERS:
+                continue
+            made, _ = registry.run(recipe.id, worktree, log_lines, target_arch,
+                                   {"path": completion.recipe_target(recipe.id, match)})
+            for path in _retyped_paths(out, made):
+                first = next(index for index, edit in enumerate(out) if edit.path == path)
+                own = [edit for edit in made if edit.path == path]
+                out = ([e for e in out[:first]] + own + [e for e in out[first:] if e.path != path])
+                notes.append(f"The edits of {path} were a retyped copy of the verified recipe {recipe.id}; the "
+                             f"controller applied the recipe's own {len(own)} edit(s) instead. Do not retype it.")
+        return out, notes
+    except Exception:  # a safety net must never break a run
+        return list(edits), []
 
 
 def prune_batch(snapshot, edits, missing_symbol_count=None):

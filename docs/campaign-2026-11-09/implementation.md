@@ -80,4 +80,4 @@ The live rc.4 run (findings round 14) showed the model never invoked a recipe: i
 4. **Stop bounce on an outstanding NOT-fixed verdict**, once per run, quoting the unfixed lines in full and repeating the recipe invocation; composes with the existing empty-stop bounce.
 5. **Static-shim verdict** for the non-PIC archive class: after a setup.py edit, NOT fixed unless the library is no longer linked, the archive objects are linked, a hidden shim defines the relocated symbol and `-Wl,-Bsymbolic` is passed; names the missing pieces.
 
-Not yet run live (the Bedrock key expired during round 14); libbpp-core, pybigwig and libevtx are the re-runs that test it.
+Run live on 9 November 15:06-16:20 UTC: libevtx repaired in 2 turns, libbpp-core in 2, pybigwig in 7 (findings round 15). All eleven local cases now repair live.

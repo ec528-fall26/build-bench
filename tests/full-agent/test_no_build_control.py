@@ -114,6 +114,29 @@ class Guard(unittest.TestCase):
         self.assertIsNone(rules_guard.check("input/debian/rules", "%:\n\tdh $@\n",
                                             "%:\n\tdh $@ --with autoreconf\n"))
 
+    def test_a_constant_make_condition_is_refused(self):
+        old = "ifeq ($(filter $(DEB_TARGET_ARCH), amd64),)\nexport DH_GOLANG_EXCLUDES := tests/a\nendif\n"
+        new = "ifeq (1,1)\nexport DH_GOLANG_EXCLUDES := tests/a\nendif\n"
+        self.assertIn("never changes", rules_guard.check("input/debian/rules", old, new))
+        self.assertIsNone(rules_guard.check("input/debian/rules", "ifeq ($(DEB_HOST_ARCH),amd64)\n",
+                                            "ifneq (,$(filter $(DEB_HOST_ARCH), amd64 arm64))\n"))
+        self.assertIsNone(rules_guard.check("input/debian/rules", "%:\n\tdh $@\n",
+                                            "ifeq (1,1)\nX=1\nendif\n%:\n\tdh $@\n"))
+
+    def test_a_function_stubbed_to_a_bare_return_is_refused(self):
+        old = ("bool C::Shutdown(ms timeout) noexcept\n{\n  is_shutdown_.store(true);\n"
+               "  bool done = ForceFlush(timeout);\n  client_->CancelAll();\n  client_->FinishAll();\n  return done;\n}\n")
+        for new in ("bool C::Shutdown(ms) noexcept { return true; }\n",
+                    "bool C::Shutdown(ms timeout) noexcept\n{\n  return true;\n}\n"):
+            self.assertIn("bare return", rules_guard.check("input/src/client.cc", old, new))
+
+    def test_a_guarded_or_small_return_is_allowed(self):
+        body = "  a = f(1);\n  b = g(2);\n  c = h(3);\n  return k(a, b, c);\n"
+        guarded = "#if defined(__x86_64__)\n" + body + "#else\n  return 0;\n#endif\n"
+        self.assertIsNone(rules_guard.check("input/src/a.c", body, guarded))
+        self.assertIsNone(rules_guard.check("input/src/a.c", "  x = f();\n  return x;\n", "  return 0;\n"))
+        self.assertIsNone(rules_guard.check("input/src/a.c", body, "  return compute_all(1, 2, 3);\n"))
+
     def test_legitimate_repairs_are_allowed(self):
         cases = [
             # an expected value corrected, the check kept

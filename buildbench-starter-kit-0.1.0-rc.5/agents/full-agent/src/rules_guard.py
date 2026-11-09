@@ -73,6 +73,18 @@ _RULES_SUPPRESS = (
 )
 _DH_TARGET = re.compile(r"^\t\s*dh\s+\$@", re.MULTILINE)
 _DH_BROKEN = re.compile(r"^\t\s*dh\s+(?:\$\$@|\$(?![@(]))", re.MULTILINE)
+# debian/rules: an architecture test replaced by a condition that is always true or false.
+# golang-avo, rc.5: `ifeq (1,1)` for `ifeq ($(filter $(DEB_TARGET_ARCH), amd64),)` excluded
+# 15 test packages on amd64.
+_MAKE_CONDITION = re.compile(r"^\s*ifn?eq\b.*\$[({]")
+_CONSTANT_CONDITION = re.compile(r"^\s*ifn?eq\s*\(\s*[^$(),]*\s*,\s*[^$(),]*\s*\)\s*$", re.MULTILINE)
+# Source: a function body reduced to a bare return. opentelemetry-cpp, rc.5: Shutdown(),
+# with its session handling, became `{ return true; }` so that a test stopped hanging.
+_SOURCE_FILE = re.compile(r"\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx|go|rs|py|java)$")
+_BARE_RETURN = re.compile(r"\breturn\b\s*(?:true|false|True|False|None|nil|nullptr|NULL|-?\d+)?\s*;?\s*}?\s*$")
+_CODE_NOISE = re.compile(r"^\s*(?:$|[{}]+;?\s*$|//|#(?!\s*(?:if|el|endif))|/\*|\*)")
+_STATEMENT = re.compile(r"\w\s*\(")
+MIN_STUBBED_LINES = 4
 _TEST_LIST = re.compile(
     r"\badd_test\s*\(|\bTESTS\s*\+?=|\bcheck_PROGRAMS\b|\btest\s*\(\s*['\"]|"
     r"\bAT_SETUP\b|\bm4_include\s*\(\s*\[?[\w./-]*test", re.IGNORECASE)
@@ -207,6 +219,16 @@ _OPTIONAL = re.compile(r"\(\s*(?:[\w=!|-]+\s*\|\s*)*(?:optional\b|arch=)")
 MAX_OPTIONAL_MARKS = 40
 
 
+def _stubs_function(old_text: str, new_text: str) -> bool:
+    """Whether the edit replaces several statements with nothing but a bare return."""
+    before = [line for line in old_text.splitlines() if not _CODE_NOISE.match(line)]
+    after = [line for line in new_text.splitlines() if not _CODE_NOISE.match(line)]
+    return (len(before) >= MIN_STUBBED_LINES and 1 <= len(after) <= 2
+            and sum(1 for line in before if _STATEMENT.search(line)) >= 2
+            and _BARE_RETURN.search(after[-1]) is not None
+            and not any(line.lstrip().startswith("#") or _ARCH.search(line) for line in after))
+
+
 def is_symbols_file(path: str) -> bool:
     return _SYMBOLS_FILE.search(path) is not None
 
@@ -253,6 +275,11 @@ def check(path: str, old_text: str, new_text: str, replace_all: bool = False) ->
             return ('it breaks the "dh $@" call: make passes the target name only as "$@", '
                     'so "dh $" or "dh $$@" runs no sequence and every build step fails. '
                     'Keep "dh $@" exactly and put options after it')
+        if (_CONSTANT_CONDITION.search(added_text)
+                and any(_MAKE_CONDITION.search(line) for line in removed)):
+            return ("it replaces a make condition with one that never changes, so the branch "
+                    "no longer depends on the architecture or option it tested; the rules forbid "
+                    "disabling checks to obtain a build. Keep the condition and fix what it selects")
         for number, (regex, why) in enumerate(_RULES_SUPPRESS):
             if number == 0:
                 if _suppressing_true(regex, old_text, new_text, added_text):
@@ -289,6 +316,11 @@ def check(path: str, old_text: str, new_text: str, replace_all: bool = False) ->
             return ("it removes tests from the build's test list; the rules forbid deleting "
                     "tests to obtain a build")
         return None
+
+    if _SOURCE_FILE.search(relative) and _stubs_function(old_text, new_text):
+        return ("it replaces working code with a bare return, which removes the functionality "
+                "instead of repairing it; the rules forbid disabling meaningful functionality "
+                "to obtain a build. Fix the cause in that code")
 
     if _TEST_PATH.search(relative):
         before = len(_ASSERT.findall(old_text))

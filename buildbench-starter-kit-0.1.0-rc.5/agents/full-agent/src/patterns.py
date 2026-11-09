@@ -799,13 +799,6 @@ def segfault_optimisation(log_lines: Sequence[str], worktree: Path, target_arch:
         "Repair: the agent adds the ifneq/export lines to debian/rules "
         "(-O3 stripped, -O2 appended).",
     ]
-    guard = registry.get("optimize-guard-test-memory")
-    second = guard.recognise(list(log_lines), worktree, target_arch) if guard else None
-    if second is not None:
-        site = second.params["sites"][0]
-        lines.append("Second choice, if that edit is refused or the test still crashes (the test's own "
-                     "memory-fault wrappers are not safe when optimised):")
-        lines.append(_invoke("optimize-guard-test-memory", site[0], "the HAVE_*_TEST_MEMORY wrappers crash when optimised"))
     lines.append("Do not delete or skip the failing test, and do not remove hardening flags.")
     lines.append(END)
     return "\n".join(lines)

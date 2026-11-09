@@ -472,6 +472,29 @@ NOT-fixed verdict outstanding. Round 15 makes the recipe path the obvious one
 misread, controller completion of a partial symbols repair, a one-time stop
 bounce on an outstanding NOT-fixed verdict, and a static-shim verdict).
 
+## Round 15: the recipe path, live (9 November, 15:06-16:20 UTC)
+
+The three cases rc.4 missed or did not run, re-run with the round-15 changes
+(dry-run diff preview, unmistakable invocation, controller completion, NOT-fixed
+stop bounce, static-shim verdict; `docs/campaign-2026-11-09/implementation.md`).
+Same model, no build feedback, one run each.
+
+| Case | Outcome | Turns | Tokens in | What happened |
+| --- | --- | --- | --- | --- |
+| libevtx | **repaired**, first time ever | 2 | 13.7 k | one macro edit (`o2-on-test-segfault`), the four-line `ifneq` block, stop |
+| libbpp-core | **repaired** | 2 | 22.5 k | one macro edit (`symbols-tag`), 12 glued tags (`optional=templinst` / `optional`), stop |
+| pybigwig | **repaired**, first time ever | 7 | 75 k | a hand-written first attempt, the static-shim verdict named the missing shim and `-Bsymbolic`, the second attempt invoked the recipe |
+
+With round 14's eight, **all eleven local cases are repaired live by 0.6.0-rc.5**,
+each by an edit the validator accepted and, pybigwig's workaround aside, one a
+maintainer could upload. The decisive change between rounds 14 and 15 was not a
+new recipe but making the existing ones legible to the model: a preview of the
+exact diff and an invocation it cannot mistake for file text.
+
+Caveats: one run per case, the eleven cases are in-sample (every recipe was
+written after its case), and the hidden set's class mix is an estimate. The
+held-out replay protocol in the master plan is the next measurement.
+
 ## x86-target cases on the arm64 instance (fixed 8 November)
 
 Every amd64/i386-target validator build on the arm64 instance ended in

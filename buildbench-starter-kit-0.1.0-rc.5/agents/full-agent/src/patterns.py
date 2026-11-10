@@ -742,7 +742,8 @@ def nonpic_static_archive(log_lines: Sequence[str], worktree: Path, target_arch:
         lines.append("Adding -fPIC to this package's flags does not recompile the archive. Repair: the fix that "
                      "passed the validator (pybigwig) makes setup.py unpack the archive at build time and link "
                      "its objects directly, with a hidden shim for the C standard stream and -Wl,-Bsymbolic; "
-                     "all of those pieces are needed, and the agent writes the setup.py change itself.")
+                     "all of those pieces are needed, and the controller writes every one of them when you send the "
+                     "single edit above.")
         lines.append("If it refuses (setup.py has another shape), adapt setup.py by the same idea or make no "
                      "edit and reply stop with the reason.")
         lines.append(END)

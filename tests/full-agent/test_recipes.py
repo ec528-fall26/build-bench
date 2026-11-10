@@ -463,6 +463,71 @@ class StaticShim(unittest.TestCase):
         self.assertNotIn("The repair belongs in the library's package", block)
 
 
+class RetypedRecipe(unittest.TestCase):
+    PATH = "input/setup.py"
+
+    def own(self):
+        return expand("pybigwig", "static-archive-shim", path=self.PATH)[0]
+
+    def restore(self, edits):
+        return edit_repair.expand_macros(edits, tree("pybigwig"), log_lines("pybigwig"), "amd64")
+
+    def test_a_copy_with_a_typo_becomes_the_recipes_edits(self):
+        # the rc.6 live failure: `labs =` for `libs =`, second edit missing
+        own = self.own()
+        typed = own[0].new_text.replace('\nlibs = ["m"', '\nlabs = ["m"')
+        self.assertNotEqual(typed, own[0].new_text)
+        out, notes = self.restore([Edit(self.PATH, own[0].old_text, typed)])
+        self.assertEqual([(e.path, e.old_text, e.new_text) for e in out],
+                         [(e.path, e.old_text, e.new_text) for e in own])
+        self.assertIn("retyped copy", " ".join(notes))
+        compile(apply(tree("pybigwig"), out)[self.PATH], "setup.py", "exec")
+
+    def test_the_macro_is_not_touched(self):
+        out, notes = self.restore([Edit(self.PATH, "@@recipe:static-archive-shim@@", "")])
+        self.assertEqual(len(out), 2)
+        self.assertFalse([n for n in notes if "retyped" in n])
+
+    def test_an_exact_copy_is_left_alone(self):
+        own = self.own()
+        out, notes = self.restore(list(own))
+        self.assertEqual(out, list(own))
+        self.assertFalse([n for n in notes if "retyped" in n])
+
+    def test_a_different_long_edit_is_left_alone(self):
+        edit = Edit(self.PATH, 'srcs = ["pyBigWig.c"]\n', "# " + "an unrelated comment about the build\n" * 12)
+        out, notes = self.restore([edit])
+        self.assertEqual(out, [edit])
+        self.assertEqual(notes, [])
+
+    def test_an_unrelated_edit_in_the_batch_survives(self):
+        own = self.own()
+        other = Edit("input/debian/rules", "a", "b")
+        typed = own[0].new_text.replace('\nlibs = ["m"', '\nlabs = ["m"')
+        out, _ = self.restore([other, Edit(self.PATH, own[0].old_text, typed)])
+        self.assertIs(out[0], other)
+        self.assertEqual(len(out), 3)
+
+    def test_a_rearranged_copy_becomes_the_recipes_edits(self):
+        # the rc.5 live failure: the helper retyped, libs reset elsewhere in the file
+        own = self.own()
+        moved = own[0].new_text.replace("import os, shlex, shutil, subprocess", "import os, shlex, shutil")
+        out, notes = self.restore([Edit(self.PATH, own[0].old_text, moved),
+                                   Edit(self.PATH, 'libs.append("curl")\n', 'libs = []\n')])
+        self.assertEqual([(e.old_text, e.new_text) for e in out], [(e.old_text, e.new_text) for e in own])
+        self.assertIn("retyped copy", " ".join(notes))
+
+    def test_a_copy_of_the_first_edit_alone_gets_the_second(self):
+        own = self.own()
+        out, _ = self.restore([own[0]])
+        self.assertEqual(len(out), 2)
+
+    def test_the_preview_cut_off_the_second_edit(self):
+        block = patterns.recipe_preview("static-archive-shim", log_lines("pybigwig"), tree("pybigwig"), "amd64")
+        self.assertIn("more diff lines not shown", block)
+        self.assertNotIn("extra_objects = _extra_objs", block)
+
+
 class RulesLinter(unittest.TestCase):
     def test_problems_are_named(self):
         text = "export A = 1\nifeq ($(X),y)\nDEB_CFLAGS_MAINT_APPEND += -O2\n"

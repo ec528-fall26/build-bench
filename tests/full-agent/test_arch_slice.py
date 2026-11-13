@@ -22,6 +22,11 @@ from src.model_adapter import ModelAdapter  # noqa: E402
 from src.contracts import Budget  # noqa: E402
 
 ARM = arch_model.lookup("arm64")
+
+
+def lookup_amd():
+    return arch_model.lookup("amd64")
+
 AMD = arch_model.lookup("amd64")
 
 PREFETCH = ('#include "crc32c/crc32c_config.h"\n\n#if HAVE_MM_PREFETCH\n\n#if defined(_MSC_VER)\n'
@@ -176,6 +181,88 @@ class Verdicts(Worktree):
         self.write("input/debian/rules", RULES.replace("arm64", "amd64").replace("export DEB_CFLAGS", "DEB_CFLAGS"))
         verdicts = verify.predict(self.root, [], ARM, changed={"input/debian/rules"})
         self.assertTrue(any(v.ok is False and "false on arm64" in v.text for v in verdicts))
+
+    XMBMON = ("#ifdef LINUX\n#include <sys/io.h>\n#define SET_IOPL() iopl(3)\n#else\n"
+              "#define SET_IOPL() (0)\n#endif\n\n"
+              "static __inline__ unsigned char\nmy_inb(unsigned short port)\n{\n\tunsigned char v;\n"
+              "\t__asm__ __volatile__(\"inb %1,%0\" : \"=a\" (v) : \"d\" (port));\n\treturn v;\n}\n"
+              "static __inline__ void\nmy_outb(unsigned short port, unsigned char val)\n{\n"
+              "\t__asm__ __volatile__(\"outb %0,%1\" : : \"a\" (val), \"d\" (port));\n}\n")
+
+    def io_verdicts(self, text):
+        self.write("input/io_cpu.h", text)
+        item = diagnostic("fatal error: sys/io.h: No such file or directory", "io_cpu.h", 2,
+                          resolved=("input/io_cpu.h",), quote="#include <sys/io.h>")
+        return verify.predict(self.root, [item], ARM, changed={"input/io_cpu.h"},
+                              originals={"input/io_cpu.h": self.XMBMON})
+
+    def test_x86_assembly_left_in_the_edited_header_is_not_fixed(self):
+        # xmbmon: the include was guarded, the prediction said "fixed", and the
+        # same header still compiled inb/outb on arm64.
+        guarded = self.XMBMON.replace("#ifdef LINUX", "#if defined(LINUX) && defined(__x86_64__)")
+        verdicts = self.io_verdicts(guarded)
+        self.assertIn(True, [v.ok for v in verdicts])               # the include itself
+        wrong = [v for v in verdicts if v.ok is False]
+        self.assertEqual(len(wrong), 1, [v.text for v in verdicts])
+        self.assertIn("x86 inline assembly is still compiled on arm64 at lines 12, 18", wrong[0].text)
+        self.assertIn("same names", wrong[0].text)
+
+    def test_an_include_guard_does_not_hide_it(self):
+        # the questing copy, 13 November: the whole header sits inside
+        # `#if !defined(__io_cpu_h__)`, an unknown macro, and nothing was reported
+        guarded = self.XMBMON.replace("#ifdef LINUX", "#if defined(LINUX) && defined(__x86_64__)")
+        for opening in ("#if !defined(__io_cpu_h__)\n#define\t__io_cpu_h__\n\n", "#ifndef IO_CPU_H\n#define IO_CPU_H\n"):
+            verdicts = self.io_verdicts(opening + guarded + "#endif\n")
+            self.assertTrue(any(v.ok is False and "x86 inline assembly" in v.text for v in verdicts),
+                            [v.text for v in verdicts])
+
+    def test_assembly_under_the_x86_conditional_is_fine(self):
+        guarded = self.XMBMON.replace("#ifdef LINUX", "#if defined(LINUX) && defined(__x86_64__)")
+        guarded = guarded.replace("static __inline__ unsigned char", "#if defined(__x86_64__)\nstatic __inline__ unsigned char", 1)
+        guarded += ("#else\nstatic __inline__ unsigned char my_inb(unsigned short port) { (void)port; return 0xff; }\n"
+                    "static __inline__ void my_outb(unsigned short port, unsigned char val) { (void)port; (void)val; }\n"
+                    "#endif\n")
+        self.assertEqual([v.ok for v in self.io_verdicts(guarded)], [True])
+        self.assertEqual([v for v in verify.predict(self.root, [], lookup_amd(), changed={"input/io_cpu.h"})], [])
+
+    def test_arm_assembly_and_untouched_files_are_not_reported(self):
+        self.write("input/other.c", 'void f(void) { __asm__ __volatile__("inb %1,%0"); }\n')
+        self.write("input/barrier.h", 'static inline void b(void) { __asm__ __volatile__("isb" ::: "memory"); }\n')
+        item = diagnostic("error: unknown type name 'u64'", "barrier.h", 1, resolved=("input/barrier.h",))
+        verdicts = verify.predict(self.root, [item], ARM, changed={"input/barrier.h"})
+        self.assertFalse(any("inline assembly" in v.text for v in verdicts), [v.text for v in verdicts])
+
+    def test_an_edited_c_file_that_a_recursive_perl_build_compiles_twice(self):
+        # libcrypt-xxhash-perl: the unpatched copy under .pc/ is compiled as well
+        self.write("input/Build.PL", "my $b = Module::Build->new(\n    include_dirs => ['.', 'src', 'ext/xxHash'],\n"
+                                     "    c_source       => ['.', 'src'],\n);\n")
+        self.write("input/ext/xxHash/xxh_x86dispatch.c", "#if defined(__x86_64__)\nint x;\n#endif\n")
+        verdicts = verify.predict(self.root, [], ARM, changed={"input/ext/xxHash/xxh_x86dispatch.c"})
+        self.assertEqual([v.ok for v in verdicts], [False])
+        self.assertIn(".pc/<patch>/ext/xxHash/xxh_x86dispatch.c", verdicts[0].text)
+        self.assertEqual(verify.predict(self.root, [], ARM, changed={"input/Build.PL"}), [])
+        self.write("input/Build.PL", "my $b = Module::Build->new(c_source => ['src']);\n")
+        self.assertEqual(verify.predict(self.root, [], ARM, changed={"input/ext/xxHash/xxh_x86dispatch.c"}), [])
+
+    def test_rules_lines_the_package_already_had_are_not_judged(self):
+        # lib1305, 13 November: the maintainer's armhf-only block was reported as
+        # "NOT fixed" after the verified strip line went in; the model then removed the strip line.
+        before = ("#!/usr/bin/make -f\nexport DEB_BUILD_MAINT_OPTIONS = hardening=+all\n"
+                  "ifeq ($(DEB_TARGET_ARCH), armhf)\nexport DEB_BUILD_MAINT_OPTIONS = hardening=+all,-stackclash\n"
+                  "endif\nDEB_LDFLAGS_MAINT_APPEND=-Wl,--as-needed\n\n%:\n\tdh $@\n")
+        after = before.replace("\n%:", "export DEB_LDFLAGS_MAINT_STRIP = -Wl,-Bsymbolic-functions\n\n%:")
+        self.write("input/debian/rules", after)
+        verdicts = verify.predict(self.root, [diagnostic("collect2: error: ld returned 1 exit status")], ARM,
+                                  changed={"input/debian/rules"}, originals={"input/debian/rules": before})
+        self.assertEqual([v.ok for v in verdicts], [True], [v.text for v in verdicts])
+        self.assertIn("DEB_LDFLAGS_MAINT_STRIP is exported", verdicts[0].text)
+        # a line the edit itself writes into a false conditional is still reported
+        wrong = before.replace("\n%:", "ifeq ($(DEB_HOST_ARCH),amd64)\nexport DEB_LDFLAGS_MAINT_STRIP = -Wl,-z,now\nendif\n\n%:")
+        self.write("input/debian/rules", wrong)
+        verdicts = verify.predict(self.root, [diagnostic("collect2: error: ld returned 1 exit status")], ARM,
+                                  changed={"input/debian/rules"}, originals={"input/debian/rules": before})
+        self.assertEqual([v.ok for v in verdicts], [False], [v.text for v in verdicts])
+        self.assertIn("DEB_LDFLAGS_MAINT_STRIP is inside a conditional that is false on arm64", verdicts[0].text)
 
     def test_symbols_and_quilt_patch(self):
         self.write("input/debian/libp.symbols.amd64", "libp.so.1 libp #MINVER#\n _ZN3bppA@Base 1.0\n (arch=!arm64)_ZN3bppB@Base 1.0\n")

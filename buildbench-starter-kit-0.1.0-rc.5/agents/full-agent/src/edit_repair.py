@@ -134,6 +134,74 @@ def relax_whitespace(before: str, edit):
     return fixed
 
 
+_SPACE_RUN = re.compile(r"[ \t]+")
+INTERIOR_MIN_CHARS = 8
+
+
+def _collapsed(line: str) -> str:
+    return _SPACE_RUN.sub(" ", line.strip())
+
+
+def relax_interior_whitespace(before: str, edit):
+    """The edit with its old_text replaced by the file's own lines, or None.
+
+    For the mistake relax_whitespace does not cover (xmbmon, rc.5 and rc.8 runs
+    of the public cases: the file has `#ifdef LINUX` followed by four tabs and
+    a comment, the model wrote three, four attempts in a row, and the case went
+    in with no change): old_text is not in the file, but exactly one run of
+    lines equals it once every run of spaces and tabs counts as one space, and
+    each line's indentation is as the model wrote it. old_text becomes the
+    file's text; a line of new_text that is one of those lines, whitespace
+    aside, is replaced by the file's line too, so only what the model changed
+    changes. Indentation differences stay with relax_whitespace; nothing but
+    spaces and tabs is ever altered.
+    """
+    old = edit.old_text
+    if (not isinstance(old, str) or not old or old in before or "\r" in old
+            or getattr(edit, "replace_all", False) or not isinstance(edit.new_text, str)):
+        return None
+    written = old.split("\n")
+    trailing_newline = old.endswith("\n")
+    if trailing_newline:
+        written = written[:-1]
+    keys = [_collapsed(line) for line in written]
+    if not keys or not keys[0] or not keys[-1] or max(len(key) for key in keys) < INTERIOR_MIN_CHARS:
+        return None
+    file_lines = before.split("\n")
+    width = len(keys)
+    starts = [start for start in range(len(file_lines) - width + 1)
+              if all(_collapsed(file_lines[start + k]) == keys[k] for k in range(width))]
+    if len(starts) != 1:
+        return None
+    start = starts[0]
+    actual = file_lines[start:start + width]
+    if any(line.endswith("\r") for line in actual):
+        return None
+    for mine, real in zip(written, actual):
+        if mine.strip() and _INDENT.match(mine).group(0) != _INDENT.match(real).group(0):
+            return None            # an indentation difference: relax_whitespace's case
+    if trailing_newline and start + width >= len(file_lines):
+        return None
+    exact = "\n".join(actual) + ("\n" if trailing_newline else "")
+    if exact == old or before.count(exact) != 1:
+        return None
+    by_key: dict[str, str | None] = {}
+    for key, real in zip(keys, actual):
+        if key:
+            by_key[key] = real if by_key.get(key, real) == real else None
+    new_lines = []
+    for line in edit.new_text.split("\n"):
+        real = by_key.get(_collapsed(line)) if line.strip() else None
+        same_indent = real is not None and _INDENT.match(line).group(0) == _INDENT.match(real).group(0)
+        new_lines.append(real if same_indent else line)
+    fixed = copy(edit)
+    fixed.old_text = exact
+    fixed.new_text = "\n".join(new_lines)
+    if fixed.new_text == fixed.old_text:
+        return None                # the edit changed nothing but whitespace
+    return fixed
+
+
 ALREADY_MADE_MIN_CHARS = 12
 
 
@@ -291,8 +359,10 @@ def prune_batch(snapshot, edits, missing_symbol_count=None):
             notes.append(f"Dropped {position}: its old_text occurs nowhere in the file any "
                          "more and its new_text already does, so this change has already "
                          "been made (by an earlier attempt). Do not propose it again.")
-        elif (reason == "old_text_not_found" and before is not None
-              and index not in relaxed and (fixed := relax_whitespace(before, edit))):
+        elif (reason == "old_text_not_found" and before is not None and index not in relaxed
+              and (fixed := (relax_whitespace(before, edit)
+                             or relax_interior_whitespace(before, edit)))):
+            interior = relax_whitespace(before, edit) is None
             # The same text later in the batch is the same mistake: fix it too,
             # so a repeat is still recognised as a duplicate.
             same = (edit.path, edit.old_text, edit.new_text, getattr(edit, "replace_all", False))
@@ -302,9 +372,14 @@ def prune_batch(snapshot, edits, missing_symbol_count=None):
                         getattr(item, "replace_all", False)) == same:
                     edits[later] = fixed if later == index else copy(fixed)
                     relaxed.add(later)
-            notes.append(f"Corrected the whitespace of {position}: its old_text matched one "
-                         "place in the file apart from indentation, so the file's indentation "
-                         "was used for it and for new_text.")
+            if interior:
+                notes.append(f"Corrected the whitespace of {position}: its old_text matched one "
+                             "place in the file apart from the number of spaces and tabs inside "
+                             "the lines, so the file's own lines were used for it.")
+            else:
+                notes.append(f"Corrected the whitespace of {position}: its old_text matched one "
+                             "place in the file apart from indentation, so the file's indentation "
+                             "was used for it and for new_text.")
             continue
         else:
             break

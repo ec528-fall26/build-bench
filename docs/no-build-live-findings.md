@@ -495,6 +495,211 @@ Caveats: one run per case, the eleven cases are in-sample (every recipe was
 written after its case), and the hidden set's class mix is an estimate. The
 held-out replay protocol in the master plan is the next measurement.
 
+## Round 16: 0.6.0-rc.9 on the public cases (13 November, 05:40-07:15 UTC)
+
+Source: the rc.5 Development Validation logs (111 cases, 53 passed; triage in
+`docs/devval-rc5-triage.md`). The public cases ship no frozen dependencies, so
+the validator cannot build them here. Method instead: `harness.run_public`
+(live gpt-oss-120b, no builds) on 29 public cases (the 24 non-passing ones
+picked from the triage plus kdsoap, grantlee5, kf6-frameworkintegration,
+rocm-device-libs and qmidiarp), then for arm64-target cases a native
+`dpkg-buildpackage` in an arm64 container of the case's Ubuntu release with
+today's archive. That is an approximation of the validator, not the validator.
+Runs: `~/bb-public-runs/{rc8,rc9,rc9b,rc9c,rc9d}` on the EC2 host, builds under
+`~/scratch-verify/`.
+
+What the runs showed, in order:
+
+1. rc.8 baseline, lib1305: the log has the libmceliece linker assertion and
+   the prompt carried the verified `strip-bsymbolic-functions` block. The model
+   wrote `export DEB_LDFLAGS_MAINT_STRIP =` (empty) and edited
+   `build/Makefile`. The recipe was never invoked.
+2. First run with the controller applying the recipe before the model's first
+   turn: the model's next edit deleted the strip line ("the flag added via
+   DEB_LDFLAGS_MAINT_STRIP causes the assertion"). Cause: the static prediction
+   after the recipe read "NOT fixed: debian/rules:13: DEB_BUILD_MAINT_OPTIONS
+   is inside a conditional that is false on arm64 ... address it in the next
+   edit". Line 13 is the maintainer's own armhf block. `verify._rules` judged
+   every MAINT line in the file, not the lines the edit wrote. Fixed; the
+   controller now also ends the run when the prediction is not "not fixed".
+   It acts only when the best-ranked recipe is on an explicit list
+   (`AUTO_APPLY_IDS` in `src/loop.py`). `o2-on-test-segfault` is not on it:
+   its signature is a symptom (python-msgspec matched it and passed in rc.5
+   with a different edit), so it stays the model's call as before.
+3. Native builds of lib1305 (resolute, arm64): unmodified source FAILS with
+   the BFD assertion (3 lines); with the controller's edit it PASSES (3 debs).
+4. GCS warning (efibootmgr, kdsoap, grantlee5, kf6-frameworkintegration): not
+   reproducible with today's archive, because the dependencies have since been
+   rebuilt with the GCS note. Reproduced with the logs' binutils 2.45 and
+   library versions from snapshot.ubuntu.com, then real builds:
+
+   | edit | efibootmgr | kdsoap |
+   | --- | --- | --- |
+   | none | FAIL (same warning and collect2 error as the log) | FAIL (same) |
+   | add `export` to the existing, unexported line | PASS | n/a |
+   | `export DEB_LDFLAGS_MAINT_APPEND += -Wl,-z,gcs-report-dynamic=none` in `ifeq DEB_HOST_ARCH arm64` | PASS | PASS |
+   | `-Wl,--no-fatal-warnings` | FAIL (the package's makefile appends `--fatal-warnings` after LDFLAGS) | PASS |
+   | `-Wl,-z,nogcs` | FAIL ("-z nogcs ignored" is itself a warning) | not run |
+   | `hardening=-branch` | PASS, but turns PAC/BTI off | PASS |
+
+   grantlee5 and kf6-frameworkintegration were not built. In rc.9 all four get
+   the recipe from the controller with no model turn.
+5. xmbmon: the whitespace repair makes the edit apply (rc.5 and rc.8: no
+   change submitted). The repair still fails natively. One run kept
+   `#define SET_IOPL() ((void)0)` although `io_static.c` tests its value; the
+   syntax check had found it and an unchanged resend put it through, and the
+   build failed on that line. With the finding made final and the use site
+   named, the model stopped writing it, and both runs then fail on the inline
+   x86 port I/O (`impossible constraint in 'asm'`, or `my_inb` undeclared once
+   it is guarded). Not repaired.
+6. rapmap: the edit put two functions between a function's header and its
+   `{`, as in rc.5. The syntax check dropped the finding because the
+   neighbouring lines already had errors (SIMD types it cannot see). It now
+   counts a "before '{' token" error on a line the edit wrote. The next run
+   avoided that file and broke `KSW2Aligner.cpp` instead. Not repaired.
+
+Native arm64 builds of the rc.9 repairs (today's archive):
+
+| case | result | note |
+| --- | --- | --- |
+| lib1305 (resolute) | PASS | controller, `strip-bsymbolic-functions`, 0 model turns; unmodified source fails |
+| liboqs (jammy) | PASS | model invoked `wno-error` (rc.8 behaviour) |
+| qmidiarp (resolute) | PASS | model removed `-msse -msse2 -mfpmath=sse` from `configure.ac`, the lines the new block listed; not in the 111 |
+| xmbmon (noble, questing) | FAIL | inline x86 port I/O |
+| libmbim (jammy) | FAIL | gtk-doc conditionals missing after the edit, as in rc.5 |
+| obs-time-source (noble) | FAIL | meson setup |
+| rapmap (resolute) | FAIL | C++ edit does not parse |
+| libelas (resolute) | FAIL | `emmintrin.h` on arm64, as in rc.5 |
+
+amd64-target cases need emulation here and were not built, with one
+exception. eegdev (`strip-buildflag`, applied by the controller) was built
+under emulation with the log's dpkg-dev 1.22.5ubuntu4 from
+snapshot.ubuntu.com: unmodified source FAILS ("C compiler cannot create
+executables"), repaired source PASSES, no second failure. Today's dpkg-dev
+emits `-fcf-protection=none` and no longer reproduces the failure.
+rocm-device-libs (same recipe) was not built.
+
+The validator builds differently from the original Launchpad build in two
+ways that matter when reading these logs: it runs `debian/rules binary` (the
+full build) on both architectures, where Launchpad's arm64 builds were
+`dpkg-buildpackage -B` (`binary-arch`) and its amd64 builds `-b`; and it
+passes `-j2` where the originals used `-j4` or `-j8`. In the 26 non-passing
+arm64-target cases the failing step after our edit is the same step as in
+the original log, so the wider build is not what lost them.
+
+Cost of the rc.9 run on 29 cases: 6.3 M input tokens, 55 minutes of agent
+time; the seven controller-applied cases used no tokens.
+
+Regression on the local cases with the real validator (frozen dependencies,
+no build feedback to the agent, one run each, `~/runs-060rc9` on the EC2 host):
+
+| case | target | result | model turns |
+| --- | --- | --- | --- |
+| libmceliece | arm64 | repaired | 0 (controller, `strip-bsymbolic-functions`) |
+| ectrans | arm64 | repaired | 0 (controller, `cmake-redirect-imported-dirs`) |
+| html-xml-utils | arm64 | repaired | 0 (controller, `serial-helper-build`) |
+| libunwind | arm64 | repaired | 0 (controller, `arch-flags`) |
+| r-cran-digest | arm64 | repaired | 3 |
+| rust-subversion | arm64 | repaired | 21 |
+| python-intbitset | amd64 | repaired | 0 (controller, `replace-removed-command`) |
+
+The other four amd64-target local cases (libbpp-core, libbpp-qt, libevtx,
+pybigwig) were started and stopped: emulated builds on a host that was also
+running six investigations took over an hour each.
+
+## Round 17: root causes of the 58 losses, and what came of them (13 November, 07:30-13:30 UTC)
+
+After round 16 the question was what is actually wrong in the cases that
+still fail. Six investigators took the 58 non-passing cases of the rc.5 run
+in groups, reproduced each failure with real builds where the host could,
+and built a fix. Reports and a summary table: `docs/rootcause-2026-11-13/`.
+This section records what changed in the agent because of them and what the
+measurements say.
+
+Mechanisms added (each one's source file has the evidence in its docstring):
+
+| mechanism | cases it is for | confirmed by a real build |
+| --- | --- | --- |
+| recipe `promote-indep-build-dep`, controller | libmbim, python-msgspec (arm64) | libmbim arch-only: unmodified fails, repaired passes; python-msgspec: the same edit passed the validator in rc.5 |
+| recipe `disable-lto`, controller (three signatures) | globalplatform, ocaml (2), kissat | globalplatform: unmodified fails, repaired 5/5 tests (emulated); ocaml arm64: 3546 tests, 0 failed; kissat: builds and runs (emulated) |
+| recipe `arm64-x86-semantics`, added after the model | arm64 test failures with no compile error | xsimd 343/343, tasmanian 26/26, mlmmj 195/196, unmodified source plus the block |
+| recipe `python-version-slice`, added after the model | python-reportlab | passes (`-b`, jammy) |
+| verdict: x86 assembly or header still compiled | xmbmon | unit tests; live: see below |
+| verdict: edited `.c` under a recursive Perl build | libcrypt-xxhash-perl | unit tests; the model has not followed it yet |
+| playbook: x86-only file as a whole; quilt `.pc/` copies | xmbmon, rapmap, libcrypt-xxhash-perl | live: see below |
+| block for "is not supported for this target" | golf | live: the model edits the Makefile line the block names; native build passes |
+
+Three things did not work as first built and were changed the same day:
+
+1. **A recipe shown to the model before its first turn changes what the model
+   does.** With a specific recipe pre-applied, the model deleted it (lib1305,
+   round 16), so those runs now end at once. With the arm64 flags pre-applied
+   and a note saying so, the model tended to stop: fine where the flags are the
+   repair (libqalculate), a loss where the model's own edit was needed
+   (lua-struct on resolute). The flags are now added after the model has
+   finished and it never sees them.
+2. **The flags do not protect a case from the model's own edits.** libqalculate
+   needs only `-fsigned-char` for C++, which the baseline supplies, and which
+   plain rc.8 finds by itself. In two runs with a third new playbook entry
+   ("an error message printed by the package's own code: find its text in the
+   source") the model edited the test files instead and the build failed. That
+   entry is removed.
+3. **The baseline refused on xsimd** because debian/rules assigns the same
+   variable inside an armhf-only conditional. It is now placed just before the
+   first rule and only an unconditional later assignment stops it.
+
+Measurement. The final code was run once over all 111 small cases
+(`~/bb-public-runs/rc9final2`, live gpt-oss-120b, no builds): every case got a
+change, 20.2 M input tokens, 19 cases were closed by the controller with no
+model turn and 14 more got a baseline after the model. The Development
+Validation bundle built from that run is `devval-v060rc9.zip` (111 cases).
+Plain rc.8 was run on the 53 arm64-target cases for comparison
+(`~/bb-public-runs/rc8arm`; ocaml left out). Both sets of repairs were then
+built natively on arm64, one `dpkg-buildpackage -b` per case in a container of
+the case's release, today's archive. Numbers as of 14:50 UTC, with builds
+still running (results land in `~/scratch-verify/vy-*.out` and `v8a-*.out` on
+the host; `python3 /tmp/compare.py v8a vy` prints the table):
+
+| | built | pass |
+| --- | --- | --- |
+| rc.9, final run | 29 | 22 |
+| rc.8 | 37 | 22 |
+| cases built for both | 24 | rc.9 17, rc.8 16 |
+
+Where the two differ so far: python-msgspec (arm64) and
+r-cran-randomfieldsutils pass only with rc.9, libcvd only with rc.8. libcvd
+is a heap overrun whose symptom varies from run to run; it passed in two of
+three further rc.9 runs.
+
+What the native builds can and cannot show:
+
+- They are not the validator. Three cases that passed in rc.5 fail here under
+  rc.8 and rc.9 alike (libgovirt, pam-tmpdir, node-node-sass), and two fail
+  only because this harness cannot install their dependencies (ectrans, which
+  the real validator passed in round 16, and at times qtcontacts-sqlite).
+- A pass only counts if the unmodified source fails in the same harness. It
+  does for lib1305, liboqs, tasmanian, xsimd, both xmbmon copies and lua-struct
+  (oracular). It does not for libmbim (the harness installs the indep
+  packages) and efibootmgr (the archive has moved on); those two were
+  confirmed separately under the log's conditions.
+- The model's own repairs vary from run to run. Twelve cases whose result
+  changed between runs were run three more times with the final code: 9, 6
+  and 7 of 12 passed. libgovirt, pam-tmpdir and node-node-sass failed in all
+  three, libqalculate passed in all three, xmbmon (noble) in all three,
+  xmbmon (questing) in two.
+
+Cases that did not pass in rc.5 and pass in native builds of an rc.9 run:
+lib1305, liboqs, tasmanian, xsimd, ocaml, xmbmon (noble and questing, not in
+every run), rapmap (one run of three), r-cran-randomfieldsutils (one run),
+lua-struct (oracular, also under rc.8). For amd64 targets only the controller's
+edits could be checked, under emulation: eegdev, globalplatform and kissat
+build with them, and python-reportlab's full build passes.
+
+Not measured: anything on the real validator beyond the local cases of round
+16. The 4 hour limit and the emulation failures on amd64 are untouched by all
+of this.
+
+
 ## x86-target cases on the arm64 instance (fixed 8 November)
 
 Every amd64/i386-target validator build on the arm64 instance ended in

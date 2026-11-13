@@ -103,6 +103,117 @@ def _c_diagnostic(worktree: Path, item, target: Architecture, originals: dict[st
                          "this is not a verdict.")
 
 
+_PERL_C_SOURCE = re.compile(r"c_source\s*=>\s*(?P<value>\[[^\]]*\]|'[^']*'|\"[^\"]*\")")
+
+
+def _quilt_copy(worktree: Path, changed: set[str]) -> list[Verdict]:
+    """An edited C file that the build will compile a second time from .pc/.
+
+    libcrypt-xxhash-perl (rc.5 validation and both later runs): Build.PL has
+    `c_source => ['.', 'src']`, so Module::Build compiles every .c below the
+    package root. The validator turns an edit to ext/xxHash/xxh_x86dispatch.c
+    into a quilt patch; unpacking keeps the unpatched file under
+    .pc/debian-changes-*/ext/xxHash/, the build compiles that copy too, and
+    fails on it exactly as before. Verified with real builds: only a change to
+    what Build.PL enumerates (or to debian/) passes.
+    """
+    sources = sorted(path for path in changed
+                     if PurePosixPath(path).suffix in (".c", ".cc", ".cpp", ".cxx")
+                     and not path.startswith("input/debian/"))
+    if not sources:
+        return []
+    build_pl = _read(worktree, "input/Build.PL")
+    found = _PERL_C_SOURCE.search(build_pl or "")
+    if not found or not re.search(r"['\"]\.['\"]", found.group("value")):
+        return []
+    return [Verdict(False, f"{sources[0]}: this edit cannot take effect. Build.PL has c_source => "
+                           f"{' '.join(found.group('value').split())}, so the build compiles every .c file below "
+                           "the package root. Your change becomes a quilt patch, the unpacked package keeps the "
+                           f"unpatched file under .pc/<patch>/{sources[0][len('input/'):]}, and the build compiles "
+                           "that copy too and fails on it as before. Undo this edit and change what Build.PL "
+                           "enumerates instead (c_source and include_dirs), so that the file is not compiled on "
+                           "the target; an edit to Build.PL or under debian/ leaves no .c copy.")]
+
+
+_C_SUFFIXES = (".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx")
+_ASM_OPEN = re.compile(r"\b(?:__asm__|asm)\b\s*(?:__volatile__|volatile)?\s*\(")
+# Instructions and operand constraints that exist only on x86: port I/O, cpuid,
+# the time-stamp counter, AT&T register names, the single-register constraints.
+_X86_ASM = re.compile(r"\b(?:in[bwl]|out[bwl]|cpuid|rdtscp?|xgetbv|pushf[lq]?|popf[lq]?|xchg[bwlq]?|cmpxchg[bwlq]?|"
+                      r"bsf[lq]?|bsr[lq]?|mov[lq]|push[lq]|pop[lq]|lock)\b|%%?[er][abcd]x\b|%%?[er]?[sd]i\b|"
+                      r":\s*\"=?[abcdSD]\"\s*\(")
+_X86_SYS_HEADER = re.compile(r"^\s*#\s*include\s*<(?P<header>sys/io\.h|asm/msr\.h|cpuid\.h|"
+                             r"(?:[xepstnwa]mmintrin|immintrin|x86intrin|ia32intrin)\.h)>")
+_INCLUDE_GUARD = re.compile(r"^\s*#\s*(?:ifndef\s+(?P<a>\w+)|if\s+!\s*defined\s*\(?\s*(?P<b>\w+)\s*\)?)\s*$")
+MAX_REMAINDER = 6
+
+
+def _x86_remainder(worktree: Path, diagnostics, target: Architecture, changed: set[str]) -> list[Verdict]:
+    """x86-only constructs still compiled on a non-x86 target in a file the
+    agent edited and the errors named.
+
+    xmbmon (13 November, both public copies): the edit put `#include <sys/io.h>`
+    under an x86 conditional, the prediction read "fixed ... reply stop", and the
+    same header went on compiling six functions of `inb`/`outb` inline assembly
+    on arm64 ("impossible constraint in 'asm'"). The failing line is one of
+    several x86-only constructs in that file; the others fail next.
+    Reported only when the line is certainly compiled on the target, and for
+    includes only when the package ships no header of that name.
+    """
+    if target.x86_intrinsics:
+        return []
+    named = {item.resolved[0] for item in list(diagnostics)[:12] if len(getattr(item, "resolved", ())) == 1}
+    out = []
+    for path in sorted(changed & named):
+        if PurePosixPath(path).suffix not in _C_SUFFIXES:
+            continue
+        text = _read(worktree, path)
+        if text is None or len(text) > 1024 * 1024:
+            continue
+        lines = text.split("\n")
+        # A header's include guard (#ifndef X / #define X) is true the first time
+        # the header is read; left as an unknown macro it would hide every line.
+        probe = list(lines)
+        for index, line in enumerate(probe[:60]):
+            guard = _INCLUDE_GUARD.match(line)
+            if guard:
+                name = guard.group("a") or guard.group("b")
+                following = next((l for l in probe[index + 1:index + 4] if l.strip()), "")
+                if re.match(r"\s*#\s*define\s+" + re.escape(name) + r"\b", following):
+                    probe[index] = "#if 1"
+                break
+            if line.lstrip().startswith("#") and not re.match(r"\s*#\s*pragma\b", line):
+                break
+        active = cpp_active_lines("\n".join(probe), target, {}).active
+        asm, includes = [], []
+        for index, line in enumerate(lines):
+            if index >= len(active) or active[index] is not True:
+                continue
+            include = _X86_SYS_HEADER.match(line)
+            if include:
+                name = PurePosixPath(include.group("header")).name
+                if not any(Path(worktree, "input").rglob(name)):
+                    includes.append((index + 1, include.group("header")))
+                continue
+            if _ASM_OPEN.search(line) and not line.lstrip().startswith(("#", "//", "*")):
+                statement = " ".join(lines[index:index + 4])
+                if _X86_ASM.search(statement):
+                    asm.append(index + 1)
+        if asm:
+            shown = ", ".join(str(n) for n in asm[:MAX_REMAINDER]) + (" ..." if len(asm) > MAX_REMAINDER else "")
+            out.append(Verdict(False, f"{path}: x86 inline assembly is still compiled on {target.dpkg} at "
+                                      f"line{'s' if len(asm) > 1 else ''} {shown} ({lines[asm[0] - 1].strip()[:70]}). "
+                                      f"Those instructions do not exist on {target.dpkg}, so the compiler will stop "
+                                      "there next. Put every such function under the same x86 conditional and give "
+                                      "the other branch replacements with the same names, parameters and return "
+                                      "types (returning a value where the callers use one), so the callers still "
+                                      "compile."))
+        for number, header in includes[:2]:
+            out.append(Verdict(False, f"{path}: <{header}> is still included on {target.dpkg} at line {number}; "
+                                      "it exists only on x86 and the package ships no header of that name."))
+    return out
+
+
 def _rust(worktree: Path, diagnostics, target: Architecture, changed: set[str]) -> Verdict | None:
     text = "\n".join(f"{d.message}\n{getattr(d, 'compiler_details', '')}" for d in diagnostics)
     if not _RUST_SIGNED.search(text):
@@ -147,10 +258,22 @@ def _rules(worktree: Path, log_text: str, target: Architecture, changed: set[str
         if old_flags.get(name) != value:
             out.append(Verdict(True, f"debian/rules: {name} is exported with value {value!r} on {target.dpkg} "
                                      "(it reaches dpkg-buildflags and every compile)."))
-    # Flag assignments that do not reach the build on the target
+    # Flag assignments that do not reach the build on the target. Only lines the
+    # edit wrote are judged: a line the package already had is not what this
+    # attempt has to fix. lib1305, 13 November: the maintainer's own
+    # `ifeq ($(DEB_TARGET_ARCH), armhf)` block was reported as "NOT fixed ...
+    # address it in the next edit" right after the verified strip line went in,
+    # and the model's next edit removed the strip line.
+    untouched = Counter(before.split("\n")) if before is not None else Counter()
+    written = set()
+    for number, line in enumerate(text.split("\n"), start=1):
+        if untouched[line] > 0:
+            untouched[line] -= 1
+            continue
+        written.add(number)
     for number, line in enumerate(text.split("\n"), start=1):
         match = re.match(r"^\s*(?:export\s+)?(DEB_\w+_MAINT_\w+|DEB_BUILD_MAINT_OPTIONS)\s*[:+?]?=\s*(.*)$", line)
-        if not match or line.startswith("\t"):
+        if not match or line.startswith("\t") or number not in written:
             continue
         name = match.group(1)
         if state.active[number - 1] is False:
@@ -160,6 +283,8 @@ def _rules(worktree: Path, log_text: str, target: Architecture, changed: set[str
             out.append(Verdict(False, f"debian/rules:{number}: {name} is assigned but never exported, so "
                                       "dpkg-buildflags never sees it."))
     for number, message in rules_guard.buildflags_problems(text):
+        if number not in written:
+            continue
         if not (state.active[number - 1] is False if number - 1 < len(state.active) else False):
             out.append(Verdict(False, f"debian/rules:{number}: {message}."))
     if "__aarch64_" in log_text and target.outline_atomics:
@@ -463,6 +588,11 @@ def predict(worktree: Path, diagnostics, target: Architecture | None, *, changed
         if verdict and verdict.text not in seen:
             seen.add(verdict.text)
             out.append(verdict)
+    try:
+        out.extend(_x86_remainder(worktree, diagnostics, target, changed))
+        out.extend(_quilt_copy(worktree, changed))
+    except Exception:  # a prediction must never end a run
+        pass
     rust = _rust(worktree, diagnostics, target, changed)
     if rust:
         out.append(rust)

@@ -703,11 +703,34 @@ def _compile_errors(compiler, language, name, text, include_dirs, deadline, *,
             return None
         names = {name, *watch}
         errors = []
-        for m in _DIAG.finditer(done.stderr):
+        found = list(_DIAG.finditer(done.stderr))
+        for k, m in enumerate(found):
             if Path(m.group("file")).name in names:
+                until = found[k + 1].start() if k + 1 < len(found) else len(done.stderr)
                 errors.append((Path(m.group("file")).name, int(m.group("line")),
-                               m.group("msg").strip()))
+                               m.group("msg").strip() + _use_site(done.stderr[m.end():until],
+                                                                  m.group("msg"))))
         return errors
+
+
+VOID_VALUE = "void value not ignored"
+USED_AT = "; the value of macro "
+_EXPANSION = re.compile(r"^(?P<file>[^:\n]+):(?P<line>\d+):(?:\d+:)? note: in expansion of macro "
+                        r"['‘](?P<macro>\w+)['’]\n\s*\d+ \| (?P<source>.*)$", re.MULTILINE)
+
+
+def _use_site(notes: str, message: str) -> str:
+    """For "void value not ignored": where the macro's value is used (gcc's
+    note after the error). xmbmon, 13 November: the error was reported on the
+    `#define SET_IOPL() ((void)0)` line four times and the model could not see
+    why, because the `if (SET_IOPL() < 0)` that needs the value is in another file."""
+    if VOID_VALUE not in message:
+        return ""
+    site = _EXPANSION.search(notes)
+    if site is None:
+        return ""
+    return (f"{USED_AT}{site.group('macro')} is used at {Path(site.group('file')).name}:"
+            f"{site.group('line')}: `{site.group('source').strip()[:160]}`")
 
 
 def _line_map(before: str, after: str) -> tuple[set[int], dict[int, tuple[int, int]]]:
@@ -732,6 +755,9 @@ def _changed_lines(before: str, after: str) -> set[int]:
     return _line_map(before, after)[0]
 
 
+_BEFORE_BRACE = re.compile(r"^expected .* before ['‘]\{['’] token")
+
+
 def _new_parse_error(old, new, edited: str, before: str, after: str):
     """The first new parser-level error the edit causes, or None.
 
@@ -749,6 +775,8 @@ def _new_parse_error(old, new, edited: str, before: str, after: str):
     erring = {}
     for f, line, _ in old:
         erring.setdefault(f, set()).update(range(line - 3, line + 4))
+    had = set(before.split("\n"))
+    lines = after.split("\n")
     for file, line, msg in new:
         if baseline[(file, msg)] > 0:
             baseline[(file, msg)] -= 1
@@ -759,7 +787,14 @@ def _new_parse_error(old, new, edited: str, before: str, after: str):
             if line not in near:
                 continue
             low, high = where.get(line, (line, line))
-            if any(k in erring.get(file, ()) for k in range(low, high + 1)):
+            # A body opened where none can start, on a line the edit wrote, is the
+            # edit's own doing even next to older errors this check cannot judge
+            # (rapmap, rc.5 and 13 November: two functions were inserted between a
+            # function's header and its `{`; the file's SIMD types are unknown here,
+            # so the neighbouring lines already had errors and the finding was dropped).
+            own = (_BEFORE_BRACE.search(msg) and 1 <= line <= len(lines)
+                   and lines[line - 1] not in had)
+            if not own and any(k in erring.get(file, ()) for k in range(low, high + 1)):
                 continue
         elif line in erring.get(file, ()):
             continue
@@ -821,9 +856,12 @@ def _compiled(worktree: Path, path: str, language: str, before: str, after: str,
             file, line, msg = hit
             where = "" if file == name else f" (in {file}, which includes it)"
             arch_note = f" compiled for {target}" if arch else ""
+            # With the place that uses the value in hand this is a certain
+            # compile error, not a judgement call: an unchanged resend is refused.
             return [Problem(path, f"{PurePosixPath(unit_compiler).name} -fsyntax-only{arch_note} "
-                            f"reports a new error{where}: {msg[:300]}",
-                            line if file == name else None)]
+                            f"reports a new error{where}: {msg[:420]}",
+                            line if file == name else None,
+                            hard=VOID_VALUE in msg and USED_AT in msg)]
     return []
 
 
@@ -1016,6 +1054,12 @@ def feedback(index: int, edits, problems: list[Problem], after: str, hypothesis:
     if excerpt:
         blocks.append(f"\n=== {edit.path} after the batch, around that line ===\n{excerpt}")
     hard = any(problem.hard for problem in problems)
+    if any(VOID_VALUE in problem.message for problem in problems):
+        blocks.append("What that error means: other code uses the result of this macro or function (in a "
+                      "comparison, an assignment or a return), and the edit made it expand to something "
+                      "with no value. A no-op replacement must still be an expression with a value: write "
+                      "`(0)` for a macro that reports success, not `((void)0)` or `do {} while (0)`; a stub "
+                      "function must keep the original return type and return a value.")
     blocks += [
         "",
         f"Proposed NEW text of edit {index}: {edit.new_text[:1600]}",
@@ -1024,7 +1068,7 @@ def feedback(index: int, edits, problems: list[Problem], after: str, hypothesis:
         "open; use a TAB before recipe commands). Do not resend the other edits.",
     ]
     if hard:
-        blocks.append("This is a format error, not a judgement call: the same edit sent "
+        blocks.append("This is a certain error, not a judgement call: the same edit sent "
                       "again is refused again. Send the corrected line.")
     else:
         blocks.append("If you are certain the edit is correct as it is (for example the check "

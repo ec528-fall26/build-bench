@@ -13,6 +13,7 @@ from pathlib import Path
 import shutil
 import sys
 import unittest
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "buildbench-starter-kit-0.1.0-rc.5/agents/full-agent"))
@@ -233,6 +234,40 @@ class Files(unittest.TestCase):
 
 
 @unittest.skipUnless(shutil.which("gcc") or shutil.which("cc"), "no C compiler")
+class BodyInTheWrongPlace(unittest.TestCase):
+    """rapmap: wrappers were inserted between a function's header and its `{`.
+    The file uses SIMD types this check cannot see, so the lines around already
+    had errors; the new error is on a line the edit wrote and still counts."""
+
+    BEFORE = ("#include <stdint.h>\n"
+              "void ksw_extz2_sse(void *km, int qlen, const uint8_t *query)\n"
+              "{\n"
+              "\t__m128i zero_ = _mm_set1_epi8(0);\n"
+              "\t(void)zero_; (void)km; (void)qlen; (void)query;\n"
+              "}\n")
+    WRAPPER = ("void ksw_extz2_sse2(void *km, int qlen, const uint8_t *query) {\n"
+               "\tksw_extz2_sse(km, qlen, query);\n"
+               "}\n")
+
+    def problems(self, after):
+        import tempfile
+        from time import monotonic
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            (work / "input").mkdir()
+            return [p.message for p in syntax_guard.file_problems(
+                "input/ksw2_extz2_sse.c", self.BEFORE, after, worktree=work, deadline=monotonic() + 30)]
+
+    def test_functions_between_a_header_and_its_brace_are_found(self):
+        after = self.BEFORE.replace("const uint8_t *query)\n{\n", "const uint8_t *query)\n" + self.WRAPPER + "{\n")
+        found = self.problems(after)
+        self.assertTrue(any("before '{' token" in m for m in found), found)
+
+    def test_the_same_functions_after_the_body_pass(self):
+        self.assertEqual(self.problems(self.BEFORE + self.WRAPPER), [])
+
+
+@unittest.skipUnless(shutil.which("gcc") or shutil.which("cc"), "no C compiler")
 class TargetCompile(unittest.TestCase):
     """xmbmon, 6 November: the edit made a macro void on ARM, and the file that
     uses the macro failed with "void value not ignored". The header alone
@@ -259,6 +294,31 @@ class TargetCompile(unittest.TestCase):
         after = self.HEADER.replace("#define SET_IOPL() (0)", "#define SET_IOPL() ((void)0)")
         found = self.check(after, "arm64")
         self.assertTrue(any("void value not ignored" in m for m in found), found)
+
+    def test_the_finding_names_the_line_that_uses_the_value_and_cannot_be_resent(self):
+        # 13 November: four corrections in a row kept ((void)0), and in the other
+        # xmbmon run an unchanged resend put it through; the native build then failed on it.
+        import tempfile
+        from time import monotonic
+        after = self.HEADER.replace("#define SET_IOPL() (0)", "#define SET_IOPL() ((void)0)")
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            (work / "input").mkdir()
+            (work / "input/io_static.c").write_text(self.USER)
+            (work / "input/io_cpu.h").write_text(self.HEADER)
+            log = work / "build.log"
+            log.write_text(self.LOG.replace("getMBinfo.c", "io_static.c"))
+            from src import syntax_guard
+            found = syntax_guard.file_problems("input/io_cpu.h", self.HEADER, after, worktree=work,
+                                               deadline=monotonic() + 30, target="arm64", log_path=log)
+        self.assertEqual(len(found), 1)
+        self.assertIn("the value of macro SET_IOPL is used at io_static.c:2", found[0].message)
+        self.assertIn("if (SET_IOPL() < 0)", found[0].message)
+        self.assertTrue(found[0].hard)
+        said = syntax_guard.feedback(0, [SimpleNamespace(path="input/io_cpu.h", old_text="a", new_text="b")],
+                                     found, after, "guard the include")
+        self.assertIn("write `(0)`", said)
+        self.assertIn("refused again", said)
 
     def test_the_same_edit_is_harmless_when_the_branch_is_not_the_targets(self):
         after = self.HEADER.replace("#define SET_IOPL() (0)", "#define SET_IOPL() ((void)0)")

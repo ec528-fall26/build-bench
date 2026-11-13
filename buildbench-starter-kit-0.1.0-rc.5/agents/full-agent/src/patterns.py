@@ -783,6 +783,122 @@ def bfd_assertion(log_lines: Sequence[str], worktree: Path, target_arch: str) ->
     return "\n".join(lines)
 
 
+def gcs_link_warning(log_lines: Sequence[str], worktree: Path, target_arch: str) -> str:
+    """efibootmgr, kdsoap, grantlee5, kf6-frameworkintegration (arm64, binutils 2.45)."""
+    from .recipes import registry
+    recipe = registry.get("gcs-report-dynamic-none")
+    match = recipe.recognise(list(log_lines), worktree, target_arch) if recipe else None
+    if match is None:
+        return ""
+    return "\n".join([
+        TITLE,
+        "Link stopped by a linker warning on arm64: " + match.evidence[0] + " " + match.evidence[1].strip("()")
+        + ". The package's own objects are built with -mbranch-protection=standard (dpkg-buildflags) and "
+        "carry the GCS marking; the library named in the warning is a build dependency that does not, and "
+        "it cannot be changed from here. ld only warns, but the package links with -Wl,--fatal-warnings, so "
+        "collect2 reports an error. Nothing is wrong in the package's code.",
+        *recipe_lines("gcs-report-dynamic-none", "input/debian/rules",
+                      "ld's GCS warning about a dependency is fatal under --fatal-warnings",
+                      log_lines, worktree, target_arch),
+        "Repair: pass `-Wl,-z,gcs-report-dynamic=none` to the linker through an exported "
+        "DEB_LDFLAGS_MAINT_APPEND in debian/rules, for arm64 (a make variable that is assigned without "
+        "`export` never reaches dpkg-buildflags). Verified with real builds.",
+        "Do not use `--no-gcs` (not an ld option) or `-z nogcs` (ignored with a warning, which is fatal "
+        "too); both were tried and failed. Do not add -Wl,--no-fatal-warnings: where the package's own "
+        "makefile appends --fatal-warnings after LDFLAGS it has no effect. Do not turn branch protection "
+        "off and do not add -mno-outline-atomics.",
+        END,
+    ])
+
+
+def lto_wrap_link(log_lines: Sequence[str], worktree: Path, target_arch: str) -> str:
+    """globalplatform (amd64): tests linked with --wrap in an LTO build."""
+    from .recipes import registry
+    recipe = registry.get("disable-lto")
+    match = recipe.recognise(list(log_lines), worktree, target_arch) if recipe else None
+    if match is None:
+        return ""
+    symbol = match.params["symbol"]
+    if match.params.get("kind") == "startup":
+        program = symbol.rsplit("/", 1)[-1]
+        return "\n".join([
+            TITLE,
+            f"A program crashes the first time the build runs it: {match.evidence[0]} "
+            f"{match.evidence[1].strip('()')}. `{program}` dies with a segmentation fault before it prints its "
+            "help text, so it would crash on any input, in the tests as well. It was linked with link-time "
+            "optimisation (-flto); built without it the same source starts and runs. help2man is only where "
+            "the crash shows first.",
+            *recipe_lines("disable-lto", "input/debian/rules",
+                          f"{program} crashes at start-up when it is linked with LTO",
+                          log_lines, worktree, target_arch),
+            "Repair: set `optimize=-lto` in DEB_BUILD_MAINT_OPTIONS in debian/rules (verified with a real "
+            "build: the program runs and the package builds).",
+            "Do not remove or change the help2man call, do not add `|| true` to it, and do not ship a "
+            "hand-written manual page instead: the crash would only move to the next step that runs the program.",
+            END,
+        ])
+    if match.params.get("kind") == "output":
+        return "\n".join([
+            TITLE,
+            f"Tests fail only because of link-time optimisation: {match.evidence[0]} "
+            f"{match.evidence[1].strip('()')}. The tests compare the compiler's output with an empty file. "
+            "The package is built with -flto=auto from dpkg-buildflags, and with LTO gcc prints a "
+            "[-Wlto-type-mismatch] warning when the test links its C stubs, so the output is not empty. "
+            "Nothing is wrong in the tests or in the code they exercise.",
+            *recipe_lines("disable-lto", "input/debian/rules",
+                          "the tests fail on an LTO warning in the compiler's output",
+                          log_lines, worktree, target_arch),
+            "Repair: add `optimize=-lto` to DEB_BUILD_MAINT_OPTIONS in debian/rules (verified with a real "
+            "build: every test then passes).",
+            "Do not edit the tests or their expected output, and do not silence the warning in the sources.",
+            END,
+        ])
+    return "\n".join([
+        TITLE,
+        f"Link fails only because of link-time optimisation: {match.evidence[0]} {match.evidence[1].strip('()')}. "
+        f"`{symbol}` is the replacement that `-Wl,--wrap={symbol[len('__wrap_'):]}` makes the linker look for, "
+        "and it is defined in the package (usually in a test helper). The package is compiled with "
+        "-flto=auto from dpkg-buildflags; the optimiser resolves the call inside its own .ltrans objects, "
+        "where the wrapper is not visible. The other architecture did not fail because debian/rules builds "
+        "or links these tests on a different list of architectures. Nothing is wrong in the code or the tests.",
+        *recipe_lines("disable-lto", "input/debian/rules",
+                      "the --wrap symbol is not found because the package is built with LTO",
+                      log_lines, worktree, target_arch),
+        "Repair: add `optimize=-lto` to DEB_BUILD_MAINT_OPTIONS in debian/rules (verified with a real build: "
+        "the package builds and every test passes).",
+        "Do not change the mocking header or the test sources, do not remove --wrap, and do not skip the tests.",
+        END,
+    ])
+
+
+def indep_only_dependency(log_lines: Sequence[str], worktree: Path, target_arch: str) -> str:
+    """libmbim (gtkdocize), python-msgspec on arm64 (pybuild-plugin-pyproject)."""
+    from .recipes import registry
+    recipe = registry.get("promote-indep-build-dep")
+    match = recipe.recognise(list(log_lines), worktree, target_arch) if recipe else None
+    if match is None:
+        return ""
+    package = match.params["package"]
+    return "\n".join([
+        TITLE,
+        f"Build dependency the arch-only build never installed: `{package}`. Evidence: {match.evidence[0]}. "
+        f"debian/control lists `{match.params['entry']}` under Build-Depends-Indep. The failing build was an "
+        "architecture-only build (`dpkg-buildpackage -B`), which installs Build-Depends and "
+        "Build-Depends-Arch but not Build-Depends-Indep, so the program was simply not there; the other "
+        "architecture's build was a full build and had it. Nothing is wrong in configure.ac, the makefiles "
+        "or the source.",
+        *recipe_lines("promote-indep-build-dep", "input/debian/control",
+                      f"{package} is needed by the arch-only build but is only in Build-Depends-Indep",
+                      log_lines, worktree, target_arch),
+        f"Repair: list `{match.params['entry']}` in Build-Depends in debian/control (it may stay in "
+        "Build-Depends-Indep as well).",
+        "Do not remove or comment out the macro, configure check or build step that needs the program "
+        "(libmbim: commenting out GTK_DOC_CHECK made automake fail on the conditionals it defines), and do "
+        "not skip the step.",
+        END,
+    ])
+
+
 def segfault_optimisation(log_lines: Sequence[str], worktree: Path, target_arch: str) -> str:
     from .recipes import registry
     recipe = registry.get("o2-on-test-segfault")
@@ -894,6 +1010,57 @@ def werror_warning(log_lines: Sequence[str], worktree: Path, target_arch: str) -
     return "\n".join(lines)
 
 
+def rejected_compiler_flag(log_lines: Sequence[str], worktree: Path, target_arch: str) -> str:
+    """The target's compiler rejects an option (eegdev: -fno-cf-protection from noble's
+    dpkg-buildflags on amd64; qmidiarp: the package's own -msse on arm64)."""
+    from .recipes import registry, strip_buildflag
+    rejected = strip_buildflag.rejected_flags(list(log_lines))
+    if not rejected:
+        return ""
+    recipe = registry.get("strip-buildflag")
+    match = recipe.recognise(list(log_lines), worktree, target_arch) if recipe else None
+    arch = archnames.debian(target_arch) or target_arch or "this architecture"
+    if match is not None:
+        flags = ", ".join(f"`{flag}`" for flag in match.params["flags"])
+        return "\n".join([
+            TITLE,
+            f"Compiler option from dpkg-buildflags that this compiler rejects: {flags}. Evidence: "
+            + " | ".join(match.evidence[:2]) + ". No file of the package contains the option, so it comes "
+            f"from the flags dpkg-buildflags hands to every compile on {arch} (the hardening options in "
+            "debian/rules decide which). Every compile and every configure probe fails on it, which is why "
+            "configure may report \"C compiler cannot create executables\".",
+            *recipe_lines("strip-buildflag", "input/debian/rules",
+                          "dpkg-buildflags adds an option this compiler does not accept",
+                          log_lines, worktree, target_arch),
+            "Repair: strip exactly that option with DEB_CFLAGS_MAINT_STRIP and DEB_CXXFLAGS_MAINT_STRIP "
+            "(exported, at make level, for the failing architecture). Do not change the compiler, and do "
+            "not turn the other hardening options off.",
+            END,
+        ])
+    # The package sets the option itself: say where, the model edits it.
+    lines = [TITLE]
+    listed = 0
+    for flag, compiler, _, evidence in rejected[:4]:
+        if flag in ("-V", "-qversion", "-version", "--version", "-v"):
+            continue                      # configure's compiler-version probes, not a failure
+        where = strip_buildflag.set_by_package(worktree, flag, limit=6)
+        if not where:
+            continue
+        listed += 1
+        lines.append(f"Compiler option the target's compiler rejects: `{flag}` ({evidence}). The package "
+                     f"sets it itself, at " + ", ".join(where) + f". It is an option for another "
+                     f"architecture or compiler version; the compiler used on {arch} does not accept it.")
+    if not listed:
+        return ""
+    lines.append("Repair: make each of those settings conditional on the architecture it is for (or remove "
+                 "the option where it is only a tuning flag), in the build files listed, so the option is "
+                 "never passed on " + arch + ". Check the same files for sibling options of the same family "
+                 "(-msse*, -mavx*, -mfpmath=, -march=, -mfpu=, -mcpu=): the log shows only the first that "
+                 "fails. Do not delete source files or disable the component.")
+    lines.append(END)
+    return "\n".join(lines)
+
+
 # (recogniser name, the log line that is its signature): the block whose signature
 # lies closest after the first fatal error wins; ties keep this order.
 _LOG_RECOGNISERS = (
@@ -906,4 +1073,10 @@ _LOG_RECOGNISERS = (
     ("segfault_optimisation", re.compile(r"Segmentation fault|\(core dumped\)|exit status:? 139\b")),
     ("serial_helper_race", re.compile(r"lto1: internal compiler error|Text file busy|file too short")),
     ("werror_warning", re.compile(r"\[-Werror=[a-z0-9+-]+=?\]")),
+    ("rejected_compiler_flag", re.compile(r"error: unrecognized command[- ]line option|"
+                                          r"is not supported for this target")),
+    ("gcs_link_warning", re.compile(r"warning: GCS is required by -z gcs")),
+    ("lto_wrap_link", re.compile(r"undefined reference to [`'‘]__wrap_|expected to be empty|help2man: can't get")),
+    ("indep_only_dependency", re.compile(r"Can't exec \"|: not found\s*$|command not found|No module named|"
+                                         r"Please Build-Depend on")),
 )

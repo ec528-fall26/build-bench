@@ -145,6 +145,11 @@ class Controller(unittest.TestCase):
         self.left = full[-1]
         self.hand = full[:-1]
         self.requests = []
+        # These cases are the model-driven path, which is what remains when the
+        # controller's own first-turn application does not happen (AutoApply below).
+        auto = patch.object(loop, "AUTO_APPLY_RECIPES", False)
+        auto.start()
+        self.addCleanup(auto.stop)
 
     @staticmethod
     def turn(edits):
@@ -266,3 +271,111 @@ class StaticShimVerdict(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AutoApply(unittest.TestCase):
+    """Before the model's first turn the controller applies the best verified
+    recipe itself (lib1305 in the rc.5 validation and the rc.8 public run: the
+    recipe matched, the model wrote something else, the case was lost)."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / "t"
+        shutil.copytree(FIX / "trees" / "libbpp-core", self.root)
+        self.path = symbols_path(self.root)
+        self.before = (self.root / self.path).read_text()
+        self.log = FIX / "logs" / "libbpp-core.log"
+        self.context = SimpleNamespace(worktree=self.root, case_id="launchpad-resolute-amd64-arm64-libbpp-core-1",
+                                       task_metadata={"target_arch": "amd64"}, log_tail="")
+        self.requests = []
+
+    STOP = SimpleNamespace(action="stop", reason="no further edits needed", edits=[], tool_requests=[])
+
+    def run_script(self, proposals, **config):
+        proposals = itertools.chain(proposals, itertools.repeat(self.STOP))
+
+        def next_turn(request):
+            self.requests.append(deepcopy(request))
+            return next(proposals), {"input_tokens": 1, "output_tokens": 1}
+        diagnostic = Diagnostic("dpkg-gensymbols: error: some symbols or patterns disappeared", "build",
+                                None, None, [], None, 0, "")
+        return run_loop(self.context, next_turn=next_turn, config=AgentConfig(use_build_feedback=False, **config),
+                        initial_diagnostics=[diagnostic], log_path=self.log, max_turns=12)
+
+    def tagged(self):
+        return (self.root / self.path).read_text().count("(optional") - self.before.count("(optional")
+
+    def test_the_recipe_is_applied_and_the_run_ends_without_a_model_turn(self):
+        result = self.run_script([self.STOP])
+        self.assertEqual(self.tagged(), 12)
+        self.assertEqual(self.requests, [])                 # lib1305: the model's next turn undid the fix
+        self.assertEqual(result.termination_reason, "model_stop")
+        self.assertIn("verified repair `symbols-tag`", result.message)
+        self.assertEqual([a.applied for a in result.attempts], [12])
+        self.assertTrue(result.attempts[0].hypothesis.startswith("controller: verified repair"))
+        self.assertEqual(result.review_events[-1]["event"], "controller_recipe")
+        self.assertEqual(result.review_events[-1]["prediction"], "fixed")
+
+    def test_an_incomplete_prediction_hands_over_to_the_model(self):
+        def not_fixed(running, verdicts):
+            running.all_fixed = False
+            running.prediction_status, running.prediction_reason = "not_fixed", "one symbol is still missing"
+        with patch.object(loop._Loop, "_summarise", not_fixed):
+            result = self.run_script([self.STOP, self.STOP])
+        self.assertEqual(self.tagged(), 12)
+        self.assertGreaterEqual(len(self.requests), 1)
+        self.assertIn("controller applied the verified repair `symbols-tag`", self.requests[0].controller_note)
+        self.assertEqual(len(result.attempts), 1)
+
+    def test_with_the_stop_switched_off_the_model_sees_the_applied_recipe_first(self):
+        with patch.object(loop, "STOP_AFTER_CONTROLLER_RECIPE", False):
+            result = self.run_script([self.STOP])
+        self.assertEqual(len(self.requests), 1)
+        first = self.requests[0]
+        self.assertEqual(first.prediction_status, "fixed")
+        self.assertIn("controller applied the verified repair `symbols-tag`", first.controller_note)
+        self.assertEqual(result.termination_reason, "model_stop")
+
+    def test_sending_the_same_recipe_again_costs_no_attempt(self):
+        again = SimpleNamespace(action="edit", hypothesis="tag the symbols", evidence=[], reason="",
+                                tool_requests=[], edits=[Edit(self.path, "@@recipe:symbols-tag@@", "")])
+        with patch.object(loop, "STOP_AFTER_CONTROLLER_RECIPE", False):
+            result = self.run_script([again, self.STOP])
+        self.assertEqual(len(result.attempts), 1)
+        self.assertEqual(self.tagged(), 12)
+        self.assertIn("already applied", self.requests[1].feedback)
+        self.assertEqual(result.termination_reason, "model_stop")
+
+    def test_the_model_can_still_add_to_it(self):
+        other = "input/debian/rules"
+        (self.root / other).write_text("#!/usr/bin/make -f\n%:\n\tdh $@\n")
+        more = SimpleNamespace(action="edit", hypothesis="something else", evidence=[], reason="", tool_requests=[],
+                               edits=[Edit(other, "\tdh $@\n", "\tdh $@ --buildsystem=cmake\n")])
+        with patch.object(loop, "STOP_AFTER_CONTROLLER_RECIPE", False):
+            result = self.run_script([more, self.STOP])
+        self.assertEqual(len(result.attempts), 2)
+        self.assertEqual(self.tagged(), 12)
+
+    def test_a_recipe_that_refuses_leaves_the_run_as_it_was(self):
+        with patch.object(loop, "expand_macros", return_value=([], ["refused"])):
+            self.run_script([self.STOP])
+        first = self.requests[0]
+        self.assertEqual(self.tagged(), 0)
+        self.assertFalse(first.controller_note and "controller applied" in first.controller_note)
+        self.assertFalse(first.feedback)
+        self.assertFalse(first.edit_validation_feedback)
+
+    def test_only_listed_recipes_are_applied_unasked(self):
+        self.assertNotIn("o2-on-test-segfault", loop.AUTO_APPLY_IDS)     # a symptom, not a cause
+        self.assertNotIn("wno-error", loop.AUTO_APPLY_IDS)
+        self.assertTrue(loop.AUTO_APPLY_IDS <= set(registry.ids()))
+        with patch.object(loop, "AUTO_APPLY_IDS", frozenset()):
+            self.run_script([self.STOP])
+        self.assertEqual(self.tagged(), 0)
+        self.assertEqual(len(self.requests) >= 1, True)
+
+    def test_it_can_be_switched_off_and_never_runs_with_build_feedback_or_review(self):
+        with patch.object(loop, "AUTO_APPLY_RECIPES", False):
+            self.run_script([self.STOP])
+        self.assertEqual(self.tagged(), 0)

@@ -30,7 +30,7 @@ from pathlib import Path
 import re
 from typing import Callable
 
-TIERS = ("verified", "verified-template", "historical", "hypothesis")
+TIERS = ("verified", "verified-template", "historical", "hypothesis", "baseline")
 MAX_LOG_LINES = 400_000
 MAX_FILE_BYTES = 1024 * 1024
 MACRO = re.compile(r"^@@recipe:(?P<id>[a-z0-9][a-z0-9-]*)@@$")
@@ -64,7 +64,9 @@ class Recipe:
 _RECIPES: dict[str, Recipe] = {}
 _MODULES = ("symbols_tag", "strip_bsymbolic", "o2_on_test_segfault",
             "serial_helper", "cmake_redirect", "replace_removed_command", "arch_flags",
-            "static_shim", "werror_warning")
+            "static_shim", "werror_warning", "strip_buildflag", "gcs_report",
+            "indep_build_dep", "arm64_semantics", "disable_lto",
+            "python_version_slice")
 _loaded = False
 
 

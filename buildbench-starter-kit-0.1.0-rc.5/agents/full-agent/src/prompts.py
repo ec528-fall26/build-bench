@@ -326,6 +326,23 @@ before you use it, and prefer the narrowest change that fixes the cause.
   HAVE_DOT = NO), or by guarding the code that needs it, keeping the
   package's outputs. If nothing available can replace it, stop without an
   edit.
+- How your edit reaches the build: a change to a file outside debian/ becomes
+  a quilt patch, and the unpacked package keeps the unpatched copy of every
+  file you edited under .pc/. A build that compiles every source file it finds
+  below the top directory compiles that old copy as well, so editing a file
+  that must not be compiled on the target does not stop the failure. Change
+  what the build enumerates instead: the source list or directory list in its
+  build script. Edits under debian/ leave no copy.
+- An x86-only file is usually x86-only in more than one place. When the error
+  is a missing x86 header or an x86 instruction, read the whole file before
+  editing: inline assembly, CPU-identification calls and vector code further
+  down fail next. Put all of it under one x86 conditional and give the other
+  branch replacements with the same names, parameters and return types,
+  because the callers are still compiled. A macro or function whose result
+  the callers test must still produce a value: a failure value such as (-1)
+  where the feature cannot work, never ((void)0). Where the x86 calls sit in
+  branches chosen by a run-time CPU check, put those branches under the x86
+  conditional rather than inventing the missing functions.
 - Architecture lists: Architecture fields in debian/control, ExclusiveArch or
   ExcludeArch in a spec, or a configure or CMake check that only knows some
   CPUs. Add the target where the code supports it.

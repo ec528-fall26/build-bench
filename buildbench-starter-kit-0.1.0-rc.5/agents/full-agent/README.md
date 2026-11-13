@@ -27,6 +27,109 @@ it has no build feedback, so edits are investigated and revised but submitted
 untested. Locally, `harness/run_case.py --agent full-agent` runs the same loop
 with real builds (Part D). Results: `docs/part5-findings.md` §9c.
 
+Version 0.6.0-rc.9 (13 November), from the rc.5 Development Validation logs
+(111 cases, 53 passed; triage in `docs/devval-rc5-triage.md`) and live runs of
+29 public cases without builds:
+- `src/loop.py`, the controller applies a verified recipe itself. Before the
+  model's first turn, in a run without build feedback, the best-ranked recipe
+  on an explicit list (`AUTO_APPLY_IDS`: the recipes whose log signature names
+  the cause itself) is applied through the ordinary edit path as attempt 1. If the static prediction
+  does not read "not fixed" the run ends there (`model_stop`, message "Stopped
+  by the controller ..."), with no model turn. Why: a recipe matched 12 of the
+  111 logs and 11 of those passed; the twelfth, lib1305, has the libmceliece
+  linker assertion and the model wrote `export DEB_LDFLAGS_MAINT_STRIP =`
+  (empty) instead of invoking the recipe. In the first live run with the
+  recipe pre-applied the model's next edit deleted the strip line, so the run
+  now stops. Switches: `AUTO_APPLY_RECIPES`, `AUTO_APPLY_IDS`,
+  `STOP_AFTER_CONTROLLER_RECIPE`. `o2-on-test-segfault` (a symptom with more
+  than one cause), `wno-error` and `static-archive-shim` stay the model's
+  call, exactly as in rc.8. A recipe that refuses leaves the run untouched.
+- `src/verify.py`: the debian/rules verdict judged every `DEB_*_MAINT_*` line
+  in the file, including lines the package already had. A maintainer's own
+  `ifeq ($(DEB_TARGET_ARCH), armhf)` block (lib1305) or i386 block (grantlee5)
+  was reported as "NOT fixed ... address it in the next edit" after a correct
+  edit. Only lines the edit wrote are judged now.
+- `src/recipes/gcs_report.py` (recipe `gcs-report-dynamic-none`, tier
+  verified) and the `gcs_link_warning` block: on arm64, ld (binutils 2.45)
+  warns "GCS is required by -z gcs, but this shared library lacks the necessary
+  property note" about a dependency, and a `--fatal-warnings` link fails
+  (efibootmgr, kdsoap, grantlee5, kf6-frameworkintegration: 4 of the 200 public
+  logs; 3 more carry the warning without failing and do not match). The recipe
+  exports `DEB_LDFLAGS_MAINT_APPEND += -Wl,-z,gcs-report-dynamic=none` for
+  arm64, or adds the missing `export` when the line is already there
+  (efibootmgr). Reproduced with the logs' binutils and library versions from
+  snapshot.ubuntu.com and confirmed by real arm64 builds of efibootmgr and
+  kdsoap; `--no-fatal-warnings` fails on efibootmgr, `-z nogcs` and `--no-gcs`
+  (what rc.5 wrote) are not valid. grantlee5 and kf6-frameworkintegration were
+  not built.
+- `src/recipes/strip_buildflag.py` (recipe `strip-buildflag`, tier
+  verified) and the `rejected_compiler_flag` block: "unrecognized
+  command-line option" for a flag that dpkg-buildflags adds and no package
+  file contains (eegdev, rocm-device-libs: `-fno-cf-protection` on amd64) is
+  stripped with DEB_CFLAGS/CXXFLAGS_MAINT_STRIP inside an ifeq on the failing
+  architecture. Confirmed by real amd64 builds of eegdev with the log's
+  dpkg-dev 1.22.5ubuntu4 (unmodified fails, repaired passes); rocm-device-libs
+  was not built. When the package sets the flag itself (qmidiarp
+  `-msse`), the block lists the files and lines and leaves the edit to the model.
+- `src/edit_repair.py`: an old_text that differs from the file only in the
+  number of spaces or tabs inside a line is matched to the file's own text when
+  exactly one place fits (xmbmon: four tabs in the file, three in every one of
+  the model's four attempts, no change submitted in rc.5).
+- `src/syntax_guard.py`: for "void value not ignored" the finding now names
+  the line that uses the macro's value (`io_static.c:8: if (SET_IOPL() < 0)`),
+  says to write `(0)` rather than `((void)0)`, and an unchanged resend no
+  longer bypasses it. In one xmbmon run the model kept `((void)0)` through four
+  corrections; in the other the resend put it through and the native arm64
+  build failed on exactly that line. A "before '{' token" error on a line the
+  edit wrote now counts even next to older errors the check cannot judge
+  (rapmap: two functions inserted between a function's header and its body).
+- Second half of 13 November, from root-causing all 58 non-passing cases with
+  real builds (`docs/rootcause-2026-11-13/`, one report per group of cases and
+  a summary):
+  - `src/recipes/indep_build_dep.py` (`promote-indep-build-dep`, verified,
+    controller): the log's missing program or module belongs to a
+    Build-Depends-Indep package that the arch-only build (`-B`) never
+    installed (libmbim `gtkdocize`, python-msgspec `pybuild-plugin-pyproject`).
+    The package is added to Build-Depends. libmbim built arch-only: unmodified
+    fails as in the log, with the line it passes. For python-msgspec it is the
+    edit that passed the validator in rc.5.
+  - `src/recipes/arm64_semantics.py` (`arm64-x86-semantics`, baseline): for a
+    test step that fails on arm64 with no compile error, exports
+    `-fsigned-char -ffp-contract=off -fno-strict-aliasing` for arm64. Real
+    builds: xsimd 343/343 (10 fail unmodified), tasmanian 26/26, mlmmj 195/196
+    (24 fail unmodified). All three failed in rc.5.
+  - Baselines (`BASELINE_IDS` in `src/loop.py`): added by the controller
+    after the model has finished, however it finished, and only when no
+    specific recipe matches the log. The model never sees them and its
+    attempts are untouched. They were first applied before the model's turn;
+    libgovirt, which the model repaired in rc.5, then lost its repair because
+    the model stopped. The second baseline is `python-version-slice`
+    (`sys.version[:3]` is "3.1" on Python 3.10; python-reportlab).
+  - `src/recipes/disable_lto.py` (`disable-lto`, verified, controller): an
+    undefined reference to a `__wrap_` symbol from an `.ltrans` object in an
+    LTO build gets `optimize=-lto` (globalplatform: 5/5 tests under amd64
+    emulation).
+  - `src/verify.py`: after an edit to a file the errors named, x86 inline
+    assembly or an x86-only system header still compiled on a non-x86 target
+    is reported as NOT fixed (xmbmon was told "fixed" with six `inb`/`outb`
+    functions left), an include guard no longer hides it, and an edited `.c`
+    file under a Perl build that compiles every file below `.` is reported as
+    having no effect because of the copy quilt keeps under `.pc/`
+    (libcrypt-xxhash-perl).
+  - `src/prompts.py`: two playbook entries, worded without case names: how
+    an edit reaches the build (quilt patch and the `.pc/` copy), and an
+    x86-only file is x86-only in more than one place (keep names and return
+    values in the replacements; guard branches chosen by a run-time CPU
+    check). With these the model repaired both xmbmon copies in two of three
+    runs and rapmap in one of three (native builds). A third entry ("an error
+    message printed by the package's own code is found by its text") was
+    written and removed the same day: with it the model edited test files in
+    libqalculate in two runs out of two, a case plain rc.8 repairs.
+- Checked by native arm64 builds (today's archive, not the validator):
+  lib1305 fails unmodified and passes with the controller's edit; liboqs
+  (jammy) and qmidiarp pass; xmbmon, libmbim, obs-time-source, rapmap and
+  libelas still fail. Details: `docs/no-build-live-findings.md`, round 16.
+
 Version 0.6.0-rc.8 (12 November), frozen build dependencies:
 - From the rc.5 Development Validation run (111 cases): two of its system
   errors were ours. libgnomecanvasmm2.6 added `graphviz` and libopaque added

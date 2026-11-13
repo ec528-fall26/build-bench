@@ -121,7 +121,7 @@ class Recognition(unittest.TestCase):
         self.assertTrue(all(m.offset is not None and m.offset >= 0 for _, m in menu))
 
     def test_every_recipe_has_a_tier_and_a_one_line_note(self):
-        self.assertEqual(len(registry.ids()), 8)
+        self.assertEqual(len(registry.ids()), 9)   # rc.8: wno-error
         for recipe_id in registry.ids():
             recipe = registry.get(recipe_id)
             self.assertIn(recipe.tier, registry.TIERS)

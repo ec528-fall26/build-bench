@@ -27,6 +27,45 @@ it has no build feedback, so edits are investigated and revised but submitted
 untested. Locally, `harness/run_case.py --agent full-agent` runs the same loop
 with real builds (Part D). Results: `docs/part5-findings.md` §9c.
 
+Version 0.6.0-rc.8 (12 November), frozen build dependencies:
+- From the rc.5 Development Validation run (111 cases): two of its system
+  errors were ours. libgnomecanvasmm2.6 added `graphviz` and libopaque added
+  `python3-setuptools` to Build-Depends; neither was in the case's frozen lock,
+  so dependency resolution failed ("nothing provides ...") before the build.
+- `src/syntax_guard.py`: an edit to `debian/control` that adds a Build-Depends,
+  Build-Depends-Indep or Build-Depends-Arch entry not among the frozen
+  dependencies is refused, and an unchanged resend does not bypass it. The set
+  comes only from `config/dependency-lock.json` and the `.deb` files under
+  `dependencies/`; without either the check is skipped. The failure log's
+  "Package versions:" line is deliberately not used: python-msgspec passed in
+  rc.5 by adding `pybuild-plugin-pyproject`, which the original arch-only build
+  never installed but the lock contains, and that edit stays allowed.
+  Alternatives (`a | b`) pass when one is present. Other control edits are not
+  checked.
+- `src/prompts.py`: the playbook says the dependency set is frozen, that a
+  package outside it makes the build fail before it starts ("nothing
+  provides"), that a package in the set but undeclared may be added, and what
+  to do instead (another available tool, a setting that removes the need, or
+  stop).
+- `src/recipes/werror_warning.py` (recipe `wno-error`, tier verified-template)
+  and the `werror_warning` block in `src/patterns.py`: when every compiler
+  error in the log is a `[-Werror=X]` warning, the log says "all warnings being
+  treated as errors", the compile lines carry the dpkg-buildflags hardening
+  flags and every X is a false-positive-prone optimiser warning (array-parameter,
+  array-bounds, stringop-*, maybe-uninitialized, ...), the recipe exports
+  `-Wno-error=X` in DEB_CFLAGS/CXXFLAGS_MAINT_APPEND inside an ifeq on the
+  failing architecture. liboqs and bzrtp failed in rc.5 because the model
+  edited one file and the next file raised the same warning. type-limits,
+  implicit declarations and conversions (real portability bugs) are excluded;
+  an explicit `-Werror=X` on the package's own command line, or a later plain
+  `=` assignment of the MAINT_APPEND variable, is refused. GCC keeps the
+  per-warning setting even when the package's own -Werror comes later (checked
+  with gcc 13); the flags reach dpkg-buildflags (checked with make). It matches
+  3 of the 200 public logs (liboqs, bzrtp, geis) and none of the rc.5 passes.
+  Not yet validated by a real build of those cases.
+- rc.7 (9 November) is unchanged otherwise: when the model retypes a verified
+  recipe's edit, the recipe is applied.
+
 Version 0.6.0-rc.6 (9 November), rc.5 with two more bypass refusals:
 - `src/rules_guard.py` refuses a make condition replaced by a constant in
   debian/rules (golang-avo: `ifeq (1,1)` excluded 15 test packages) and a

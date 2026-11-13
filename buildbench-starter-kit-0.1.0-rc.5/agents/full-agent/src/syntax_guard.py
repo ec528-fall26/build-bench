@@ -827,6 +827,82 @@ def _compiled(worktree: Path, path: str, language: str, before: str, after: str,
     return []
 
 
+# --- debian/control: new build dependencies -----------------------------------
+# The case's dependencies are frozen: the validator installs exactly the packages
+# in config/dependency-lock.json. A Build-Depends entry that is not in the lock
+# cannot be resolved, and the build stops before it starts ("nothing provides
+# graphviz": libgnomecanvasmm2.6, 0.6.0-rc.5 Development Validation). Checked
+# only when the lock is present; alternatives ("a | b") pass if any is locked.
+
+_BD_FIELD = re.compile(r"^(Build-Depends(?:-Indep|-Arch)?)\s*:(.*(?:\n[ \t].*)*)",
+                       re.MULTILINE | re.IGNORECASE)
+
+
+def _build_depends(text: str) -> set[tuple[str, ...]]:
+    found = set()
+    for m in _BD_FIELD.finditer(text):
+        body = re.sub(r"#.*", "", m.group(2))
+        for entry in body.split(","):
+            names = []
+            for alt in entry.split("|"):
+                alt = re.sub(r"\([^)]*\)|\[[^\]]*\]|<[^>]*>", " ", alt).strip()
+                name = alt.split(":")[0].split()[0].lower() if alt.split() else ""
+                if name and not name.startswith("${"):
+                    names.append(name)
+            if names:
+                found.add(tuple(sorted(names)))
+    return found
+
+
+def locked_packages(worktree: Path | None, log_path: Path | None = None) -> set[str] | None:
+    """Package names of the case's frozen dependencies, or None if unknown.
+
+    Only the lock file and the frozen .deb files count. The failure log's
+    "Package versions:" line is NOT the frozen set: python-msgspec (rc.5
+    Development Validation) passed by adding pybuild-plugin-pyproject, which
+    the original arch-only build never installed but the lock contains.
+    """
+    names: set[str] = set()
+    if worktree is not None:
+        try:
+            data = json.loads((Path(worktree) / "config" / "dependency-lock.json")
+                              .read_text(encoding="utf-8"))
+            lists = [data] if isinstance(data, list) else \
+                [v for v in data.values() if isinstance(v, list)] if isinstance(data, dict) else []
+            for entries in lists:
+                names |= {str(d.get("package", "")).lower() for d in entries if isinstance(d, dict)}
+        except (OSError, ValueError, UnicodeError):
+            pass
+        from .deb_archive import dependency_dirs
+        for directory in dependency_dirs(Path(worktree)):
+            names |= {deb.name.split("_", 1)[0].lower() for deb in directory.glob("*.deb")}
+    names.discard("")
+    return names or None
+
+
+def _control_build_depends(before: str, after: str, path: str,
+                           worktree: Path | None, log_path: Path | None = None) -> list[Problem]:
+    added = _build_depends(after) - _build_depends(before)
+    if not added:
+        return []
+    locked = locked_packages(worktree, log_path)
+    if locked is None:
+        return []
+    missing = sorted(" | ".join(alts) for alts in added if not any(a in locked for a in alts))
+    if not missing:
+        return []
+    return [Problem(path, f"the edit adds the build dependency {', '.join(missing)}, which "
+                    "is not among this case's frozen dependencies "
+                    "(config/dependency-lock.json). The validator installs only "
+                    "packages from that set, so dependency resolution fails "
+                    "(\"nothing provides "
+                    f"{missing[0].split(' | ')[0]}\") and the build never starts. Repair "
+                    "the package with what the set provides (deb_contents lists it): another "
+                    "tool or module, or a build setting that removes the need for the missing "
+                    "one while keeping the package's outputs. If nothing available can "
+                    "replace it, stop without this edit", hard=True)]
+
+
 # --- the batch ---------------------------------------------------------------
 
 def file_problems(path: str, before: str, after: str, *, worktree: Path | None = None,
@@ -835,6 +911,8 @@ def file_problems(path: str, before: str, after: str, *, worktree: Path | None =
     """Problems that ``after`` has and ``before`` does not, for one file."""
     if before == after or len(after.encode("utf-8", "replace")) > MAX_FILE_BYTES:
         return []
+    if PurePosixPath(path).name == "control" and PurePosixPath(path).parent.name == "debian":
+        return _control_build_depends(before, after, path, worktree, log_path)
     kind = _kind(path, after)
     if kind is None:
         return []

@@ -313,10 +313,19 @@ before you use it, and prefer the narrowest change that fixes the cause.
   aarch64 or arm64 written into debian/rules, *.install files, a spec file or
   a configure script. Use the multiarch variables (DEB_HOST_MULTIARCH,
   %{_libdir}) or patterns that match every architecture.
-- Build dependencies are a fixed set resolved for each case before the build:
-  a package newly added to Build-Depends is not installed, so it cannot fix
-  the build. Repair the package's own files instead (a missing x86-only
-  dependency is handled by guarding the code that needs it).
+- Build dependencies are frozen: the build can install only packages from the
+  case's frozen set (config/dependency-lock.json).
+  A package outside that set added to Build-Depends, Build-Depends-Indep or
+  Build-Depends-Arch cannot be installed, and the build then fails before it
+  starts ("nothing provides ..."); such an edit is refused. A package that is
+  in the set but not declared where this build needs it (for example listed
+  only in Build-Depends-Indep for an architecture-specific build) may be
+  added. When the log says a tool or module is missing and it is not in the
+  set (dot, setuptools, gtkdocize), repair with what is available: another
+  tool, a build setting that removes the need (for example doxygen
+  HAVE_DOT = NO), or by guarding the code that needs it, keeping the
+  package's outputs. If nothing available can replace it, stop without an
+  edit.
 - Architecture lists: Architecture fields in debian/control, ExclusiveArch or
   ExcludeArch in a spec, or a configure or CMake check that only knows some
   CPUs. Add the target where the code supports it.

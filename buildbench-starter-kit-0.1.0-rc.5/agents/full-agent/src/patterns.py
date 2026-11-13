@@ -867,6 +867,33 @@ def recognise(diagnostics: Sequence, log_path: Path | None, worktree: Path,
     return min(ranked)[2] if ranked else ""
 
 
+def werror_warning(log_lines: Sequence[str], worktree: Path, target_arch: str) -> str:
+    """A newer compiler's warning stops a -Werror build (liboqs, bzrtp: rc.5 Development
+    Validation, where editing one file left the same warning in the next)."""
+    from .recipes import registry
+    recipe = registry.get("wno-error")
+    match = recipe.recognise(list(log_lines), worktree, target_arch) if recipe else None
+    if match is None:
+        return ""
+    names = ", ".join(f"-W{name}" for name in match.params["names"])
+    lines = [
+        TITLE,
+        f"Warning treated as an error: every compiler error in the log is a {names} warning that the "
+        "package's -Werror turns into an error (\"all warnings being treated as errors\"). Evidence: "
+        + " | ".join(match.evidence[:2]) + ". These warnings come from GCC's optimiser heuristics and "
+        "change between compiler versions and architectures; the build log shows only the first file "
+        "that triggers it, and editing that file leaves the same warning in the next one.",
+        *recipe_lines("wno-error", "input/debian/rules",
+                      "a newer GCC turns this warning into an error under the package's -Werror",
+                      log_lines, worktree, target_arch),
+        "Repair: keep that one warning a warning for the whole build with -Wno-error=<warning> in "
+        "DEB_CFLAGS_MAINT_APPEND and DEB_CXXFLAGS_MAINT_APPEND (exported, at make level). Do not remove "
+        "-Werror altogether, and do not edit the source files one by one.",
+        END,
+    ]
+    return "\n".join(lines)
+
+
 # (recogniser name, the log line that is its signature): the block whose signature
 # lies closest after the first fatal error wins; ties keep this order.
 _LOG_RECOGNISERS = (
@@ -878,4 +905,5 @@ _LOG_RECOGNISERS = (
     ("bfd_assertion", re.compile(r"BFD .*assertion fail .*elfnn-aarch64\.c")),
     ("segfault_optimisation", re.compile(r"Segmentation fault|\(core dumped\)|exit status:? 139\b")),
     ("serial_helper_race", re.compile(r"lto1: internal compiler error|Text file busy|file too short")),
+    ("werror_warning", re.compile(r"\[-Werror=[a-z0-9+-]+=?\]")),
 )

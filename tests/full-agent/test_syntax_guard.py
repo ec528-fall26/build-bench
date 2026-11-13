@@ -88,6 +88,74 @@ class Files(unittest.TestCase):
         after = "ifeq ($(DEB_HOST_ARCH),arm64)\nexport X = 1\n%:\n\tdh $@\n"
         self.assertTrue(any("endif" in m for m in problems("input/debian/rules", before, after)))
 
+    def _locked(self, names):
+        import json, tempfile
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root)
+        (root / "config").mkdir()
+        (root / "config" / "dependency-lock.json").write_text(json.dumps(
+            {"dependencies": [{"package": n, "version": "1", "arch": "all",
+                               "filename": f"{n}_1_all.deb", "sha256": "0"} for n in names]}))
+        return root
+
+    CONTROL = ("Source: libgnomecanvasmm2.6\nBuild-Depends: debhelper (>= 9),\n"
+               "               libgtkmm-2.4-dev (>= 2.4.0),\n               doxygen,\n"
+               "               dh-autoreconf\nStandards-Version: 3.8.1\n\nPackage: x\n"
+               "Depends: ${misc:Depends}\n")
+
+    def test_control_new_build_dependency_outside_the_lock_is_refused(self):
+        # libgnomecanvasmm2.6, rc.5 Development Validation: "nothing provides graphviz".
+        root = self._locked(["debhelper", "libgtkmm-2.4-dev", "doxygen", "dh-autoreconf"])
+        after = self.CONTROL.replace("doxygen,", "doxygen, graphviz,")
+        found = syntax_guard.file_problems("input/debian/control", self.CONTROL, after,
+                                           worktree=root)
+        self.assertEqual(len(found), 1, found)
+        self.assertTrue(found[0].hard)
+        self.assertIn("graphviz", found[0].message)
+
+    def test_control_locked_or_alternative_or_unknown_lock_passes(self):
+        root = self._locked(["debhelper", "doxygen", "graphviz", "python3-setuptools"])
+        for added in ("graphviz", "graphviz (>= 2.40) [amd64] <!nodoc>",
+                      "nonexistent-tool | python3-setuptools"):
+            after = self.CONTROL.replace("doxygen,", f"doxygen, {added},")
+            self.assertEqual(syntax_guard.file_problems(
+                "input/debian/control", self.CONTROL, after, worktree=root), [], added)
+        after = self.CONTROL.replace("doxygen,", "doxygen, graphviz,")
+        self.assertEqual(syntax_guard.file_problems("input/debian/control", self.CONTROL, after,
+                                                    worktree=Path("/nonexistent")), [])
+        self.assertEqual(syntax_guard.file_problems("input/debian/control", self.CONTROL, after), [])
+
+    def test_control_edits_outside_build_depends_are_not_checked(self):
+        root = self._locked(["debhelper"])
+        # nginx, rc.5: a Depends change in a binary stanza; and removing a dependency.
+        after = self.CONTROL.replace("Depends: ${misc:Depends}", "Depends: ${misc:Depends}, foo")
+        self.assertEqual(syntax_guard.file_problems("input/debian/control", self.CONTROL, after,
+                                                    worktree=root), [])
+        after = self.CONTROL.replace("               doxygen,\n", "")
+        self.assertEqual(syntax_guard.file_problems("input/debian/control", self.CONTROL, after,
+                                                    worktree=root), [])
+
+    def test_control_lock_from_deb_files_when_no_lock_json(self):
+        import tempfile
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root)
+        d = root / "dependencies" / "ubuntu-focal-all"
+        d.mkdir(parents=True)
+        (d / "doxygen_1.8_amd64.deb").write_bytes(b"")
+        after = self.CONTROL.replace("doxygen,", "doxygen, graphviz,")
+        found = syntax_guard.file_problems("input/debian/control", self.CONTROL, after, worktree=root)
+        self.assertTrue(found and "graphviz" in found[0].message, found)
+        ok = self.CONTROL.replace("dh-autoreconf\n", "dh-autoreconf, doxygen\n")
+        self.assertEqual(syntax_guard.file_problems("input/debian/control", self.CONTROL, ok,
+                                                    worktree=root), [])
+
+    def test_control_build_depends_indep_is_checked(self):
+        root = self._locked(["debhelper"])
+        before = "Source: x\nBuild-Depends: debhelper\nBuild-Depends-Indep: python3-all\n"
+        after = before.replace("python3-all", "python3-all, pybuild-plugin-pyproject")
+        found = syntax_guard.file_problems("input/debian/control", before, after, worktree=root)
+        self.assertTrue(found and "pybuild-plugin-pyproject" in found[0].message, found)
+
     def test_cmake_blocks(self):
         before = "project(x)\nadd_library(a a.c)\n"
         after = "project(x)\nif(CMAKE_SYSTEM_PROCESSOR MATCHES \"x86\")\nadd_library(a a.c)\n"

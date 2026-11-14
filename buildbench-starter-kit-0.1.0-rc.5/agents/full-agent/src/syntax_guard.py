@@ -703,11 +703,34 @@ def _compile_errors(compiler, language, name, text, include_dirs, deadline, *,
             return None
         names = {name, *watch}
         errors = []
-        for m in _DIAG.finditer(done.stderr):
+        found = list(_DIAG.finditer(done.stderr))
+        for k, m in enumerate(found):
             if Path(m.group("file")).name in names:
+                until = found[k + 1].start() if k + 1 < len(found) else len(done.stderr)
                 errors.append((Path(m.group("file")).name, int(m.group("line")),
-                               m.group("msg").strip()))
+                               m.group("msg").strip() + _use_site(done.stderr[m.end():until],
+                                                                  m.group("msg"))))
         return errors
+
+
+VOID_VALUE = "void value not ignored"
+USED_AT = "; the value of macro "
+_EXPANSION = re.compile(r"^(?P<file>[^:\n]+):(?P<line>\d+):(?:\d+:)? note: in expansion of macro "
+                        r"['‘](?P<macro>\w+)['’]\n\s*\d+ \| (?P<source>.*)$", re.MULTILINE)
+
+
+def _use_site(notes: str, message: str) -> str:
+    """For "void value not ignored": where the macro's value is used (gcc's
+    note after the error). xmbmon, 13 November: the error was reported on the
+    `#define SET_IOPL() ((void)0)` line four times and the model could not see
+    why, because the `if (SET_IOPL() < 0)` that needs the value is in another file."""
+    if VOID_VALUE not in message:
+        return ""
+    site = _EXPANSION.search(notes)
+    if site is None:
+        return ""
+    return (f"{USED_AT}{site.group('macro')} is used at {Path(site.group('file')).name}:"
+            f"{site.group('line')}: `{site.group('source').strip()[:160]}`")
 
 
 def _line_map(before: str, after: str) -> tuple[set[int], dict[int, tuple[int, int]]]:
@@ -732,6 +755,9 @@ def _changed_lines(before: str, after: str) -> set[int]:
     return _line_map(before, after)[0]
 
 
+_BEFORE_BRACE = re.compile(r"^expected .* before ['‘]\{['’] token")
+
+
 def _new_parse_error(old, new, edited: str, before: str, after: str):
     """The first new parser-level error the edit causes, or None.
 
@@ -749,6 +775,8 @@ def _new_parse_error(old, new, edited: str, before: str, after: str):
     erring = {}
     for f, line, _ in old:
         erring.setdefault(f, set()).update(range(line - 3, line + 4))
+    had = set(before.split("\n"))
+    lines = after.split("\n")
     for file, line, msg in new:
         if baseline[(file, msg)] > 0:
             baseline[(file, msg)] -= 1
@@ -759,7 +787,14 @@ def _new_parse_error(old, new, edited: str, before: str, after: str):
             if line not in near:
                 continue
             low, high = where.get(line, (line, line))
-            if any(k in erring.get(file, ()) for k in range(low, high + 1)):
+            # A body opened where none can start, on a line the edit wrote, is the
+            # edit's own doing even next to older errors this check cannot judge
+            # (rapmap, rc.5 and 13 November: two functions were inserted between a
+            # function's header and its `{`; the file's SIMD types are unknown here,
+            # so the neighbouring lines already had errors and the finding was dropped).
+            own = (_BEFORE_BRACE.search(msg) and 1 <= line <= len(lines)
+                   and lines[line - 1] not in had)
+            if not own and any(k in erring.get(file, ()) for k in range(low, high + 1)):
                 continue
         elif line in erring.get(file, ()):
             continue
@@ -821,10 +856,89 @@ def _compiled(worktree: Path, path: str, language: str, before: str, after: str,
             file, line, msg = hit
             where = "" if file == name else f" (in {file}, which includes it)"
             arch_note = f" compiled for {target}" if arch else ""
+            # With the place that uses the value in hand this is a certain
+            # compile error, not a judgement call: an unchanged resend is refused.
             return [Problem(path, f"{PurePosixPath(unit_compiler).name} -fsyntax-only{arch_note} "
-                            f"reports a new error{where}: {msg[:300]}",
-                            line if file == name else None)]
+                            f"reports a new error{where}: {msg[:420]}",
+                            line if file == name else None,
+                            hard=VOID_VALUE in msg and USED_AT in msg)]
     return []
+
+
+# --- debian/control: new build dependencies -----------------------------------
+# The case's dependencies are frozen: the validator installs exactly the packages
+# in config/dependency-lock.json. A Build-Depends entry that is not in the lock
+# cannot be resolved, and the build stops before it starts ("nothing provides
+# graphviz": libgnomecanvasmm2.6, 0.6.0-rc.5 Development Validation). Checked
+# only when the lock is present; alternatives ("a | b") pass if any is locked.
+
+_BD_FIELD = re.compile(r"^(Build-Depends(?:-Indep|-Arch)?)\s*:(.*(?:\n[ \t].*)*)",
+                       re.MULTILINE | re.IGNORECASE)
+
+
+def _build_depends(text: str) -> set[tuple[str, ...]]:
+    found = set()
+    for m in _BD_FIELD.finditer(text):
+        body = re.sub(r"#.*", "", m.group(2))
+        for entry in body.split(","):
+            names = []
+            for alt in entry.split("|"):
+                alt = re.sub(r"\([^)]*\)|\[[^\]]*\]|<[^>]*>", " ", alt).strip()
+                name = alt.split(":")[0].split()[0].lower() if alt.split() else ""
+                if name and not name.startswith("${"):
+                    names.append(name)
+            if names:
+                found.add(tuple(sorted(names)))
+    return found
+
+
+def locked_packages(worktree: Path | None, log_path: Path | None = None) -> set[str] | None:
+    """Package names of the case's frozen dependencies, or None if unknown.
+
+    Only the lock file and the frozen .deb files count. The failure log's
+    "Package versions:" line is NOT the frozen set: python-msgspec (rc.5
+    Development Validation) passed by adding pybuild-plugin-pyproject, which
+    the original arch-only build never installed but the lock contains.
+    """
+    names: set[str] = set()
+    if worktree is not None:
+        try:
+            data = json.loads((Path(worktree) / "config" / "dependency-lock.json")
+                              .read_text(encoding="utf-8"))
+            lists = [data] if isinstance(data, list) else \
+                [v for v in data.values() if isinstance(v, list)] if isinstance(data, dict) else []
+            for entries in lists:
+                names |= {str(d.get("package", "")).lower() for d in entries if isinstance(d, dict)}
+        except (OSError, ValueError, UnicodeError):
+            pass
+        from .deb_archive import dependency_dirs
+        for directory in dependency_dirs(Path(worktree)):
+            names |= {deb.name.split("_", 1)[0].lower() for deb in directory.glob("*.deb")}
+    names.discard("")
+    return names or None
+
+
+def _control_build_depends(before: str, after: str, path: str,
+                           worktree: Path | None, log_path: Path | None = None) -> list[Problem]:
+    added = _build_depends(after) - _build_depends(before)
+    if not added:
+        return []
+    locked = locked_packages(worktree, log_path)
+    if locked is None:
+        return []
+    missing = sorted(" | ".join(alts) for alts in added if not any(a in locked for a in alts))
+    if not missing:
+        return []
+    return [Problem(path, f"the edit adds the build dependency {', '.join(missing)}, which "
+                    "is not among this case's frozen dependencies "
+                    "(config/dependency-lock.json). The validator installs only "
+                    "packages from that set, so dependency resolution fails "
+                    "(\"nothing provides "
+                    f"{missing[0].split(' | ')[0]}\") and the build never starts. Repair "
+                    "the package with what the set provides (deb_contents lists it): another "
+                    "tool or module, or a build setting that removes the need for the missing "
+                    "one while keeping the package's outputs. If nothing available can "
+                    "replace it, stop without this edit", hard=True)]
 
 
 # --- the batch ---------------------------------------------------------------
@@ -835,6 +949,8 @@ def file_problems(path: str, before: str, after: str, *, worktree: Path | None =
     """Problems that ``after`` has and ``before`` does not, for one file."""
     if before == after or len(after.encode("utf-8", "replace")) > MAX_FILE_BYTES:
         return []
+    if PurePosixPath(path).name == "control" and PurePosixPath(path).parent.name == "debian":
+        return _control_build_depends(before, after, path, worktree, log_path)
     kind = _kind(path, after)
     if kind is None:
         return []
@@ -938,6 +1054,12 @@ def feedback(index: int, edits, problems: list[Problem], after: str, hypothesis:
     if excerpt:
         blocks.append(f"\n=== {edit.path} after the batch, around that line ===\n{excerpt}")
     hard = any(problem.hard for problem in problems)
+    if any(VOID_VALUE in problem.message for problem in problems):
+        blocks.append("What that error means: other code uses the result of this macro or function (in a "
+                      "comparison, an assignment or a return), and the edit made it expand to something "
+                      "with no value. A no-op replacement must still be an expression with a value: write "
+                      "`(0)` for a macro that reports success, not `((void)0)` or `do {} while (0)`; a stub "
+                      "function must keep the original return type and return a value.")
     blocks += [
         "",
         f"Proposed NEW text of edit {index}: {edit.new_text[:1600]}",
@@ -946,7 +1068,7 @@ def feedback(index: int, edits, problems: list[Problem], after: str, hypothesis:
         "open; use a TAB before recipe commands). Do not resend the other edits.",
     ]
     if hard:
-        blocks.append("This is a format error, not a judgement call: the same edit sent "
+        blocks.append("This is a certain error, not a judgement call: the same edit sent "
                       "again is refused again. Send the corrected line.")
     else:
         blocks.append("If you are certain the edit is correct as it is (for example the check "

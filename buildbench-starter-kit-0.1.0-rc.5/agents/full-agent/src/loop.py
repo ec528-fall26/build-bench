@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 import json
 import re
@@ -36,6 +36,44 @@ OWN_EDITS_CHARS = 6000
 # Controller completion of a partial mechanical repair (libbpp-core, 9 Nov live run: 11 of 12
 # symbols hand-tagged, then stop). Symbols only; applied through the normal edit gates.
 COMPLETE_MECHANICAL_REPAIRS = True
+# Apply the best verified recipe before the model's first turn (no-build runs).
+# rc.5 Development Validation and an rc.8 run of the public cases: a recipe
+# matched 12 of 111 logs and 11 of those passed; the twelfth, lib1305, has the
+# libmceliece linker assertion, and in both runs the model wrote its own edit
+# (`export DEB_LDFLAGS_MAINT_STRIP =`, empty) instead of invoking the recipe.
+# A verified repair should not depend on the model choosing to ask for it.
+AUTO_APPLY_RECIPES = True
+# Which recipes it may apply unasked: those whose log signature names the cause
+# itself (a dpkg-gensymbols diff, ld's BFD assertion, ld's GCS warning, the
+# compiler rejecting a named flag, CMake's missing imported directory, the
+# removed setup.py command, libgcc's hidden outline-atomics helper, the helper
+# rebuilt by parallel rules, a missing program whose package is only in
+# Build-Depends-Indep of an arch-only build). `o2-on-test-segfault` is left out although a build
+# confirmed it for libevtx: "a test crashed and something was compiled with
+# -O3" is a symptom with more than one cause (python-msgspec passed in rc.5 with
+# a different edit), so it stays the model's call, as do `wno-error` and
+# `static-archive-shim`.
+AUTO_APPLY_IDS = frozenset({
+    "symbols-tag", "strip-bsymbolic-functions", "gcs-report-dynamic-none", "strip-buildflag",
+    "cmake-redirect-imported-dirs", "replace-removed-command", "arch-flags", "serial-helper-build",
+    "promote-indep-build-dep", "disable-lto",
+})
+# Added on top of whatever the model did, after it has finished, when no
+# specific recipe matches the log: the model never sees them and works on the
+# failure exactly as before. `arm64-x86-semantics` (tests fail on arm64 only,
+# nothing fails to compile) fixed xsimd and tasmanian outright in real builds
+# and took mlmmj from 24 failing tests to 1; where the cause is something else
+# the flags change nothing the tests can see.
+# `python-version-slice` is a plain bug in the packaging (sys.version[:3] on
+# Python 3.10); correct wherever it occurs, whether or not it is all that fails.
+BASELINE_IDS = frozenset({"arm64-x86-semantics", "python-version-slice"})
+# End the run there unless the static prediction says the repair is incomplete.
+# lib1305, 13 November, first run with the step above: the controller added the
+# strip line, then the model deleted it ("the flag added via
+# DEB_LDFLAGS_MAINT_STRIP causes the assertion") and rewrote build/Makefile.
+# The log shows one cause and the recipe is its build-confirmed repair; with no
+# build feedback a further model turn can only guess, and here it undid the fix.
+STOP_AFTER_CONTROLLER_RECIPE = True
 UNFIXED_STOP = (
     "Controller: you replied stop, but the latest static prediction still reports a construct "
     "NOT fixed, and a build with it fails the same way. The unresolved verdict(s), in full:\n{lines}\n"
@@ -379,6 +417,12 @@ class _Loop:
     # --- run -----------------------------------------------------------------
 
     def run(self) -> LoopResult:
+        result = self._controller_recipe()
+        if result is None:
+            result = self._turns()
+        return self._finishing_baseline(result)
+
+    def _turns(self) -> LoopResult:
         for _ in range(self.max_turns):
             result = self._exhausted() or self._ask_model()
             if result is not None:
@@ -409,6 +453,130 @@ class _Loop:
             if result is not None:
                 return result
         return self.finish("turn_budget", "The model-turn limit was reached.")
+
+    def _recipe_choice(self, baseline: bool):
+        """(recipe, match, macro edit, log lines, arch) for the recipe the
+        controller may apply now, or None. ``baseline`` False: the best-ranked
+        specific recipe, if it is on AUTO_APPLY_IDS. True: a baseline recipe,
+        and only when no specific recipe matches the log at all."""
+        from .recipes import registry
+        log_lines = patterns._log_lines(self.log_path)
+        metadata = getattr(self.context, "task_metadata", None) or {}
+        arch = str(metadata.get("target_arch") or "")
+        every = registry.menu(log_lines, self.context.worktree, arch)
+        # Only the best-ranked recipe, the one whose signature lies closest to
+        # the first fatal error: a listed recipe further down is not the cause.
+        ranked = [item for item in every if item[0].id not in BASELINE_IDS]
+        if baseline:
+            choice = next((item for item in sorted(every, key=lambda item: item[0].id)
+                           if item[0].id in BASELINE_IDS), None) if not ranked else None
+        else:
+            choice = (ranked[0] if ranked and ranked[0][0].id in AUTO_APPLY_IDS
+                      and ranked[0][0].tier in patterns.PREVIEW_TIERS else None)
+        if choice is None:
+            return None
+        recipe, match = choice
+        macro = Edit(completion.recipe_target(recipe.id, match), registry.macro_token(recipe.id), "")
+        expanded, _ = expand_macros([deepcopy(macro)], self.context.worktree, log_lines, arch)
+        if not expanded:
+            return None                     # the recipe refuses on this tree
+        return recipe, match, macro
+
+    def _apply_as_controller(self, recipe, match, macro):
+        """Run one recipe through the ordinary edit path (macro expansion,
+        gates, apply, static prediction) as an attempt of the controller's.
+        Returns (applied, what _edit_turn returned); when nothing was applied
+        no trace is left: no pending correction, no feedback, no used attempt."""
+        before = len(self.attempts)
+        self.turn = ModelTurn("edit", [], f"controller: verified repair {recipe.id}",
+                              [str(line)[:200] for line in match.evidence[:2]], [macro], "")
+        self.reported_usage = {"input_tokens": 0, "output_tokens": 0}
+        try:
+            result = self._edit_turn(None)
+        except Exception:
+            result = None
+        if not (len(self.attempts) > before and self.attempts[-1].applied > 0):
+            del self.attempts[before:]
+            self._clear_pending()
+            self.edit_validation_feedback = ""
+            self.feedback = ""
+            self.latest_attempt_feedback = ""
+            self.batch_notes = []
+            self.empty_edit_streak = 0
+            return False, None
+        self.review_events.append({"event": "controller_recipe", "recipe": recipe.id,
+                                   "applied": self.attempts[-1].applied,
+                                   "prediction": self.prediction_status})
+        return True, result
+
+    def _controller_enabled(self) -> bool:
+        return bool(AUTO_APPLY_RECIPES and self._no_build_control() and not self.review_edits
+                    and not self.output_gate)
+
+    def _controller_recipe(self) -> LoopResult | None:
+        """Before the model's first turn, apply the best-ranked verified recipe
+        the log shows, as attempt 1, and end the run unless the prediction says
+        the repair is incomplete. Nothing is applied when no listed recipe
+        matches or its expansion refuses; a failure anywhere leaves the run
+        exactly as if this step did not exist."""
+        self.controller_recipe = ""
+        if not self._controller_enabled() or self.attempts:
+            return None
+        try:
+            choice = self._recipe_choice(baseline=False)
+        except Exception:
+            choice = None
+        if choice is None:
+            return None
+        recipe, match, macro = choice
+        applied, result = self._apply_as_controller(recipe, match, macro)
+        if not applied:
+            return None
+        self.controller_recipe = recipe.id
+        if isinstance(result, LoopResult):
+            return result
+        if STOP_AFTER_CONTROLLER_RECIPE and self.prediction_status != "not_fixed":
+            return self.finish(
+                "model_stop", f"Stopped by the controller: the verified repair `{recipe.id}` matched the "
+                "failure log and was applied before the model's first turn; no model edit was needed.")
+        self._note(f"Before your first turn the controller applied the verified repair `{recipe.id}`; "
+                   "it is attempt 1 and its lines are in the files now (see your edits so far and the "
+                   "prediction). Do not send that recipe again and do not retype or undo its lines. "
+                   "If the prediction reads fixed and the log shows no other cause, reply stop; "
+                   "otherwise add only what is still missing.")
+        return None
+
+    def _finishing_baseline(self, result: LoopResult) -> LoopResult:
+        """After the model has finished, however it finished, add a baseline
+        recipe if one matches and no specific recipe does. The model never sees
+        it, so it works on the failure exactly as it would have (applied before
+        the first turn, 13 November, it made the model stop without the repair
+        it had found for libgovirt in rc.5). The result keeps the model's
+        termination reason; the baseline is one more attempt in the record."""
+        if not self._controller_enabled() or getattr(self, "controller_recipe", ""):
+            return result
+        added = []
+        for _ in BASELINE_IDS:                  # each baseline at most once
+            try:
+                choice = self._recipe_choice(baseline=True)
+            except Exception:
+                choice = None
+            if choice is None or choice[0].id in added:
+                break
+            recipe, match, macro = choice
+            saved = (self.turn, self.prediction_status, self.prediction_reason, self.all_fixed)
+            self._clear_pending()
+            applied, _ = self._apply_as_controller(recipe, match, macro)
+            self.turn = saved[0]
+            if not applied:
+                self.prediction_status, self.prediction_reason, self.all_fixed = saved[1:]
+                break
+            added.append(recipe.id)
+        if not added:
+            return result
+        return self.finish(result.termination_reason,
+                           (result.message or "").rstrip() + " [controller: baseline "
+                           + ", ".join(f"`{name}`" for name in added) + " added after the model finished]")
 
     def finish(self, reason: str, message: str) -> LoopResult:
         if self.ffi is not None:
@@ -846,6 +1014,11 @@ class _Loop:
     # --- an edit batch -------------------------------------------------------
 
     def _edit_turn(self, approved_key) -> LoopResult | None:
+        if self._resends_controller_recipe():
+            self.feedback = (f"The repair `{self.controller_recipe}` is already applied (attempt 1); "
+                             "sending it again changes nothing and was not counted. Reply stop, or "
+                             "propose a different edit for a cause it does not cover.")
+            return _CONTINUE
         merged = self._merge_correction()
         if merged is not True:
             return merged
@@ -874,6 +1047,17 @@ class _Loop:
         if isinstance(applied, LoopResult):
             return applied
         return self._build(snapshot, applied)
+
+    def _resends_controller_recipe(self) -> bool:
+        applied = getattr(self, "controller_recipe", "")
+        if not applied or self.pending_turn is not None or not self.attempts or not self.turn.edits:
+            return False
+        try:
+            from .recipes import registry
+            return all(registry.macro_id(getattr(edit, "old_text", None)) == applied
+                       for edit in self.turn.edits)
+        except Exception:
+            return False
 
     def _merge_correction(self):
         """Put a focused correction into the pending batch. Returns True to go

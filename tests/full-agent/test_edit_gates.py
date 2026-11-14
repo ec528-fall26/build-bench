@@ -600,5 +600,71 @@ class RecordedRuns(unittest.TestCase):
         self.assertTrue(any("CFLAGS=" in w for w in refused), refused)
 
 
+
+class FrozenBuildDepends(unittest.TestCase):
+    """System errors in the rc.5 Development Validation run: libgnomecanvasmm2.6
+    added graphviz and libopaque added python3-setuptools to Build-Depends; neither
+    was in the frozen lock, so dependency resolution failed before the build."""
+
+    CONTROL = ("Source: libopaque\nBuild-Depends: debhelper-compat (= 13),\n"
+               "   libsodium-dev, liboprf-dev (>= 0.3.2), pandoc, python3-all\n\n"
+               "Package: libopaque0\nArchitecture: any\n")
+    PATH = "input/debian/control"
+
+    def _case(self, root, log_packages=None, lock=None):
+        (root / "input/debian").mkdir(parents=True)
+        (root / self.PATH).write_text(self.CONTROL)
+        log = root / "failure.log"
+        lines = ["dh_auto_install", "ModuleNotFoundError: No module named 'setuptools'"]
+        if log_packages is not None:
+            lines.insert(0, "Package versions: " + " ".join(f"{p}_1.0-1" for p in log_packages))
+        log.write_text("\n".join(lines) + "\n")
+        if lock is not None:
+            (root / "config").mkdir()
+            (root / "config/dependency-lock.json").write_text(json.dumps(
+                {"dependencies": [{"package": p} for p in lock]}))
+        return log, CandidateSnapshot.capture(root, [self.PATH])
+
+    def test_a_new_build_dependency_outside_the_lock_is_refused_through_the_batch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            log, snapshot = self._case(root, None, lock=["debhelper-compat", "libsodium-dev",
+                                                         "liboprf-dev", "pandoc", "python3-all"])
+            bad = edit(self.PATH, "pandoc, python3-all", "pandoc, python3-all, python3-setuptools")
+            found = syntax_guard.check_batch(snapshot, [bad], worktree=root, log_path=log)
+            self.assertIsNotNone(found)
+            index, problems_found, after = found
+            self.assertTrue(problems_found[0].hard)
+            self.assertIn("python3-setuptools", problems_found[0].message)
+            again = syntax_guard.check_batch(snapshot, [bad], worktree=root, log_path=log,
+                                             allow={syntax_guard.edit_signature(bad)})
+            self.assertIsNotNone(again, "an unchanged resend must still be blocked")
+
+    def test_msgspec_shape_a_locked_package_not_installed_originally_is_allowed(self):
+        # python-msgspec passed in rc.5 by adding pybuild-plugin-pyproject to
+        # Build-Depends: the arch-only build never installed it (not in the log's
+        # "Package versions:"), but the frozen lock contains it.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            log, snapshot = self._case(root, ["debhelper", "python3-all"],
+                                       lock=["debhelper", "python3-all", "pybuild-plugin-pyproject"])
+            ok = edit(self.PATH, "pandoc, python3-all", "pandoc, python3-all, pybuild-plugin-pyproject")
+            self.assertIsNone(syntax_guard.check_batch(snapshot, [ok], worktree=root, log_path=log))
+
+    def test_without_a_lock_the_log_is_not_used_and_nothing_is_checked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            log, snapshot = self._case(root, ["debhelper"])     # package list only, no lock
+            bad = edit(self.PATH, "pandoc, python3-all", "pandoc, python3-all, graphviz")
+            self.assertIsNone(syntax_guard.check_batch(snapshot, [bad], worktree=root, log_path=log))
+
+    def test_other_control_edits_are_unaffected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            log, snapshot = self._case(root, None, lock=["debhelper"])
+            arch = edit(self.PATH, "Architecture: any", "Architecture: amd64 arm64")
+            self.assertIsNone(syntax_guard.check_batch(snapshot, [arch], worktree=root, log_path=log))
+
+
 if __name__ == "__main__":
     unittest.main()

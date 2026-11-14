@@ -13,6 +13,7 @@ from pathlib import Path
 import shutil
 import sys
 import unittest
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "buildbench-starter-kit-0.1.0-rc.5/agents/full-agent"))
@@ -87,6 +88,74 @@ class Files(unittest.TestCase):
         before = "%:\n\tdh $@\n"
         after = "ifeq ($(DEB_HOST_ARCH),arm64)\nexport X = 1\n%:\n\tdh $@\n"
         self.assertTrue(any("endif" in m for m in problems("input/debian/rules", before, after)))
+
+    def _locked(self, names):
+        import json, tempfile
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root)
+        (root / "config").mkdir()
+        (root / "config" / "dependency-lock.json").write_text(json.dumps(
+            {"dependencies": [{"package": n, "version": "1", "arch": "all",
+                               "filename": f"{n}_1_all.deb", "sha256": "0"} for n in names]}))
+        return root
+
+    CONTROL = ("Source: libgnomecanvasmm2.6\nBuild-Depends: debhelper (>= 9),\n"
+               "               libgtkmm-2.4-dev (>= 2.4.0),\n               doxygen,\n"
+               "               dh-autoreconf\nStandards-Version: 3.8.1\n\nPackage: x\n"
+               "Depends: ${misc:Depends}\n")
+
+    def test_control_new_build_dependency_outside_the_lock_is_refused(self):
+        # libgnomecanvasmm2.6, rc.5 Development Validation: "nothing provides graphviz".
+        root = self._locked(["debhelper", "libgtkmm-2.4-dev", "doxygen", "dh-autoreconf"])
+        after = self.CONTROL.replace("doxygen,", "doxygen, graphviz,")
+        found = syntax_guard.file_problems("input/debian/control", self.CONTROL, after,
+                                           worktree=root)
+        self.assertEqual(len(found), 1, found)
+        self.assertTrue(found[0].hard)
+        self.assertIn("graphviz", found[0].message)
+
+    def test_control_locked_or_alternative_or_unknown_lock_passes(self):
+        root = self._locked(["debhelper", "doxygen", "graphviz", "python3-setuptools"])
+        for added in ("graphviz", "graphviz (>= 2.40) [amd64] <!nodoc>",
+                      "nonexistent-tool | python3-setuptools"):
+            after = self.CONTROL.replace("doxygen,", f"doxygen, {added},")
+            self.assertEqual(syntax_guard.file_problems(
+                "input/debian/control", self.CONTROL, after, worktree=root), [], added)
+        after = self.CONTROL.replace("doxygen,", "doxygen, graphviz,")
+        self.assertEqual(syntax_guard.file_problems("input/debian/control", self.CONTROL, after,
+                                                    worktree=Path("/nonexistent")), [])
+        self.assertEqual(syntax_guard.file_problems("input/debian/control", self.CONTROL, after), [])
+
+    def test_control_edits_outside_build_depends_are_not_checked(self):
+        root = self._locked(["debhelper"])
+        # nginx, rc.5: a Depends change in a binary stanza; and removing a dependency.
+        after = self.CONTROL.replace("Depends: ${misc:Depends}", "Depends: ${misc:Depends}, foo")
+        self.assertEqual(syntax_guard.file_problems("input/debian/control", self.CONTROL, after,
+                                                    worktree=root), [])
+        after = self.CONTROL.replace("               doxygen,\n", "")
+        self.assertEqual(syntax_guard.file_problems("input/debian/control", self.CONTROL, after,
+                                                    worktree=root), [])
+
+    def test_control_lock_from_deb_files_when_no_lock_json(self):
+        import tempfile
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root)
+        d = root / "dependencies" / "ubuntu-focal-all"
+        d.mkdir(parents=True)
+        (d / "doxygen_1.8_amd64.deb").write_bytes(b"")
+        after = self.CONTROL.replace("doxygen,", "doxygen, graphviz,")
+        found = syntax_guard.file_problems("input/debian/control", self.CONTROL, after, worktree=root)
+        self.assertTrue(found and "graphviz" in found[0].message, found)
+        ok = self.CONTROL.replace("dh-autoreconf\n", "dh-autoreconf, doxygen\n")
+        self.assertEqual(syntax_guard.file_problems("input/debian/control", self.CONTROL, ok,
+                                                    worktree=root), [])
+
+    def test_control_build_depends_indep_is_checked(self):
+        root = self._locked(["debhelper"])
+        before = "Source: x\nBuild-Depends: debhelper\nBuild-Depends-Indep: python3-all\n"
+        after = before.replace("python3-all", "python3-all, pybuild-plugin-pyproject")
+        found = syntax_guard.file_problems("input/debian/control", before, after, worktree=root)
+        self.assertTrue(found and "pybuild-plugin-pyproject" in found[0].message, found)
 
     def test_cmake_blocks(self):
         before = "project(x)\nadd_library(a a.c)\n"
@@ -165,6 +234,40 @@ class Files(unittest.TestCase):
 
 
 @unittest.skipUnless(shutil.which("gcc") or shutil.which("cc"), "no C compiler")
+class BodyInTheWrongPlace(unittest.TestCase):
+    """rapmap: wrappers were inserted between a function's header and its `{`.
+    The file uses SIMD types this check cannot see, so the lines around already
+    had errors; the new error is on a line the edit wrote and still counts."""
+
+    BEFORE = ("#include <stdint.h>\n"
+              "void ksw_extz2_sse(void *km, int qlen, const uint8_t *query)\n"
+              "{\n"
+              "\t__m128i zero_ = _mm_set1_epi8(0);\n"
+              "\t(void)zero_; (void)km; (void)qlen; (void)query;\n"
+              "}\n")
+    WRAPPER = ("void ksw_extz2_sse2(void *km, int qlen, const uint8_t *query) {\n"
+               "\tksw_extz2_sse(km, qlen, query);\n"
+               "}\n")
+
+    def problems(self, after):
+        import tempfile
+        from time import monotonic
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            (work / "input").mkdir()
+            return [p.message for p in syntax_guard.file_problems(
+                "input/ksw2_extz2_sse.c", self.BEFORE, after, worktree=work, deadline=monotonic() + 30)]
+
+    def test_functions_between_a_header_and_its_brace_are_found(self):
+        after = self.BEFORE.replace("const uint8_t *query)\n{\n", "const uint8_t *query)\n" + self.WRAPPER + "{\n")
+        found = self.problems(after)
+        self.assertTrue(any("before '{' token" in m for m in found), found)
+
+    def test_the_same_functions_after_the_body_pass(self):
+        self.assertEqual(self.problems(self.BEFORE + self.WRAPPER), [])
+
+
+@unittest.skipUnless(shutil.which("gcc") or shutil.which("cc"), "no C compiler")
 class TargetCompile(unittest.TestCase):
     """xmbmon, 6 November: the edit made a macro void on ARM, and the file that
     uses the macro failed with "void value not ignored". The header alone
@@ -191,6 +294,31 @@ class TargetCompile(unittest.TestCase):
         after = self.HEADER.replace("#define SET_IOPL() (0)", "#define SET_IOPL() ((void)0)")
         found = self.check(after, "arm64")
         self.assertTrue(any("void value not ignored" in m for m in found), found)
+
+    def test_the_finding_names_the_line_that_uses_the_value_and_cannot_be_resent(self):
+        # 13 November: four corrections in a row kept ((void)0), and in the other
+        # xmbmon run an unchanged resend put it through; the native build then failed on it.
+        import tempfile
+        from time import monotonic
+        after = self.HEADER.replace("#define SET_IOPL() (0)", "#define SET_IOPL() ((void)0)")
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            (work / "input").mkdir()
+            (work / "input/io_static.c").write_text(self.USER)
+            (work / "input/io_cpu.h").write_text(self.HEADER)
+            log = work / "build.log"
+            log.write_text(self.LOG.replace("getMBinfo.c", "io_static.c"))
+            from src import syntax_guard
+            found = syntax_guard.file_problems("input/io_cpu.h", self.HEADER, after, worktree=work,
+                                               deadline=monotonic() + 30, target="arm64", log_path=log)
+        self.assertEqual(len(found), 1)
+        self.assertIn("the value of macro SET_IOPL is used at io_static.c:2", found[0].message)
+        self.assertIn("if (SET_IOPL() < 0)", found[0].message)
+        self.assertTrue(found[0].hard)
+        said = syntax_guard.feedback(0, [SimpleNamespace(path="input/io_cpu.h", old_text="a", new_text="b")],
+                                     found, after, "guard the include")
+        self.assertIn("write `(0)`", said)
+        self.assertIn("refused again", said)
 
     def test_the_same_edit_is_harmless_when_the_branch_is_not_the_targets(self):
         after = self.HEADER.replace("#define SET_IOPL() (0)", "#define SET_IOPL() ((void)0)")

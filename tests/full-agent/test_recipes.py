@@ -121,7 +121,7 @@ class Recognition(unittest.TestCase):
         self.assertTrue(all(m.offset is not None and m.offset >= 0 for _, m in menu))
 
     def test_every_recipe_has_a_tier_and_a_one_line_note(self):
-        self.assertEqual(len(registry.ids()), 8)
+        self.assertEqual(len(registry.ids()), 15)   # rc.8: wno-error; rc.9: four more, see the README
         for recipe_id in registry.ids():
             recipe = registry.get(recipe_id)
             self.assertIn(recipe.tier, registry.TIERS)
@@ -705,3 +705,42 @@ class Blocks(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PythonVersionSlice(unittest.TestCase):
+    """python-reportlab: debian/rules builds a path from sys.version[:3]."""
+
+    RULES = ("#!/usr/bin/make -f\nPY3VERS\t:= $(shell py3versions -vs)\n"
+             "VER3\t:= $(shell /usr/bin/python3 -c 'import sys; print(sys.version[:3])')\n\n%:\n\tdh $@\n")
+    LOG = ["touch build3-python3.10", "PYTHONPATH= python3 genAll.py",
+           "ModuleNotFoundError: No module named 'reportlab'"]
+
+    def setUp(self):
+        import tempfile
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        (self.root / "input/debian").mkdir(parents=True)
+        (self.root / "input/debian/rules").write_text(self.RULES)
+
+    def test_the_slice_is_replaced_without_quotes(self):
+        from src.recipes import python_version_slice as recipe
+        match = recipe.recognise(self.LOG, self.root, "amd64")
+        self.assertIn("input/debian/rules:3", match.evidence[0])
+        [edit] = recipe.expand(self.root, match, {})
+        self.assertIn("print((str(sys.version_info[0])+chr(46)+str(sys.version_info[1])))", edit.new_text)
+        self.assertEqual(eval('"python%s" % ' + recipe.REPLACEMENT + '.strip()', {"sys": sys}),
+                         "python%d.%d" % sys.version_info[:2])
+        self.assertNotIn("version[:3]", edit.new_text)
+        self.assertEqual(eval(recipe.REPLACEMENT, {"sys": sys}), "%d.%d" % sys.version_info[:2])
+
+    def test_not_for_python_3_9_and_not_without_the_slice(self):
+        from src.recipes import python_version_slice as recipe
+        self.assertIsNone(recipe.recognise(["touch build3-python3.9"], self.root, "amd64"))
+        (self.root / "input/debian/rules").write_text(self.RULES.replace("sys.version[:3]", "sys.version_info[0]"))
+        self.assertIsNone(recipe.recognise(self.LOG, self.root, "amd64"))
+
+    def test_it_is_a_baseline(self):
+        from src import loop
+        self.assertIn("python-version-slice", loop.BASELINE_IDS)
+        self.assertEqual(registry.get("python-version-slice").tier, "baseline")

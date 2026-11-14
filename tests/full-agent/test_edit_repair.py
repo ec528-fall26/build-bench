@@ -726,3 +726,43 @@ class SymbolsMacro(unittest.TestCase):
     def test_ordinary_edits_pass_through(self):
         plain = Edit("input/debian/rules", "a", "b")
         self.assertEqual(edit_repair.expand_macros([plain], self.root, self.LOG), ([plain], []))
+
+
+class InteriorWhitespace(unittest.TestCase):
+    """xmbmon (public cases, rc.5 and rc.8): four tabs in the file, three in the
+    model's old_text, four attempts, no change submitted."""
+
+    FILE = ("#ifdef LINUX\t\t\t\t/* LINUX */\n#include <sys/io.h>\n#define   SET_IOPL()\tiopl(3)\n"
+            "#define RESET_IOPL()\tiopl(0)\n\n#elif defined(__svr4__)\t\t/* Solaris for x86 */\n")
+    OLD = "#ifdef LINUX\t\t\t/* LINUX */\n#include <sys/io.h>\n#define   SET_IOPL()\tiopl(3)\n"
+    NEW = ("#ifdef LINUX\t\t\t/* LINUX */\n#if defined(__x86_64__)\n#include <sys/io.h>\n#endif\n"
+           "#define   SET_IOPL()\tiopl(3)\n")
+
+    def test_the_files_own_lines_replace_old_text_and_the_kept_lines_of_new_text(self):
+        self.assertIsNone(edit_repair.relax_whitespace(self.FILE, Edit("input/io_cpu.h", self.OLD, self.NEW)))
+        fixed = edit_repair.relax_interior_whitespace(self.FILE, Edit("input/io_cpu.h", self.OLD, self.NEW))
+        self.assertEqual(self.FILE.count(fixed.old_text), 1)
+        self.assertTrue(fixed.old_text.startswith("#ifdef LINUX\t\t\t\t/* LINUX */\n"))
+        self.assertEqual(fixed.new_text, "#ifdef LINUX\t\t\t\t/* LINUX */\n#if defined(__x86_64__)\n"
+                                         "#include <sys/io.h>\n#endif\n#define   SET_IOPL()\tiopl(3)\n")
+
+    def test_it_refuses_what_it_cannot_decide(self):
+        relax = edit_repair.relax_interior_whitespace
+        twice = self.FILE + self.FILE
+        self.assertIsNone(relax(twice, Edit("p", self.OLD, self.NEW)))                    # two places
+        self.assertIsNone(relax(self.FILE, Edit("p", "  " + self.OLD, self.NEW)))        # indentation differs
+        self.assertIsNone(relax(self.FILE, Edit("p", self.OLD, self.OLD)))               # nothing but whitespace
+        self.assertIsNone(relax(self.FILE, Edit("p", "x  y\n", "z\n")))                  # too short to trust
+        self.assertIsNone(relax(self.FILE, Edit("p", self.OLD, self.NEW, True)))         # replace_all
+        self.assertIsNone(relax(self.FILE, Edit("p", "#include <sys/io.h>\n", "x\n")))   # already exact
+
+    def test_prune_batch_uses_it_and_says_so(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "input").mkdir()
+            (root / "input/io_cpu.h").write_text(self.FILE)
+            snapshot = CandidateSnapshot.capture(root, ["input/io_cpu.h"])
+            kept, notes, _ = prune_batch(snapshot, [Edit("input/io_cpu.h", self.OLD, self.NEW)])
+            self.assertEqual(len(kept), 1)
+            self.assertIn(kept[0].old_text, self.FILE)
+            self.assertTrue(any("spaces and tabs inside the lines" in note for note in notes))

@@ -59,6 +59,13 @@ class SystemPrompt(unittest.TestCase):
             with self.subTest(lesson=lesson):
                 self.assertIn(lesson, text)
 
+    def test_says_build_dependencies_are_frozen(self):
+        # libgnomecanvasmm2.6 and libopaque, rc.5 Development Validation
+        text = " ".join(prompts.system_prompt().split())
+        self.assertIn("Build dependencies are frozen", text)
+        self.assertIn("nothing provides", text)
+        self.assertIn("stop without an edit", text)
+
     def test_keeps_the_baseline_rules(self):
         text = " ".join(prompts.system_prompt(ALL_OFF).split())
         for rule in ("old_text must appear exactly once", "evidence to reason about, not "

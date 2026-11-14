@@ -108,6 +108,41 @@ def insertion(text: str, add: str, prefer: tuple[str, ...] = ()) -> tuple[str, s
     return old, add + old
 
 
+_RULE = re.compile(r"^(?![\t #])[^\s:=#][^=#\n]*?(?<!:):(?![:=])")
+
+
+def before_first_rule(text: str, add: str) -> tuple[str, str] | None:
+    """(old_text, new_text) that put the make-level block ``add`` immediately
+    before the first rule of debian/rules (usually ``%:``), or None when that
+    line is inside a conditional or is not unique. Lines placed there come
+    after every assignment in the header, whatever conditional it sits in."""
+    lines = text.split("\n")
+    for index, line in enumerate(lines):
+        if not _RULE.match(line) or line.startswith(("export ", "include ", "-include ", "override ", "define ")):
+            continue
+        if conditional_depth(lines, index):
+            return None
+        old = line + "\n"
+        if text.count(old) != 1 or not text.count("\n" + old):
+            return None
+        return old, add + old
+    return None
+
+
+def assigned_after(text: str, marker: str, names: tuple[str, ...]) -> bool:
+    """True when a plain (= or :=) assignment to one of ``names`` follows
+    ``marker`` outside every conditional, which would discard an earlier +=."""
+    lines = text.split("\n")
+    start = text[:text.index(marker) + len(marker)].count("\n")
+    for index in range(start, len(lines)):
+        found = _ASSIGN.match(lines[index])
+        if (found and found.group("name") in names and not lines[index].startswith("\t")
+                and re.search(r"(?<![+?])=", lines[index].split(found.group("name"), 1)[1][:4])
+                and not conditional_depth(lines, index)):
+            return True
+    return False
+
+
 def lint(text: str, added: str, tokens: tuple[str, ...] = ()) -> list[str]:
     """Problems with the make-level lines ``added`` to debian/rules ``text``
     (already containing them). Empty means the lines are well formed."""

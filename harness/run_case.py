@@ -273,7 +273,7 @@ def run_full_agent(agent, context, log: Path, model, manifest: dict, bundle: Pat
     # and so the no-build attempt cap; main.run_agent applies the cap only when
     # no adapter is passed, and the harness always passes one.
     budget = None
-    if not config.use_build_feedback and config.use_no_build_control:
+    if not config.use_build_feedback and getattr(config, "use_no_build_control", False):
         budget = replace(agent.Budget(), max_attempts=min(agent.Budget().max_attempts,
                                                           agent.no_build_max_attempts))
     feedback = LocalBuildFeedback(bundle, run_dir / "builds", agent, excerpt=excerpt,
@@ -446,7 +446,7 @@ def main(argv: list) -> int:
     model_source.add_argument("--live", action="store_true",
                               help="ask the real model; needs BB_MODEL_API_KEY "
                                    "(see harness/README.md)")
-    parser.add_argument("--agent", choices=("one-shot", "full-agent"), default="one-shot",
+    parser.add_argument("--agent", choices=("one-shot", "full-agent", "full-agent-v032"), default="one-shot",
                         help="which agent under the starter kit's agents/ to run")
     parser.add_argument("--excerpt", action="store_true",
                         help="full agent only: its builds return diagnostic excerpts")

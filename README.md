@@ -1,77 +1,112 @@
 # EC528 Project — Build-Bench Challenge: Autonomous LLM Agents for Cross-Architecture Package Repair
 
 **Team:** Joonseo Moon, Austin Li, Owen Zhang, Juliette Jacques, Anthony Capraru
+
 **Mentor:** Minghua Ma (Microsoft)
-**Project:** an LLM agent that repairs Debian source packages whose build fails
-when they move between CPU architectures (x86_64, aarch64, riscv64).
 
-## What this is
+**Project:** An LLM agent that repairs Debian source packages whose builds fail
+when moving between CPU architectures.
 
-Packages that build on one architecture often fail on another: x86-only
-intrinsics or `sys/io.h`, `char` signedness, symbols files written for another
-architecture, hard-coded `x86_64-linux-gnu` paths. The
-[Build-Bench Challenge](https://matrix.cstcloud.cn/build-bench/) gives an agent
-the failing build's log and the package source, lets it edit the source once,
-and then rebuilds the package cleanly on the target. The score is the share of
-packages that build and produce their artifacts.
+## Demo 3: selected agent
 
-Our **full agent** reads the log (Part A), investigates the package with
-read-only tools (Part B), and proposes edits in a bounded loop (Part C) with
-prompts and a playbook of known cross-architecture causes (Part E). Because the
-competition allows no builds during a run, every edit is checked before it is
-written: a rules guard refuses test-skipping and build bypasses, and a syntax
-guard compiles the edited files for the target and sends back any edit that
-would not parse. The frozen **one-shot agent** (`one-shot-v1`) is the baseline.
+**For this demo, use agent 0.3.2 in
+`buildbench-starter-kit-0.1.0-rc.5/agents/full-agent-v032/`.**
+
+Our demo milestones were completed earlier to meet the competition deadline
+of November 14, 2026. This branch preserves the historical agent selected
+for Demo 3 rather than substituting later development.
+
+The agent is taken from commit
+`feaa5714d9a4c9738dee46c9190e4d81d05c43af`.
+Its recorded evaluation findings are in commit
+`7774267f14b2eaafecbf11332660e4d223fa1b75`.
+
+The historical evaluation reported **4 of 11 frozen local cases repaired**,
+with **four x86 cases undetermined under QEMU**. These are historical results,
+not a new evaluation of this branch.
+
+See [Demo 3 configuration and validation notes](docs/demo-3-agent.md).
+
+## How the Demo 3 agent works
+
+The agent reads the original failure log, investigates package source with
+read-only tools, and proposes edits in a bounded loop. Version 0.3.2 includes
+batch-edit repair and recognized cross-architecture failure patterns.
+
+In the demo configuration, the agent receives no iterative build feedback.
+The local harness validates the final edited package with a clean build.
 
 ## Quick start
 
-Python 3.11 or newer; no third-party packages.
+Use Python 3.11 or newer.
 
 ```bash
-git clone https://github.com/ec528-fall26/build-bench && cd build-bench
+git clone --branch demo-3 --single-branch https://github.com/ec528-fall26/build-bench.git
+cd build-bench
 
-# 1. The test suites (about a minute; no model, no network)
-python3 -m unittest discover -s tests/full-agent
+# Harness checks: no model calls or package builds.
 python3 -m unittest discover -s harness/tests -t .
-python3 -m unittest discover -s tests/experiments
-
-# 2. The syntax guard on real packages, without a model
-#    (Debian/Ubuntu with dpkg-dev and gcc; downloads the 223 MB public case set)
-curl -O https://matrix.cstcloud.cn/build-bench/releases/training-set/v0.1/buildbench-development-cases-v0.1.zip
-unzip -q buildbench-development-cases-v0.1.zip
-python3 experiments/syntax_guard_stress.py buildbench-development-cases-v0.1 10
-
-# 3. The agent on public cases, as it runs when scored (no builds; needs a
-#    model: an OpenAI-compatible endpoint, by default gpt-oss-120b on Bedrock)
-read -s BB_MODEL_API_KEY; export BB_MODEL_API_KEY
-python3 -m harness.run_public run --cases-root buildbench-development-cases-v0.1 \
-    --out runs/v051 --tag v051 --case r-cran-digest-7a42effc961f
-python3 -m harness.run_public status --out runs/v051
 ```
 
-`BB_MODEL_BASE_URL` and `BB_MODEL_ID` select another endpoint or model. To have
-the organizers build the result, `python3 -m harness.run_public bundle` writes a
-Worktree Bundle for the website's Development Validation.
+### Run a frozen local case
+
+Run this on the configured build host with Docker, the case bundle's runtime
+image, and any required cross-architecture emulation already installed.
+A frozen validator bundle is required; public source and log files alone
+are not sufficient for this local build evaluation.
+
+Set BUNDLE to the existing validator bundle containing run.sh and case/.
+For example, on our experiment host:
+
+```bash
+export BUNDLE="$HOME/buildbench-local-rcran-v1"
+```
+
+Set the model credentials and demo configuration:
+
+```bash
+read -s BB_MODEL_API_KEY
+export BB_MODEL_API_KEY
+
+export BB_AGENT_USE_EVIDENCE_MANAGER=1
+export BB_AGENT_USE_TOOLS=1
+export BB_AGENT_USE_BUILD_FEEDBACK=0
+export BB_AGENT_USE_HISTORY=1
+export BB_REPAIR_STRATEGY=default
+export BB_REVIEW_EDITS=0
+```
+
+Run the explicitly selected Demo 3 agent:
+
+```bash
+python3 -m harness.run_case \
+  --bundle "$BUNDLE" \
+  --agent full-agent-v032 \
+  --live \
+  --run-id "demo3-v032-$(date -u +%Y%m%dT%H%M%SZ)" \
+  --runs-dir "$HOME/buildbench-experiments/demo3-v032"
+```
+
+This command runs a baseline build, invokes the agent, and validates the
+final result when edits are applied. Judge repair success from the harness
+verdict and record.json, not merely the command's exit code.
+
+Use the command above for this demo. Other launchers and experiments retained
+in the repository may select a different agent or enable build feedback.
 
 ## Repository layout
 
 | Path | Contents |
 | --- | --- |
-| `buildbench-starter-kit-0.1.0-rc.5/agents/full-agent/` | **The submitted agent.** `src/` holds every part; its [README](buildbench-starter-kit-0.1.0-rc.5/agents/full-agent/README.md) has the file-by-file status and version history |
-| `buildbench-starter-kit-0.1.0-rc.5/agents/one-shot/` | The frozen baseline (`one-shot-v1`); CI guards it |
-| `buildbench-starter-kit-0.1.0-rc.5/` | The organizers' Starter Kit rc.5: runner, checks, `./bb package` |
-| `harness/` | Local evaluation, never part of the submission: `run_case.py` (one case with real builds), `run_public.py` (public cases without builds, bundled for Development Validation) |
-| `experiments/` | One script per claim: comparisons, validation bundles, syntax-guard audit and stress test |
-| `tests/` | Unit tests for the full agent, the baseline's parts and the experiments; CI runs them on Python 3.11 and 3.12 |
-| `docs/` | Design proposal and document, part designs, findings and the hosted-submission guide; start at [`docs/README.md`](docs/README.md) |
-| `slides/` | Demo slides |
+| `buildbench-starter-kit-0.1.0-rc.5/agents/full-agent-v032/` | **Demo 3 agent, version 0.3.2.** Includes its historical README and source. |
+| `docs/demo-3-agent.md` | Version selection, historical results, configuration, and validation limits. |
+| `harness/` | Local case execution and final build validation. |
+| `harness/tests/` | Harness tests, including historical-agent configuration compatibility. |
+| `docs/design-document.md` | Project design document. |
+| `slides/` | Demo slides. |
 
-## Reproducing our results
-
-See [`docs/design-document.md`](docs/design-document.md) and
-[`experiments/README.md`](experiments/README.md). How the agent is packaged and
-qualified on the competition website:
-[`docs/hosted-submission.md`](docs/hosted-submission.md).
+Other development code and tests remain in this branch for continuity.
+The Demo 3 entry point is the explicitly selected agent above.
 
 ## Submission checklist
 

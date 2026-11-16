@@ -1,5 +1,5 @@
 {
-  "source": "User-supplied EC2 console snapshots; raw records remain on the hosts. Later follow-up results, not the submission-time snapshot.",
+  "source": "User-supplied final EC2 console snapshots for all three campaigns; raw records remain on the hosts. Follow-up results, not the submission-time snapshot.",
   "records": [
     {
       "case": "libbpp-core",
@@ -403,16 +403,42 @@
       "attempts": 8,
       "loop_builds": 0,
       "turns": 35
+    },
+    {
+      "case": "libbpp-core",
+      "repeat": 3,
+      "run_id": "launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280",
+      "verdict": "build_failed",
+      "wall_seconds": 4327.0,
+      "applied": 1,
+      "proposed": 1,
+      "agent_termination": "model_stop",
+      "attempts": 1,
+      "loop_builds": 0,
+      "turns": 13
+    },
+    {
+      "case": "rcran",
+      "repeat": 3,
+      "run_id": "rcran-01",
+      "verdict": "build_succeeded",
+      "wall_seconds": 185.4,
+      "applied": 1,
+      "proposed": 1,
+      "agent_termination": "model_stop",
+      "attempts": 1,
+      "loop_builds": 0,
+      "turns": 4
     }
   ],
   "active": {
     "1": null,
     "2": null,
-    "3": "libbpp-core"
+    "3": null
   },
   "queued": {
-    "3": [
-      "rcran"
-    ]
+    "1": [],
+    "2": [],
+    "3": []
   }
 }

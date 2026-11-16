@@ -108,7 +108,7 @@ Agent limits are research settings, not organizer limits. Total case wall time i
 | Demo 2 paired retest | Historical one-shot 0/11 and full-agent 1/11, with five x86 setup failures and one already-building case; see [Demo 2 results](demo2-results.md) |
 | Historical 0.3.2 evaluation | Reported 4/11: rcran, libunwind, rust-subversion, html-xml-utils. The html result is weak evidence because unchanged source also built locally. Four x86 outcomes were undetermined under QEMU. This is not a new controlled comparison. |
 | Pinned QEMU setup | The [recorded workaround](evidence/qemu-fix-20261102/qemu-setup-and-diagnosis.md) and [five-case follow-up](evidence/qemu-fix-20261102/five-case-results.md) distinguish environment recovery from package repair. The fresh November 16 host also passed the x86 grep smoke test. |
-| Austin’s November 16 unrefactored 0.3.2 sweep (`a0bd0db`) | **In progress, checked November 16 at 15:17 UTC.** Three cases finished: rcran repaired (211.3 s), libbpp-core repaired (4554.6 s), ectrans not repaired (335.4 s). Case 4, libmceliece, was running. The remaining outcomes and committed raw-evidence archive are pending. |
+| Austin’s November 16 unrefactored 0.3.2 sweep (`a0bd0db`) | **In progress, verified November 16 at 16:43:04 UTC (11:43 AM ET).** Eight cases finished: five repaired and three failed final builds. Libevtx was running; html-xml-utils and pybigwig were queued. Per-case results and provenance are in §3.2. This is a partial snapshot, not a final repair rate. |
 
 **Refactored-agent evidence (`db555cd`):** 492 dedicated agent tests and 80 harness tests passed on the first two campaign hosts. Three independent eleven-case campaigns are now running with fresh baselines and no iterative build feedback. Their dated partial results are in §3.1, separately from Austin’s earlier unrefactored sweep and the historical 4/11 result.
 
@@ -169,6 +169,39 @@ Token values below are the recorded cumulative model usage. Applied edits come f
 | libunwind | 3 | 353.1 | 3 | 1 | 1 | 22,590 | 1,129 | `model_stop` |
 
 The final verdicts above come from the harness summaries and records, not the model's self-assessment. Repeat 1's libbpp-core final build log separately showed a symbols-file parsing error (`(optional) is not a valid version`). Reasons for the other failed final builds have not been reclassified from model explanations alone. All completed harness processes exited zero; that indicates completed evaluation, not successful repair.
+
+### 3.2 Austin’s unrefactored sweep: verified partial results
+
+**Snapshot:** November 16, 2026, 16:43:04 UTC (11:43 AM ET). This updates the earlier 15:17 UTC observation and matches the presentation’s dated result table. It is separate from the refactored-agent campaigns in §3.1; the reserved Repeat 4 column is not filled or pooled by this update.
+
+The host is `build-bench-demo-3` (`i-0e9c3560bdee7ffea`), an ARM64 `m7g.xlarge`. The repository is pinned to `a0bd0db518f452d751267adbdc2f00516ad78c8d`, selecting original `full-agent-v032` 0.3.2, not `0.3.2+demo3.refactor`. The model is Bedrock `openai.gpt-oss-120b-1:0`. Evidence, tools and history are enabled; iterative build feedback and edit review are disabled; strategy is `default`. Each case uses a fresh unchanged baseline and independent final validation. This is one sequential sweep with one scheduled run per case.
+
+| Case | Run suffix | Outcome at snapshot | Total wall time (s) | Agent termination |
+| --- | ---: | --- | ---: | --- |
+| r-cran-digest | 1 | **Repaired** | 211.3 | `model_stop` |
+| libbpp-core | 2 | **Repaired** | 4,554.6 | `model_stop` |
+| ectrans | 3 | Not repaired: `build_failed` | 335.4 | `model_stop` |
+| libmceliece | 4 | Not repaired: `build_failed` | 379.9 | `model_stop` |
+| libbpp-qt | 5 | **Repaired** | 1,913.9 | `model_stop` |
+| python-intbitset | 6 | Not repaired: `build_failed` | 1,347.8 | `model_stop` |
+| libunwind | 7 | **Repaired** | 377.6 | `model_stop` |
+| rust-subversion | 8 | **Repaired** | 862.4 | `turn_budget` |
+| libevtx | 9 | Running; final outcome pending | — | — |
+| html-xml-utils | 10 | Queued | — | — |
+| pybigwig | 11 | Queued | — | — |
+
+**Coverage:** 8/11 completed, with 5 confirmed repairs and 3 failed final builds; 1 running and 2 queued. Of the ten development cases, seven had completed with four repairs; rcran is the separate repaired example. Unfinished cases are not failures. Rust reached its 60-turn limit, but its retained candidate passed final validation: agent termination and repair success are different fields.
+
+The outcomes above were read directly from the eight completed `record.json` files in the authenticated output directory:
+
+```text
+/home/ubuntu/buildbench-experiments/demo3-v032-20261116T135011Z/
+  demo3-20261116T135011Z-<run suffix>/record.json
+```
+
+Successful records reported `repaired: true` and `termination_reason: build_succeeded`; the three unsuccessful records reported `repaired: false` and `build_failed`. Durations come from the corresponding case summaries in `/home/ubuntu/demo3-setup/run-all.log`. All eight console summaries reported zero loop builds. The active process identified libevtx as case 9 at this snapshot. Raw records remain on the host and are not attached to this Markdown update. The earlier invalid-key run (`20261116T134558Z`) is excluded even though its messages remain in the combined console log.
+
+Libbpp-core and libbpp-qt now have verified x86-target repairs after the QEMU setup change. This does not establish that every former setup blocker is repaired, nor isolate an agent improvement from the environment change. A final eleven-case score and controlled Demo 2/refactor comparison remain pending. Token and tool-call metrics are not supplied by this snapshot and must not be inferred from timings.
 
 ## 4. Claims and limitations
 

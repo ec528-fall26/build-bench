@@ -127,15 +127,15 @@ Repeats 1–3 use commit `db555cde6e88d126411f60516ae8321eff988404`, recorded ag
 | rcran (arm64) | **Repaired · 186.1 s** | Not started | Not started | Not supplied |
 | libbpp-core (amd64) | Failed build · 4,391.7 s | No edits applied · 2,092.0 s | Not started | Not supplied |
 | ectrans (arm64) | Failed build · 236.1 s | Not started | Not started | Not supplied |
-| libmceliece (arm64) | Failed build · 253.6 s | Not started | Not started | Not supplied |
+| libmceliece (arm64) | Failed build · 253.6 s | Not started | Failed build · 300.9 s | Not supplied |
 | libbpp-qt (amd64) | Running | **Repaired · 1,781.0 s** | Not started | Not supplied |
 | python-intbitset (amd64) | Not started | Running | Not started | Not supplied |
 | libunwind (arm64) | Not started | Not started | **Repaired · 353.1 s** | Not supplied |
-| rust-subversion (arm64) | Not started | Not started | Running | Not supplied |
+| rust-subversion (arm64) | Not started | Not started | Failed build · 691.9 s | Not supplied |
 | libevtx (amd64) | Not started | Not started | Not started | Not supplied |
 | html-xml-utils (arm64) | Not started | Not started | Not started | Not supplied |
-| pybigwig (amd64) | Not started | Not started | Not started | Not supplied |
-| **Completed cases / planned** | **4 / 11** | **2 / 11** | **1 / 11** | Not supplied |
+| pybigwig (amd64) | Not started | Not started | Running | Not supplied |
+| **Completed cases / planned** | **4 / 11** | **2 / 11** | **3 / 11** | Not supplied |
 | **Confirmed repairs among completed cases** | **1** | **1** | **1** | Not supplied |
 
 Rcran is the separate smoke case; the other ten are the development cases. These partial repair counts are not an aggregate repair rate or a matched three-repeat comparison. For example, libbpp-core completed twice with different outcomes (`build_failed` versus `no_edit_applied`), while most other cases have no completed repeat yet. The model's stopping reason is distinct from final success: Repeat 2's libbpp-qt hit `attempt_budget`, but its retained candidate still passed independent validation.
@@ -156,7 +156,7 @@ All hosts are ARM64; x86-target builds use the pinned QEMU 10.2.3 setup checked 
 
 #### Completed-case metrics
 
-Token values below are the recorded cumulative model usage. Applied edits come from each case's console summary. All seven completed cases recorded zero loop builds; tool-call counts were not included in the snapshots and remain unknown.
+Token values below are the recorded cumulative model usage. Applied edits come from each case's console summary. All nine completed evaluations reported zero loop builds; tool-call counts were not included in the snapshots and remain unknown. The two newly completed Repeat 3 failures are supported by console summaries; their token counts have not been collected and are shown as unknown.
 
 | Case | Repeat | Wall time (s) | Model turns | Edit attempts | Applied edits | Input tokens | Output tokens | Agent termination |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
@@ -167,6 +167,8 @@ Token values below are the recorded cumulative model usage. Applied edits come f
 | libbpp-core | 2 | 2,092.0 | 5 | 0 | 0 | 43,353 | 3,124 | `model_stop` |
 | libbpp-qt | 2 | 1,781.0 | 46 | 8 | 12 | 752,156 | 42,525 | `attempt_budget` |
 | libunwind | 3 | 353.1 | 3 | 1 | 1 | 22,590 | 1,129 | `model_stop` |
+| rust-subversion | 3 | 691.9 | 60 | 3 | 26 | Unknown | Unknown | `turn_budget` |
+| libmceliece | 3 | 300.9 | 26 | 4 | 4 | Unknown | Unknown | `model_stop` |
 
 The final verdicts above come from the harness summaries and records, not the model's self-assessment. Repeat 1's libbpp-core final build log separately showed a symbols-file parsing error (`(optional) is not a valid version`). Reasons for the other failed final builds have not been reclassified from model explanations alone. All completed harness processes exited zero; that indicates completed evaluation, not successful repair.
 

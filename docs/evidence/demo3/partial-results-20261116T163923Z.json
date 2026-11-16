@@ -194,6 +194,53 @@
       "builds_count": 0,
       "record_path": "/home/ubuntu/buildbench-experiments/demo3-v032-third-20261116T162521Z/launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91/record.json",
       "applied_edits_from_console": 1
+    },
+    {
+      "experiment": 3,
+      "case_id": "launchpad-plucky-amd64-arm64-rust-subversion-b3a4b8c35bb2",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "turn_budget",
+      "wall_seconds": 691.9,
+      "turns_count": 60,
+      "attempts_count": 3,
+      "applied_edits_from_console": 26,
+      "builds_count": 0,
+      "usage": {
+        "input_tokens": null,
+        "output_tokens": null
+      },
+      "source": "Later user-supplied console summary; full record not yet collected."
+    },
+    {
+      "experiment": 3,
+      "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "model_stop",
+      "wall_seconds": 300.9,
+      "turns_count": 26,
+      "attempts_count": 4,
+      "applied_edits_from_console": 4,
+      "builds_count": 0,
+      "usage": {
+        "input_tokens": null,
+        "output_tokens": null
+      },
+      "source": "Later user-supplied console summary; full record not yet collected."
     }
-  ]
+  ],
+  "follow_up": {
+    "source": "Later console summaries and active-process listings supplied in chat; exact collection timestamps unavailable.",
+    "running": {
+      "1": "libbpp-qt",
+      "2": "python-intbitset",
+      "3": "pybigwig"
+    },
+    "completed_counts": {
+      "1": 4,
+      "2": 2,
+      "3": 3
+    }
+  }
 }

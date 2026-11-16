@@ -82,7 +82,7 @@ The core architecture remains an LLM-driven investigation and edit loop. Demo 3'
 | Refactor into repair stages and tool handlers | Keep the long conditional functions, or redesign the repair policy at the same time | Makes control flow reviewable while isolating readability changes from behavior changes | Characterization tests exercise selected paths; they do not prove all possible model interactions equivalent. Independent agent packages still duplicate model-client code. |
 | Retain the selected 0.3.2 policy in a separate directory | Replace it with newer development or overwrite the current agent | Preserves the demonstration's provenance and allows explicit selection | Historical results cannot be transferred automatically to the refactored copy; it needs its own live evaluation. |
 | Use frozen validator bundles and pinned x86 emulation | Treat host-dependent build failures as repair failures, or use a moving emulator tag | Makes package inputs identifiable and isolates known environment failures | Prior x86 setup crashes left results undetermined. The QEMU smoke check establishes basic execution, not correctness of every target build. |
-| Keep official offline readiness separate from an opt-in local network-enabled check | Silently modify the tracked runner or claim host credentials reach its sandbox | Makes the model-access difference reproducible and preserves the official kit | The offline runner blocks model access; a modified local pass is not hosted qualification. Neither mode has a newly established pass in this report. |
+| Keep official offline readiness separate from an opt-in local network-enabled check | Silently modify the tracked runner or claim host credentials reach its sandbox | Makes the model-access difference reproducible and preserves the official kit | The offline runner blocks model access; a modified local pass is not hosted qualification. The model-enabled local mode passed on November 16 after QEMU setup (§7.3); no unchanged-offline or hosted pass is inferred. |
 
 ### 2.3 Evaluation configuration
 
@@ -104,6 +104,7 @@ Agent limits are research settings, not organizer limits. Total case wall time i
 
 | Evidence set | What can be claimed |
 | --- | --- |
+| Model-enabled local readiness (`8f75fdc`) | **Passed:** `bb ready` reported `succeeded`, exit 0; helper verified the 104,595-byte ZIP hash. Uses a temporary network-enabled runner and pinned QEMU 10.2.3. Initial infrastructure failure and successful rerun are recorded separately in §7.3; this is not hosted qualification or an eleven-case repair result. |
 | Demo 2 paired retest | Historical one-shot 0/11 and full-agent 1/11, with five x86 setup failures and one already-building case; see [Demo 2 results](demo2-results.md) |
 | Historical 0.3.2 evaluation | Reported 4/11: rcran, libunwind, rust-subversion, html-xml-utils. The html result is weak evidence because unchanged source also built locally. Four x86 outcomes were undetermined under QEMU. This is not a new controlled comparison. |
 | Pinned QEMU setup | The [recorded workaround](evidence/qemu-fix-20261102/qemu-setup-and-diagnosis.md) and [five-case follow-up](evidence/qemu-fix-20261102/five-case-results.md) distinguish environment recovery from package repair. The fresh November 16 host also passed the x86 grep smoke test. |
@@ -136,7 +137,7 @@ This index maps the document's testable claims to reproduction steps. Setup and 
 | **E3 — Validator distinguishes a known repair from a non-fix** | The two `harness.run_case --agent one-shot --replay ...` commands in §5.5 | Current-host control runtime not measured; each command includes actual builds | Positive replay: `REPAIRED`; comment-only replay: `not repaired`. These are scripted pipeline controls, not autonomous one-shot or Demo 3 performance results. |
 | **E4 — Measure autonomous repairs with no iterative build feedback** (§§1–3) | Save the §5.6 helper, preview with `python3 "$HOME/demo3-ta/run.py" --out "$HOME/buildbench-experiments/demo3-ta-01" --dry-run`, then omit `--dry-run` to execute. Use `--only-rcran` with a separate output directory for the shorter smoke run | Full refactored sweep duration not yet measured; allow several hours. Earlier unrefactored partial run took 211.3 s for rcran and 4554.6 s for libbpp-core; these are context, not guarantees | Preview lists 11 jobs. Execution records every completed case and its independent final verdict; §5.7 explains records and summaries. No fixed repair count is promised. No-build-feedback configuration must show no loop build requests. |
 | **E5 — Official local packaging/readiness outcome** | Exact `bb check`, `bb package` and `bb ready --agent ./agents/full-agent-v032 ... --json` commands in §6 | Not measured; Docker image downloads and bundled example builds can dominate | Structure/package checks are distinct from readiness. A readiness pass requires zero exit, `status: succeeded`, an existing ZIP and matching hash. Offline model access is unavailable; no pass is claimed. Preserve diagnostics on failure. |
-| **E6 — Opt-in local model access and readiness outcome** | In the §7 checkout: `python3 -m unittest discover -s tests/experiments -p test_demo3_ready.py -v`, then `python3 scripts/demo3_ready.py --live-model --region us-east-1 --out "$HOME/buildbench-experiments/demo3-local-ready-$(date -u +%Y%m%dT%H%M%SZ)"` | Four configuration tests observed at about 0.014 s. Live readiness duration not measured; includes paid model calls and bundled example builds | Configuration suite: four tests, `OK`. Live helper records verdict, mode, region and artifacts; success also requires matching ZIP hash. Live outcome remains unverified, and is separate from official offline or hosted readiness. |
+| **E6 — Opt-in local model access and readiness outcome** | In the §7 checkout: `python3 -m unittest discover -s tests/experiments -p test_demo3_ready.py -v`, then `python3 scripts/demo3_ready.py --live-model --region us-east-1 --out "$HOME/buildbench-experiments/demo3-local-ready-$(date -u +%Y%m%dT%H%M%SZ)"` | Four configuration tests observed at about 0.014 s. Live readiness duration not measured; includes paid model calls and bundled example builds | Configuration suite: four tests, `OK`. Live helper records verdict, mode, region and artifacts; success also requires matching ZIP hash. Observed live local outcome: `succeeded`, exit 0, ZIP hash verified on November 16 (§7.3). This is separate from official offline or hosted readiness. |
 
 A measured improvement over the baseline, a history-ablation benefit, and hosted/local verdict agreement are **not established** by these experiments as currently reported. They require their own matched runs or hosted records; the historical scores and pending repeats do not substitute for those comparisons.
 
@@ -517,7 +518,7 @@ cd "$HOME/build-bench-demo3/buildbench-starter-kit-0.1.0-rc.5"
 | Frozen-case harness (§5.6) | Validator bundles, Docker/QEMU and model credentials | Per-case final build/artifact verdict, including failures and already-building cases |
 | Hosted Smoke | Organizer-provided hosted access | A separate hosted result; local credentials do not establish this |
 
-**Observed readiness status:** this report contains no verified `bb ready` pass for the selected agent. Unit-test and frozen-case harness results establish different properties. The command below saves the actual readiness verdict for a reproduction run, including diagnostic evidence on failure.
+**Observed readiness status:** the model-enabled local procedure in §7 passed for `full-agent-v032` (`0.3.2+demo3.refactor`) on November 16, with exit 0 and a verified ZIP checksum. This does not establish a pass for the unchanged offline command below. Unit tests, local readiness, hosted qualification and frozen-case campaign results establish different properties.
 
 ### Starter-kit readiness check (`./bb ready`)
 
@@ -541,7 +542,7 @@ fi
 
 A successful readiness run reports `status: succeeded` with exit code 0 and produces the ZIP; its SHA-256 must match the returned artifact metadata. The command records the result without hiding a failed exit code. If using this block outside the fresh-host guide, create `~/demo3-ta/` first. If it fails, retain the reported diagnostic and the `runs/ready/` result files. `bb check` or `bb package` passing alone does not establish readiness or a successful model repair. The unmodified local runner uses `--network none`; host-side Bedrock authentication for the harness does not automatically give the readiness container model access. Record this limitation when applicable rather than reporting an unobserved pass. The earlier Demo 2 guide used a modified rc.2 runner; those local network overrides are not part of this rc.5 reproduction.
 
-Inspect the actual output and ZIP hash. Do not claim `bb ready` passes for a model-dependent agent without hosted model access, and do not modify the starter kit runner to supply networking or credentials. Hosted Smoke and competition results are a separate evidence set; see [hosted submission notes](hosted-submission.md).
+Inspect the actual output and ZIP hash. The tracked official runner remains unchanged. Section 7 documents the explicitly modified temporary local runner and its observed pass; that result must not be attributed to the offline command above. Hosted Smoke and competition results are a separate evidence set; see [hosted submission notes](hosted-submission.md).
 
 
 ## 7. Optional local readiness with model access
@@ -565,6 +566,8 @@ git rev-parse HEAD
 Use a new destination if that directory already exists. The helper records the checked-out commit and its own hash; the agent's metadata is included in the readiness artifact. The six agent settings match §2.3, but the bundled example and local network-enabled runner make this a separate experiment from the eleven-case campaign.
 
 ### 7.1 Environment and command
+
+**ARM64 prerequisite:** complete the pinned x86 QEMU registration and smoke test in §5.4 before running readiness. The bundled example needs cross-architecture execution even though Docker itself runs natively on this host. Docker availability and the four configuration tests alone do not check that prerequisite. The first observed attempt failed before any model call because x86 emulation was missing; §7.3 records the correction and successful rerun.
 
 Use a separate checkout from any running campaign. Docker must be usable by this shell. The helper needs Python 3.11 or newer. If using §5.2's sudo Docker wrapper, replace that wrapper with the following version so sudo preserves only the explicitly selected model settings:
 
@@ -598,6 +601,50 @@ Retain `profile.json`, `ready-result.json`, `ready-progress.log`, `exit-code.txt
 
 ### 7.2 Recorded evidence and limitations
 
-Four configuration regression tests passed locally without Docker or model calls. They check environment filtering, region/endpoint forwarding, preservation of the runner's other security options, and rejection of an unexpected runner layout. They do not execute the full readiness pipeline. A live readiness pass has not been established by the evidence currently included here.
+Four configuration regression tests passed locally without Docker or model calls. They check environment filtering, region/endpoint forwarding, preservation of the runner's other security options, and rejection of an unexpected runner layout. They do not execute the full readiness pipeline. Separately, the model-enabled local readiness pipeline passed on the ARM64 EC2 host after registering QEMU; the observed run is documented below.
 
 For reproduction, `profile.json` identifies the mode, commit, region-derived endpoint and settings; the saved runner copies show the exact local change. `ready-result.json`, the process exit code and ZIP hash establish whether that particular run passed. Failure logs identify the stage that did not complete. These artifacts permit a reader to distinguish setup/model errors from example-repair failures. A successful network-enabled local result remains distinct from official offline readiness, hosted Smoke and the eleven-case repair score.
+
+
+### 7.3 Observed readiness run — 16 November 2026
+
+The selected agent was `full-agent-v032`, metadata version `0.3.2+demo3.refactor`, in checkout `8f75fdc`. The host was Ubuntu ARM64 (`ip-172-31-74-145`, EC2 `m7g.xlarge`). The command used `--live-model --region us-east-1`; it enabled model access in a disposable starter-kit copy and left the tracked kit and agent source unchanged.
+
+**Initial attempt:** `demo3-local-ready-20261116T161250Z` passed submission-structure validation but failed the unchanged `hello` baseline with `infrastructure_error`. The validator logged `chroot: can't execute '/.build/build': Exec format error`; readiness exited 5 with no artifact. The failure occurred before the agent/model step, so it did not demonstrate a credential or model-network failure.
+
+**Environment correction:** we pulled `tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0`, verified its interpreter reported QEMU 10.2.3, and registered `amd64` using `--privileged --install amd64`. The x86 smoke command then passed:
+
+```bash
+docker run --rm --platform linux/amd64 --network none \
+  --ulimit core=0 ubuntu:24.04 \
+  sh -ec 'uname -m; printf "qemu-check\n" | grep -x qemu-check; /bin/true'
+```
+
+Observed output was `x86_64` followed by `qemu-check`. The registration and version-check commands are in §5.4. Registration must be rechecked after reboot; it is not implied by installing Docker.
+
+**Successful rerun:** from `~/build-bench-demo3-readiness`, we used a fresh evidence directory and ran:
+
+```bash
+python3 scripts/demo3_ready.py \
+  --live-model \
+  --region us-east-1 \
+  --out "$HOME/buildbench-experiments/demo3-local-ready-20261116T161516Z"
+```
+
+That output directory is the historical run, not a reusable destination. Reproduction runs must use a new directory, as in §7.1. The key was supplied through the hidden prompt.
+
+| Recorded field | Observed value |
+| --- | --- |
+| Local mode | `local-network-enabled` |
+| Starter-kit command | `ready` |
+| Status / exit | `succeeded` / `0` |
+| Summary | `Agent passed local readiness checks and was packaged.` |
+| ZIP | `demo3-readiness.zip` in the evidence directory |
+| ZIP size | 104,595 bytes |
+| SHA-256 | `7a91c03816c9b302745af1c2a6883c5478b610745a48b15dd5b8c9ec0c43759a` |
+| Helper verification | `Process exit: 0; ZIP hash verified: True` |
+| Evidence directory | `/home/ubuntu/buildbench-experiments/demo3-local-ready-20261116T161516Z` |
+
+These observations come from the captured terminal result. The full helper evidence remains on that EC2 host: `profile.json`, `ready-result.json`, `ready-progress.log`, `exit-code.txt`, runner copies, `runs/`, the ZIP and `SHA256SUMS`. This document does not imply that those raw files have already been committed or that a separate archived copy has been independently inspected. The initial failed attempt is retained in its own directory.
+
+The successful verdict establishes that the local modified procedure completed submission checks, bundled-example validation and packaging. It does not establish an unchanged-offline readiness pass, hosted Smoke qualification, an eleven-case repair score, or identical outcomes for future model calls. A newly generated ZIP may have a different hash if its packaged source changes; its hash must match that run's returned artifact metadata.

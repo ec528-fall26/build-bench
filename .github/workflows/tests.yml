@@ -28,6 +28,8 @@ jobs:
             buildbench-starter-kit-0.1.0-rc.5/agents/full-agent-v032
             harness
             experiments
+            scripts
+            buildbench-starter-kit-0.1.0-rc.5/runner
             tests
             docs/evidence/demo2/paired-retest
             docs/evidence/qemu-fix-20261102

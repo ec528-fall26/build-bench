@@ -118,41 +118,41 @@ Austin’s partial results above are operational evidence from that running host
 
 ### 3.1 Accumulated case results
 
-This table accumulates results from different tests and partially completed campaigns. “Repeat 1–4” identifies the source of an observation; it does not mean every case has four completed runs or that all runs form a controlled repeat experiment. Repeats 1–3 use the same refactored agent but differ in case order, coverage and host resources. Repeat 4 is reserved for Austin’s contribution, whose agent version and settings must be recorded separately. Unfinished or unavailable results are not counted as failures.
+This table accumulates results from different tests and partially completed campaigns. “Repeat 1–4” identifies the source of an observation; it does not mean every case has four completed runs or that all runs form a controlled repeat experiment. Repeats 1–3 use the same refactored agent but differ in case order, coverage and host resources. Repeat 4 contains Austin’s unrefactored 0.3.2 sweep, verified at 16:43:04 UTC on November 16. Its different agent version and settings are documented below; it is not a fourth controlled repeat of the refactored agent. Unfinished or unavailable results are not counted as failures.
 
 Repeats 1–3 use commit `db555cde6e88d126411f60516ae8321eff988404`, recorded agent `0.3.2+demo3.refactor+a2c50271ee37`, and served model `openai.gpt-oss-120b-1:0`. Evidence, tools and history are enabled; iterative build feedback and review edits are disabled; repair strategy is `default`. Wall time is total harness case time in seconds, including baseline and final validation when performed, not model latency alone.
 
 | Case (target architecture) | Repeat 1 | Repeat 2 | Repeat 3 | Repeat 4 (Austin) |
 | --- | --- | --- | --- | --- |
-| rcran (arm64) | **Repaired · 186.1 s** | Not started | Not started | Not supplied |
-| libbpp-core (amd64) | Failed build · 4,391.7 s | No edits applied · 2,092.0 s | Not started | Not supplied |
-| ectrans (arm64) | Failed build · 236.1 s | Not started | Not started | Not supplied |
-| libmceliece (arm64) | Failed build · 253.6 s | Not started | Failed build · 300.9 s | Not supplied |
-| libbpp-qt (amd64) | Running | **Repaired · 1,781.0 s** | Not started | Not supplied |
-| python-intbitset (amd64) | Not started | Running | Not started | Not supplied |
-| libunwind (arm64) | Not started | Not started | **Repaired · 353.1 s** | Not supplied |
-| rust-subversion (arm64) | Not started | Not started | Failed build · 691.9 s | Not supplied |
-| libevtx (amd64) | Not started | Not started | Not started | Not supplied |
-| html-xml-utils (arm64) | Not started | Not started | Not started | Not supplied |
-| pybigwig (amd64) | Not started | Not started | Running | Not supplied |
-| **Completed cases / planned** | **4 / 11** | **2 / 11** | **3 / 11** | Not supplied |
-| **Confirmed repairs among completed cases** | **1** | **1** | **1** | Not supplied |
+| rcran (arm64) | **Repaired · 186.1 s** | Not started | Not started | **Repaired · 211.3 s** |
+| libbpp-core (amd64) | Failed build · 4,391.7 s | No edits applied · 2,092.0 s | Not started | **Repaired · 4,554.6 s** |
+| ectrans (arm64) | Failed build · 236.1 s | Not started | Not started | Failed build · 335.4 s |
+| libmceliece (arm64) | Failed build · 253.6 s | Not started | Failed build · 300.9 s | Failed build · 379.9 s |
+| libbpp-qt (amd64) | Running | **Repaired · 1,781.0 s** | Not started | **Repaired · 1,913.9 s** |
+| python-intbitset (amd64) | Not started | Running | Not started | Failed build · 1,347.8 s |
+| libunwind (arm64) | Not started | Not started | **Repaired · 353.1 s** | **Repaired · 377.6 s** |
+| rust-subversion (arm64) | Not started | Not started | Failed build · 691.9 s | **Repaired · 862.4 s** |
+| libevtx (amd64) | Not started | Not started | Not started | Running |
+| html-xml-utils (arm64) | Not started | Not started | Not started | Queued |
+| pybigwig (amd64) | Not started | Not started | Running | Queued |
+| **Completed cases / planned** | **4 / 11** | **2 / 11** | **3 / 11** | **8 / 11** |
+| **Confirmed repairs among completed cases** | **1** | **1** | **1** | **5** |
 
 Rcran is the separate smoke case; the other ten are the development cases. These partial repair counts are not an aggregate repair rate or a matched three-repeat comparison. For example, libbpp-core completed twice with different outcomes (`build_failed` versus `no_edit_applied`), while most other cases have no completed repeat yet. The model's stopping reason is distinct from final success: Repeat 2's libbpp-qt hit `attempt_budget`, but its retained candidate still passed independent validation.
 
 #### Repeat key and evidence locations
 
-Source logs and raw `record.json` files remain under `/home/ubuntu/buildbench-experiments/` on the corresponding host. Exact locations are retained in the structured evidence file. The [structured snapshot](evidence/demo3/partial-results-20261116T163923Z.json) is a transcription of the terminal reports, not a replacement for the full evidence archive.
+Source logs and raw `record.json` files remain under `/home/ubuntu/buildbench-experiments/` on the corresponding host. Locations for Repeats 1–3 are retained in the structured evidence file; Repeat 4 locations are in §3.2. The [structured snapshot](evidence/demo3/partial-results-20261116T163923Z.json) is a transcription of the terminal reports, not a replacement for the full evidence archive.
 
 | Repeat | Host / instance type | Configuration / evidence |
 | --- | --- | --- |
 | Repeat 1 | `172.31.68.209` / `m7g.xlarge` | Refactored `db555cd`; structured snapshot contains record locations; original case order, rcran first |
 | Repeat 2 | `172.31.73.13` / `m7g.2xlarge` | Refactored `db555cd`; five amd64-target cases first |
 | Repeat 3 | `172.31.74.145` / `m7g.xlarge` | Refactored `db555cd`; libunwind, rust-subversion and libmceliece first, rcran last |
-| Repeat 4 (Austin) | To be supplied | Contribution pending; record its commit, settings and evidence before adding results |
+| Repeat 4 (Austin) | `172.31.47.79` / `m7g.xlarge` | Original 0.3.2 at `a0bd0db`; eight completed records in `demo3-v032-20261116T135011Z`; details in §3.2 |
 
 
-All hosts are ARM64; x86-target builds use the pinned QEMU 10.2.3 setup checked earlier. Instance types come from the observed EC2 configuration; the snapshots do not independently query instance metadata. In particular, Repeat 2 has a larger host, so these timings are not a controlled speed comparison. Case order and completed coverage also differ. Austin's unrefactored `a0bd0db` results above remain a separate configuration; they are not pooled into these refactored-agent experiments. Repeat 4 remains unfilled until Austin supplies the contribution intended for this table; the earlier unrefactored results above are not silently imported.
+All hosts are ARM64; x86-target builds use the pinned QEMU 10.2.3 setup checked earlier. Instance types come from the observed EC2 configuration; the snapshots do not independently query instance metadata. In particular, Repeat 2 has a larger host, so these timings are not a controlled speed comparison. Case order and completed coverage also differ. Austin's unrefactored `a0bd0db` results above remain a separate configuration; they are not pooled into these refactored-agent experiments. At Austin’s request, these dated observations occupy Repeat 4 in the shared table, with their distinct configuration retained explicitly.
 
 #### Completed-case metrics
 
@@ -174,23 +174,11 @@ The final verdicts above come from the harness summaries and records, not the mo
 
 ### 3.2 Austin’s unrefactored sweep: verified partial results
 
-**Snapshot:** November 16, 2026, 16:43:04 UTC (11:43 AM ET). This updates the earlier 15:17 UTC observation and matches the presentation’s dated result table. It is separate from the refactored-agent campaigns in §3.1; the reserved Repeat 4 column is not filled or pooled by this update.
+**Snapshot:** November 16, 2026, 16:43:04 UTC (11:43 AM ET). This updates the earlier 15:17 UTC observation and matches the presentation’s dated result table. These observations populate Repeat 4 (Austin) in §3.1. They remain a different configuration from the refactored-agent campaigns and are not pooled into a controlled repair-rate claim.
 
 The host is `build-bench-demo-3` (`i-0e9c3560bdee7ffea`), an ARM64 `m7g.xlarge`. The repository is pinned to `a0bd0db518f452d751267adbdc2f00516ad78c8d`, selecting original `full-agent-v032` 0.3.2, not `0.3.2+demo3.refactor`. The model is Bedrock `openai.gpt-oss-120b-1:0`. Evidence, tools and history are enabled; iterative build feedback and edit review are disabled; strategy is `default`. Each case uses a fresh unchanged baseline and independent final validation. This is one sequential sweep with one scheduled run per case.
 
-| Case | Run suffix | Outcome at snapshot | Total wall time (s) | Agent termination |
-| --- | ---: | --- | ---: | --- |
-| r-cran-digest | 1 | **Repaired** | 211.3 | `model_stop` |
-| libbpp-core | 2 | **Repaired** | 4,554.6 | `model_stop` |
-| ectrans | 3 | Not repaired: `build_failed` | 335.4 | `model_stop` |
-| libmceliece | 4 | Not repaired: `build_failed` | 379.9 | `model_stop` |
-| libbpp-qt | 5 | **Repaired** | 1,913.9 | `model_stop` |
-| python-intbitset | 6 | Not repaired: `build_failed` | 1,347.8 | `model_stop` |
-| libunwind | 7 | **Repaired** | 377.6 | `model_stop` |
-| rust-subversion | 8 | **Repaired** | 862.4 | `turn_budget` |
-| libevtx | 9 | Running; final outcome pending | — | — |
-| html-xml-utils | 10 | Queued | — | — |
-| pybigwig | 11 | Queued | — | — |
+Per-case outcomes and wall times are shown in the existing §3.1 table under **Repeat 4 (Austin)**. Run suffixes 1–11 follow that table’s case order. All eight completed cases stopped with `model_stop`, except rust-subversion, which stopped with `turn_budget`.
 
 **Coverage:** 8/11 completed, with 5 confirmed repairs and 3 failed final builds; 1 running and 2 queued. Of the ten development cases, seven had completed with four repairs; rcran is the separate repaired example. Unfinished cases are not failures. Rust reached its 60-turn limit, but its retained candidate passed final validation: agent termination and repair success are different fields.
 

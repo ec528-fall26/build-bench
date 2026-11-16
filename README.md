@@ -129,5 +129,5 @@ on the day of that demo. See the
 | --- | --- | --- |
 | Demo 1 | `demo-1` | slides, code, `docs/design-proposal.md` |
 | Demo 2 | `demo-2` | slides, code, `docs/design-document.md`, demo video |
-| Demo 3 | `demo-3` | slides, code, updated `docs/design-document.md`, demo video |
+| Demo 3 | `demo-3` | slides, code, updated `docs/design-document.md` |
 | Final | `final-demo` | slides, code, artifact documentation, recorded video presentation |

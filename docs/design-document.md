@@ -4,11 +4,11 @@
 
 **Mentor:** Minghua Ma, Microsoft
 
-**Demo branch:** `demo-3` · **Selected agent:** `full-agent-v032`, version **0.3.2**
+**Demo branch:** `demo-3` · **Selected agent:** `full-agent-v032`, version **0.3.2+demo3.refactor**
 
 **Updated:** 16 November 2026
 
-> **TA: start at [§5](#5-ta-reproduction-guide).** The guide starts with a fresh ARM64 EC2 instance and ends with an eleven-case evaluation and saved evidence. A short rcran-only run is available first. The full rerun is in progress; this document does not claim its final repair count.
+> **TA: start at [§5](#5-ta-reproduction-guide).** For a quick code check, run the two offline test suites in §5.5. For starter-kit readiness, use §6 and retain its actual verdict. The full reproduction guide starts with a fresh ARM64 EC2 instance and ends with an eleven-case evaluation; it takes several hours. A short rcran-only run is available first. New refactored-agent campaigns are in progress; no final repair count is claimed.
 
 ## 1. What we built
 
@@ -47,7 +47,9 @@ Demo 2's design included an agent that requested builds during its repair loop. 
 Evidence selection, source-inspection tools and repair history already existed in Demo 2; they are retained capabilities, not entirely new Demo 3 features.
 - **Environment repair:** pinned QEMU registration fixes the x86 execution problem on our ARM64 host. This is a host setup change, separately evaluated from agent repair quality.
 
-See [the historical findings](no-build-live-findings.md) and [the selected version notes](demo-3-agent.md). The restored agent source comes from `feaa5714d9a4c9738dee46c9190e4d81d05c43af`; the running November 16 evaluation uses repository commit `a0bd0db518f452d751267adbdc2f00516ad78c8d`.
+See [the historical findings](no-build-live-findings.md) and [the selected version notes](demo-3-agent.md). The original agent source comes from `feaa5714d9a4c9738dee46c9190e4d81d05c43af`. The submitted readability refactor is commit `db555cd`, version `0.3.2+demo3.refactor`. Austin’s earlier November 16 sweep used `a0bd0db518f452d751267adbdc2f00516ad78c8d` (unrefactored 0.3.2); its partial results below must not be attributed to the refactor.
+
+**Code-quality changes:** the refactor delegates the repair loop to named stages for budgets, tools, review, validation, application and candidate selection. Tool requests use a dispatch table with one handler per tool. Characterization tests compare controller requests, results and tool responses against the original implementation. This improves readability; it is not a new repair technique or proof of identical live model decisions. Model-client duplication remains documented because each agent must package independently. See [the refactor review](demo-3-code-quality.md).
 
 | Setting | Demo 3 value |
 | --- | --- |
@@ -59,7 +61,7 @@ See [the historical findings](no-build-live-findings.md) and [the selected versi
 | Build requests inside the loop | Zero in this configuration; the class's default build budget is unused |
 | Harness build timeout | Each manifest's build timeout plus 600 seconds |
 | Input failure evidence in this rerun | A fresh unchanged baseline build, not an explicitly supplied historical log |
-| Concurrency / repeats | One case at a time; one attempt per case in this sweep |
+| Concurrency / repeats | One case at a time per host; one run per case per campaign. Two refactored-agent campaigns are underway on separate ARM64 hosts; the second starts with the five amd64-target cases. Outcomes remain pending. |
 
 Agent limits are research settings, not organizer limits. Total case wall time includes work outside the agent loop and can exceed 30 minutes. Do not substitute `--agent full-agent`: that directory contains newer development. Do not use `scripts/demo2_demo.py` for this experiment; it selects a different configuration.
 
@@ -70,7 +72,9 @@ Agent limits are research settings, not organizer limits. Total case wall time i
 | Demo 2 paired retest | Historical one-shot 0/11 and full-agent 1/11, with five x86 setup failures and one already-building case; see [Demo 2 results](demo2-results.md) |
 | Historical 0.3.2 evaluation | Reported 4/11: rcran, libunwind, rust-subversion, html-xml-utils. The html result is weak evidence because unchanged source also built locally. Four x86 outcomes were undetermined under QEMU. This is not a new controlled comparison. |
 | Pinned QEMU setup | The [recorded workaround](evidence/qemu-fix-20261102/qemu-setup-and-diagnosis.md) and [five-case follow-up](evidence/qemu-fix-20261102/five-case-results.md) distinguish environment recovery from package repair. The fresh November 16 host also passed the x86 grep smoke test. |
-| November 16 fresh 0.3.2 sweep | **In progress, checked November 16 at 15:17 UTC.** Three cases finished: rcran repaired (211.3 s), libbpp-core repaired (4554.6 s), ectrans not repaired (335.4 s). Case 4, libmceliece, was running. The remaining outcomes and committed raw-evidence archive are pending. |
+| Austin’s November 16 unrefactored 0.3.2 sweep (`a0bd0db`) | **In progress, checked November 16 at 15:17 UTC.** Three cases finished: rcran repaired (211.3 s), libbpp-core repaired (4554.6 s), ectrans not repaired (335.4 s). Case 4, libmceliece, was running. The remaining outcomes and committed raw-evidence archive are pending. |
+
+**Refactored-agent evidence (`db555cd`):** 492 dedicated agent tests and 80 harness tests passed on both campaign hosts. Two independent eleven-case runs have been launched with fresh baselines and no iterative build feedback. Their completed-case counts and repair results are pending confirmation; they are separate from Austin’s earlier sweep and the historical 4/11 result.
 
 The fresh sweep includes rcran plus libbpp-core, libbpp-qt, python-intbitset, ectrans, libmceliece, libunwind, rust-subversion, libevtx, html-xml-utils and pybigwig. Exact IDs are checked against `docs/evidence/demo2/development-cases.json` below.
 
@@ -82,7 +86,7 @@ A single sweep does not establish the proposal's promised paired improvement: th
 
 For the completed Demo 3 report, retain all eleven outcomes; separate already-building cases, genuine package failures, model failures and infrastructure failures. Report rcran separately from the ten development cases. Include tokens (unknown stays unknown), wall time, edit attempts, tool calls, termination reasons, migration direction, and any regressions. Build success does not prove unrestricted semantic correctness; review patches that disable tests, features or meaningful validation.
 
-The guide below uses the same selected agent and settings as the live sweep. Fresh-host package installation, bundle verification, QEMU smoke testing and one live rcran repair were observed on November 16. The new convenience runner has local checks; it has not yet completed its own eleven-case end-to-end run. This distinction must remain until that validation finishes.
+The guide below selects the submitted refactored agent (`db555cd`) and the six no-build-feedback settings. Austin’s earlier unrefactored sweep is retained as separate evidence. Fresh-host package installation, bundle verification, QEMU smoke testing and one live rcran repair were observed on November 16. The new convenience runner has local checks; it has not yet completed its own eleven-case end-to-end run. This distinction must remain until that validation finishes.
 
 ## 5. TA reproduction guide
 
@@ -107,12 +111,12 @@ mkdir -p "$HOME/Downloads" "$HOME/demo3-ta/bin" &&
 git clone --branch demo-3 --single-branch \
   https://github.com/ec528-fall26/build-bench.git "$HOME/build-bench-demo3"
 cd "$HOME/build-bench-demo3"
-# Pin the exact implementation used by the November 16 sweep.
-git checkout --detach a0bd0db518f452d751267adbdc2f00516ad78c8d
+# Pin the submitted refactored agent used by the two repeat campaigns.
+git checkout --detach db555cd
 git rev-parse HEAD | tee "$HOME/demo3-ta/repository-commit.txt"
 ```
 
-Keep this guide open from the `demo-3` branch on GitHub while following it. The detached checkout above reproduces the live sweep's original 0.3.2 implementation. The newer branch includes `0.3.2+demo3.refactor` (see [refactor notes](demo-3-code-quality.md)); that is a distinct version and has not produced the live results reported here. To evaluate the refactor, intentionally stay on `demo-3`, record its commit, use a separate output directory, and label the results accordingly. The runner is provided inline in §5.6, so it needs no unpublished repository file.
+Keep this guide open from the `demo-3` branch on GitHub while following it: the checkout is pinned to the agent implementation, while this guide includes later documentation updates. The selected metadata must read `0.3.2+demo3.refactor`. Do not switch to `a0bd0db` unless deliberately reproducing Austin’s separate unrefactored run. The runner is provided inline in §5.6, so it needs no unpublished repository file. Record the full commit in every result set.
 
 The following wrapper lets the harness invoke Docker through the Ubuntu user's existing sudo access, without a Docker-group logout/reconnect step:
 
@@ -186,8 +190,12 @@ Do this before any case builds. The Ubuntu QEMU 8.2 handler previously crashed d
 
 ```bash
 qemu_image=tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
-cat /proc/sys/fs/binfmt_misc/qemu-x86_64 > "$HOME/demo3-ta/binfmt-before.txt"
+if [ -r /proc/sys/fs/binfmt_misc/qemu-x86_64 ]; then
+  cat /proc/sys/fs/binfmt_misc/qemu-x86_64 > "$HOME/demo3-ta/binfmt-before.txt"
+fi
 docker pull --platform linux/arm64 "$qemu_image" &&
+docker run --rm --platform linux/arm64 --network none \
+  --entrypoint /usr/bin/qemu-x86_64 "$qemu_image" --version &&
 docker run --privileged --rm --platform linux/arm64 "$qemu_image" \
   --uninstall qemu-x86_64,qemu-i386 &&
 docker run --privileged --rm --platform linux/arm64 "$qemu_image" --install amd64,386
@@ -204,10 +212,11 @@ Expected: handler `enabled`, flags containing `F`, GNU grep version output, and 
 
 ```bash
 cd "$HOME/build-bench-demo3"
+python3 -m unittest discover -s tests/full-agent-v032 &&
 python3 -m unittest discover -s harness/tests -t .
 ```
 
-Expected: the suite reports `OK`. Harness tests do not prove live repairs. The current `tests/full-agent` targets the newer agent directory, so its count is not a test count for restored 0.3.2.
+Expected at `db555cd`: **492 agent tests and 80 harness tests**, both `OK`. These require Python 3.11 or newer and make no live model calls or package builds. Run them as separate processes because the agent packages share the name `src`. The observed runpy warning in harness tests did not prevent an `OK` result. These tests do not prove live repairs. `tests/full-agent` targets the newer development agent and is not the Demo 3 test suite.
 
 Optional: verify that the harness accepts a known rcran fix and rejects a comment-only non-fix. These use **one-shot replay**, with no model calls; they test the validation pipeline rather than Demo 3's repair policy. Use a fresh output directory on each repetition.
 
@@ -402,10 +411,10 @@ From another shell on the instance:
 out="$HOME/buildbench-experiments/demo3-ta-01"
 tail -n 8 "$out"/case-*.console.log
 cd "$HOME/build-bench-demo3"
-python3 -m harness.summarize "$out/runs.jsonl" --agent-version 0.3.2
+python3 -m harness.summarize "$out/runs.jsonl"
 ```
 
-`runs.jsonl` appears after the first case finishes. A quiet console during a long build is normal. The helper prints a completion line only after all eleven records exist; inspect case coverage as well as aggregate repair counts.
+`runs.jsonl` appears after the first case finishes. This directory contains only the selected Demo 3 agent. Do not filter by the bare version `0.3.2`: the harness records a version plus a source fingerprint, so an exact bare-version filter can silently omit every result. A quiet console during a long build is normal. The helper prints a completion line only after all eleven records exist; inspect case coverage as well as aggregate repair counts.
 
 For an interrupted process, first confirm the old runner and its validator container have stopped. Then rerun the same command with `--resume`, from the same checkout and paths. The helper skips completed records, preserves unfinished directories with an `-interrupted-N` suffix, and prompts for a key again. It refuses a different commit/configuration/schedule. **Completed failures are retained, not retried or silently replaced.** If a credential expires during a case, preserve that error; use a new output directory for a fresh complete sweep after correcting the key. Report both attempts and do not merge only favorable results.
 
@@ -443,16 +452,38 @@ cd "$HOME/build-bench-demo3/buildbench-starter-kit-0.1.0-rc.5"
 ./bb package --agent ./agents/full-agent-v032
 ```
 
+### What each check establishes
+
+| Check | Requires | What a pass establishes |
+| --- | --- | --- |
+| Dedicated unit tests (§5.5) | Python 3.11+ | Agent/controller and harness regression checks pass; no live repair evidence |
+| `bb check` / `bb package` | Docker and starter-kit images | Submission structure and packaging; not target-package repair success |
+| `bb ready` | Docker, starter-kit images and bundled example | Snapshot passes local checks and example test, then is packaged; not the eleven-case score |
+| Frozen-case harness (§5.6) | Validator bundles, Docker/QEMU and model credentials | Per-case final build/artifact verdict, including failures and already-building cases |
+| Hosted Smoke | Organizer-provided hosted access | A separate hosted result; local credentials do not establish this |
+
+**Readiness status for this submission: not established by the evidence in this document.** Unit-test passes and live harness results must not be relabeled as a `bb ready` pass. Run the following command and attach its actual result, including a failure if applicable.
+
 ### Starter-kit readiness check (`./bb ready`)
 
 Run the starter kit's combined validation, example test and packaging check, and retain its actual result:
 
 ```bash
 cd "$HOME/build-bench-demo3/buildbench-starter-kit-0.1.0-rc.5"
-./bb ready --agent ./agents/full-agent-v032 \
-  --output dist/demo3-readiness.zip --json
+mkdir -p "$HOME/demo3-ta"
+if ./bb ready --agent ./agents/full-agent-v032 \
+  --output dist/demo3-readiness.zip --json > "$HOME/demo3-ta/ready-result.json"; then
+  ready_exit=0
+else
+  ready_exit=$?
+fi
+cat "$HOME/demo3-ta/ready-result.json"
+printf 'bb ready exit: %s\n' "$ready_exit"
+if [ "$ready_exit" -eq 0 ]; then
+  sha256sum dist/demo3-readiness.zip
+fi
 ```
 
-A successful readiness run reports `status: succeeded` with exit code 0 and produces the ZIP. If it fails, retain the reported diagnostic and the `runs/ready/` result files. `bb check` or `bb package` passing alone does not establish readiness or a successful model repair. The unmodified local runner uses `--network none`; host-side Bedrock authentication for the harness does not automatically give the readiness container model access. Record this limitation when applicable rather than reporting an unobserved pass. The earlier Demo 2 guide used a modified rc.2 runner; those local network overrides are not part of this rc.5 reproduction.
+A successful readiness run reports `status: succeeded` with exit code 0 and produces the ZIP; its SHA-256 must match the returned artifact metadata. The command records the result without hiding a failed exit code. If using this block outside the fresh-host guide, create `~/demo3-ta/` first. If it fails, retain the reported diagnostic and the `runs/ready/` result files. `bb check` or `bb package` passing alone does not establish readiness or a successful model repair. The unmodified local runner uses `--network none`; host-side Bedrock authentication for the harness does not automatically give the readiness container model access. Record this limitation when applicable rather than reporting an unobserved pass. The earlier Demo 2 guide used a modified rc.2 runner; those local network overrides are not part of this rc.5 reproduction.
 
 Inspect the actual output and ZIP hash. Do not claim `bb ready` passes for a model-dependent agent without hosted model access, and do not modify the starter kit runner to supply networking or credentials. Hosted Smoke and competition results are a separate evidence set; see [hosted submission notes](hosted-submission.md).

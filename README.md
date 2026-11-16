@@ -30,6 +30,11 @@ historical implementation. See [the refactor notes](docs/demo-3-code-quality.md)
 
 See [Demo 3 configuration and validation notes](docs/demo-3-agent.md).
 
+**TA reproduction:** [the design document](docs/design-document.md#5-ta-reproduction-guide)
+provides fresh-host setup and live evaluation commands;
+[starter-kit readiness](docs/design-document.md#6-local-packaging-versus-hosted-evaluation)
+explains `bb ready`, its prerequisites and how to record its actual verdict.
+
 ## How the Demo 3 agent works
 
 The agent reads the original failure log, investigates package source with
@@ -104,7 +109,7 @@ in the repository may select a different agent or enable build feedback.
 
 | Path | Contents |
 | --- | --- |
-| `buildbench-starter-kit-0.1.0-rc.5/agents/full-agent-v032/` | **Demo 3 agent, version 0.3.2.** Includes its historical README and source. |
+| `buildbench-starter-kit-0.1.0-rc.5/agents/full-agent-v032/` | **Demo 3 agent, version 0.3.2+demo3.refactor.** Includes its historical README and source. |
 | `docs/demo-3-agent.md` | Version selection, historical results, configuration, and validation limits. |
 | `harness/` | Local case execution and final build validation. |
 | `harness/tests/` | Harness tests, including historical-agent configuration compatibility. |

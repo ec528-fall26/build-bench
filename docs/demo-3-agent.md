@@ -70,3 +70,12 @@ difference remains unexplained.
 
 After the harness compatibility fix and its regression test, 80 harness
 tests passed. These results do not establish a new live repair result.
+
+The submitted refactor at `db555cd` passed **492 dedicated agent tests and
+80 harness tests** on both ARM64 campaign hosts on November 16. Two fresh
+eleven-case campaigns are in progress; their results are not yet summarized here.
+Austin’s earlier sweep at `a0bd0db` used the unrefactored implementation and
+is reported separately in the [design document](design-document.md).
+
+Starter-kit `bb ready` success is not established by these unit-test results.
+See the [readiness procedure and evidence requirements](design-document.md#6-local-packaging-versus-hosted-evaluation).

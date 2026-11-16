@@ -9,7 +9,7 @@ when moving between CPU architectures.
 
 ## Demo 3: selected agent
 
-**For this demo, use agent 0.3.2 in
+**For this demo, use the refactored 0.3.2 agent in
 `buildbench-starter-kit-0.1.0-rc.5/agents/full-agent-v032/`.**
 
 Our demo milestones were completed earlier to meet the competition deadline
@@ -24,6 +24,9 @@ Its recorded evaluation findings are in commit
 The historical evaluation reported **4 of 11 frozen local cases repaired**,
 with **four x86 cases undetermined under QEMU**. These are historical results,
 not a new evaluation of this branch.
+
+The code is labeled `0.3.2+demo3.refactor`: a readability refactor of that
+historical implementation. See [the refactor notes](docs/demo-3-code-quality.md).
 
 See [Demo 3 configuration and validation notes](docs/demo-3-agent.md).
 
@@ -43,6 +46,9 @@ Use Python 3.11 or newer.
 ```bash
 git clone --branch demo-3 --single-branch https://github.com/ec528-fall26/build-bench.git
 cd build-bench
+
+# Separate processes avoid mixing agents that both use a package named src.
+python3 -m unittest discover -s tests/full-agent-v032
 
 # Harness checks: no model calls or package builds.
 python3 -m unittest discover -s harness/tests -t .

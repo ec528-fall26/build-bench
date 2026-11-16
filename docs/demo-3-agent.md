@@ -11,10 +11,20 @@ Evaluation findings: `7774267f14b2eaafecbf11332660e4d223fa1b75`.
 
 This is not a claim that 0.3.2 is the latest or best-performing agent.
 
+## Readability refactor
+
+The selected copy is now labeled `0.3.2+demo3.refactor`. It preserves the
+historical policy but is no longer a byte-identical snapshot. See
+[code-quality changes and validation](demo-3-code-quality.md).
+
+Run the dedicated tests separately:
+
+    python3 -m unittest discover -s tests/full-agent-v032
+
 ## Separate agent versions
 
 - `agents/full-agent/` retains the branch's current agent.
-- `agents/full-agent-v032/` contains the historical 0.3.2 agent.
+- `agents/full-agent-v032/` contains the refactored historical 0.3.2 agent.
 - The current agent's tests remain in `tests/full-agent`.
 
 These agent paths are under `buildbench-starter-kit-0.1.0-rc.5/`.

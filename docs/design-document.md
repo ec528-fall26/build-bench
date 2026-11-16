@@ -108,19 +108,19 @@ Agent limits are research settings, not organizer limits. Total case wall time i
 | Demo 2 paired retest | Historical one-shot 0/11 and full-agent 1/11, with five x86 setup failures and one already-building case; see [Demo 2 results](demo2-results.md) |
 | Historical 0.3.2 evaluation | Reported 4/11: rcran, libunwind, rust-subversion, html-xml-utils. The html result is weak evidence because unchanged source also built locally. Four x86 outcomes were undetermined under QEMU. This is not a new controlled comparison. |
 | Pinned QEMU setup | The [recorded workaround](evidence/qemu-fix-20261102/qemu-setup-and-diagnosis.md) and [five-case follow-up](evidence/qemu-fix-20261102/five-case-results.md) distinguish environment recovery from package repair. The fresh November 16 host also passed the x86 grep smoke test. |
-| Austin’s November 16 unrefactored 0.3.2 sweep (`a0bd0db`) | **In progress, verified November 16 at 16:43:04 UTC (11:43 AM ET).** Eight cases finished: five repaired and three failed final builds. Libevtx was running; html-xml-utils and pybigwig were queued. Per-case results and provenance are in §3.2. This is a partial snapshot, not a final repair rate. |
+| Austin’s November 16 unrefactored 0.3.2 sweep (`a0bd0db`) | **Complete, verified November 16 at 17:32:41 UTC (12:32 PM ET).** All eleven cases finished: five repaired, three failed final builds, two with no edits applied and one already building unchanged. Per-case results and provenance are in §3.2. This follow-up extends the submission-time snapshot. |
 
 **Refactored-agent evidence (`db555cd`):** 492 dedicated agent tests and 80 harness tests passed on the first two campaign hosts. Three independent eleven-case campaigns use fresh baselines and no iterative build feedback. All three are complete at the latest follow-up; results are in §3.1, separately from Austin’s earlier unrefactored sweep and the historical 4/11 result.
 
 The fresh sweep includes rcran plus libbpp-core, libbpp-qt, python-intbitset, ectrans, libmceliece, libunwind, rust-subversion, libevtx, html-xml-utils and pybigwig. Exact IDs are checked against `docs/evidence/demo2/development-cases.json` below.
 
-Austin’s partial results above are operational evidence from that running host, not yet a committed raw-evidence archive. The initial invalid-key attempt was stopped and retained separately; it is not pooled with the authenticated sweep. The authenticated output directory is `~/buildbench-experiments/demo3-v032-20261116T135011Z` on the team host.
+Austin’s results above are operational evidence from the evaluation host, not yet a committed raw-evidence archive. The initial invalid-key attempt was stopped and retained separately; it is not pooled with the authenticated sweep. The authenticated output directory is `~/buildbench-experiments/demo3-v032-20261116T135011Z` on the team host.
 
 ### 3.1 Accumulated case results
 
-**Later follow-up results:** All three refactored-agent campaigns are complete, with eleven evaluated cases each. Repeat 1 repaired four cases; Repeats 2 and 3 repaired three each. Each campaign also contains one case that already builds unchanged, reported separately from repairs and failures. These results were collected after the Demo 3 submission deadline and extend, rather than replace, the submission-time evidence. Repeat 4 retains Austin’s previously supplied snapshot.
+**Later follow-up results:** All three refactored-agent campaigns are complete, with eleven evaluated cases each. Repeat 1 repaired four cases; Repeats 2 and 3 repaired three each. Each campaign also contains one case that already builds unchanged, reported separately from repairs and failures. These results were collected after the Demo 3 submission deadline and extend, rather than replace, the submission-time evidence. Repeat 4 now includes Austin’s completed eleven-case sweep, verified after the deadline.
 
-This table accumulates results from different tests and partially completed campaigns. “Repeat 1–4” identifies the source of an observation; it does not mean every case has four completed runs or that all runs form a controlled repeat experiment. Repeats 1–3 use the same refactored agent but differ in case order, coverage and host resources. Repeat 4 contains Austin’s unrefactored 0.3.2 sweep, verified at 16:43:04 UTC on November 16. Its different agent version and settings are documented below; it is not a fourth controlled repeat of the refactored agent. Unfinished or unavailable results are not counted as failures.
+This table accumulates results from four completed campaigns. “Repeat 1–4” identifies the source of an observation; it does not mean all runs form a controlled repeat experiment. Repeats 1–3 use the same refactored agent but differ in case order and host resources. Repeat 4 contains Austin’s unrefactored 0.3.2 sweep, verified at 17:32:41 UTC on November 16. Its different agent version and settings are documented below; it is not a fourth controlled repeat of the refactored agent. Unfinished or unavailable results are not counted as failures.
 
 Repeats 1–3 use commit `db555cde6e88d126411f60516ae8321eff988404`, recorded agent `0.3.2+demo3.refactor+a2c50271ee37`, and served model `openai.gpt-oss-120b-1:0`. Evidence, tools and history are enabled; iterative build feedback and review edits are disabled; repair strategy is `default`. Wall time is total harness case time in seconds, including baseline and final validation when performed, not model latency alone.
 
@@ -134,13 +134,13 @@ Repeats 1–3 use commit `db555cde6e88d126411f60516ae8321eff988404`, recorded ag
 | python-intbitset (amd64) | Failed build · 1,617.5 s | Failed build · 1,630.9 s | Failed build · 1,701.8 s | Failed build · 1,347.8 s |
 | libunwind (arm64) | **Repaired · 350.5 s** | **Repaired · 340.0 s** | **Repaired · 353.1 s** | **Repaired · 377.6 s** |
 | rust-subversion (arm64) | **Repaired · 772.6 s** | Failed build · 962.9 s | Failed build · 691.9 s | **Repaired · 862.4 s** |
-| libevtx (amd64) | Failed build · 4,983.3 s | Failed build · 4,378.8 s | Failed build · 5,055.7 s | Running |
-| html-xml-utils (arm64) | Already builds unchanged · 105.9 s | Already builds unchanged · 100.1 s | Already builds unchanged · 101.6 s | Queued |
-| pybigwig (amd64) | Source repack failed · 868.3 s | Failed build · 1,156.8 s | Failed build · 1,262.7 s | Queued |
-| **Completed cases / planned** | **11 / 11** | **11 / 11** | **11 / 11** | **8 / 11** |
+| libevtx (amd64) | Failed build · 4,983.3 s | Failed build · 4,378.8 s | Failed build · 5,055.7 s | No edits applied · 2,539.8 s |
+| html-xml-utils (arm64) | Already builds unchanged · 105.9 s | Already builds unchanged · 100.1 s | Already builds unchanged · 101.6 s | Already builds unchanged · 116.6 s |
+| pybigwig (amd64) | Source repack failed · 868.3 s | Failed build · 1,156.8 s | Failed build · 1,262.7 s | No edits applied · 557.8 s |
+| **Completed cases / planned** | **11 / 11** | **11 / 11** | **11 / 11** | **11 / 11** |
 | **Confirmed repairs among completed cases** | **4** | **3** | **3** | **5** |
 
-Rcran is the separate smoke case; the other ten are the development cases. Repeat 1 has four repairs, six unrepaired cases and one case that already builds unchanged. Repeat 2 has three repairs, seven unrepaired cases and one already building unchanged. Repeat 3 has three repairs, seven unrepaired cases and one already building unchanged. `case_not_failing` is neither an agent repair nor a failed repair; it is reported separately. Repeat 1's pybigwig verdict is `repack_failed`, not a failed final package build. Different host resources and Austin's distinct implementation prevent treating these as a controlled four-repeat comparison. The model's stopping reason is separate from the final verdict: rust-subversion passed in Repeat 1 despite reaching its turn budget.
+Rcran is the separate smoke case; the other ten are the development cases. Repeat 1 has four repairs, six unrepaired cases and one case that already builds unchanged. Repeat 2 has three repairs, seven unrepaired cases and one already building unchanged. Repeat 3 has three repairs, seven unrepaired cases and one already building unchanged. Repeat 4 has five repairs, five unrepaired cases (three failed builds and two with no edits applied), and one already building unchanged. `case_not_failing` is neither an agent repair nor a failed repair; it is reported separately. Repeat 1's pybigwig verdict is `repack_failed`, not a failed final package build. Different host resources and Austin's distinct implementation prevent treating these as a controlled four-repeat comparison. The model's stopping reason is separate from the final verdict: rust-subversion passed in Repeat 1 despite reaching its turn budget.
 
 #### Repeat key and evidence locations
 
@@ -151,7 +151,7 @@ Source logs and raw `record.json` files remain under `/home/ubuntu/buildbench-ex
 | Repeat 1 | `172.31.68.209` / `m7g.xlarge` | Refactored `db555cd`; structured snapshot contains record locations; original case order, rcran first |
 | Repeat 2 | `172.31.73.13` / `m7g.2xlarge` | Refactored `db555cd`; five amd64-target cases first |
 | Repeat 3 | `172.31.74.145` / `m7g.xlarge` | Refactored `db555cd`; libunwind, rust-subversion and libmceliece first, rcran last |
-| Repeat 4 (Austin) | `172.31.47.79` / `m7g.xlarge` | Original 0.3.2 at `a0bd0db`; eight completed records in `demo3-v032-20261116T135011Z`; details in §3.2 |
+| Repeat 4 (Austin) | `172.31.47.79` / `m7g.xlarge` | Original 0.3.2 at `a0bd0db`; eleven completed case summaries in `demo3-v032-20261116T135011Z`; details in §3.2 |
 
 
 All hosts are ARM64; x86-target builds use the pinned QEMU 10.2.3 setup checked earlier. Instance types come from the observed EC2 configuration; the snapshots do not independently query instance metadata. In particular, Repeat 2 has a larger host, so these timings are not a controlled speed comparison. Case order and completed coverage also differ. Austin's unrefactored `a0bd0db` results above remain a separate configuration; they are not pooled into these refactored-agent experiments. At Austin’s request, these dated observations occupy Repeat 4 in the shared table, with their distinct configuration retained explicitly.
@@ -198,26 +198,26 @@ Metrics below cover Repeats 1–3. All 30 completed cases that entered the agent
 
 Final verdicts come from the harness summaries, not the model's self-assessment. Repeat 1's libbpp-core final log showed a symbols-file parsing error (`(optional) is not a valid version`). For pybigwig in Repeat 1, the displayed compiler error was from the baseline; the edited candidate failed during source repacking before final build validation. Other failures have not been assigned a root cause from these summaries alone.
 
-### 3.2 Austin’s unrefactored sweep: verified partial results
+### 3.2 Austin’s unrefactored sweep: completed results
 
-**Snapshot:** November 16, 2026, 16:43:04 UTC (11:43 AM ET). This updates the earlier 15:17 UTC observation and matches the presentation’s dated result table. These observations populate Repeat 4 (Austin) in §3.1. They remain a different configuration from the refactored-agent campaigns and are not pooled into a controlled repair-rate claim.
+**Completion verified:** November 16, 2026, 17:32:41 UTC (12:32 PM ET). The terminal log reported `ALL 11 ATTEMPTS FINISHED`. This post-deadline follow-up updates the submission-time 16:43:04 UTC partial snapshot. These observations populate Repeat 4 (Austin) in §3.1. They remain a different configuration from the refactored-agent campaigns and are not pooled into a controlled repair-rate claim.
 
-The host is `build-bench-demo-3` (`i-0e9c3560bdee7ffea`), an ARM64 `m7g.xlarge`. The repository is pinned to `a0bd0db518f452d751267adbdc2f00516ad78c8d`, selecting original `full-agent-v032` 0.3.2, not `0.3.2+demo3.refactor`. The model is Bedrock `openai.gpt-oss-120b-1:0`. Evidence, tools and history are enabled; iterative build feedback and edit review are disabled; strategy is `default`. Each case uses a fresh unchanged baseline and independent final validation. This is one sequential sweep with one scheduled run per case.
+The host is `build-bench-demo-3` (`i-0e9c3560bdee7ffea`), an ARM64 `m7g.xlarge`. The repository is pinned to `a0bd0db518f452d751267adbdc2f00516ad78c8d`, selecting original `full-agent-v032` 0.3.2, not `0.3.2+demo3.refactor`. The model is Bedrock `openai.gpt-oss-120b-1:0`. Evidence, tools and history are enabled; iterative build feedback and edit review are disabled; strategy is `default`. Each case uses a fresh unchanged baseline; edited candidates receive independent final validation. This is one sequential sweep with one scheduled run per case.
 
-Per-case outcomes and wall times are shown in the existing §3.1 table under **Repeat 4 (Austin)**. Run suffixes 1–11 follow that table’s case order. All eight completed cases stopped with `model_stop`, except rust-subversion, which stopped with `turn_budget`.
+Per-case outcomes and wall times are shown in the existing §3.1 table under **Repeat 4 (Austin)**. Run suffixes 1–11 follow that table’s case order. All ten cases that entered the agent stopped with `model_stop`, except rust-subversion, which stopped with `turn_budget`. Html-xml-utils already built unchanged and did not require an agent repair.
 
-**Coverage:** 8/11 completed, with 5 confirmed repairs and 3 failed final builds; 1 running and 2 queued. Of the ten development cases, seven had completed with four repairs; rcran is the separate repaired example. Unfinished cases are not failures. Rust reached its 60-turn limit, but its retained candidate passed final validation: agent termination and repair success are different fields.
+**Coverage:** 11/11 completed, with 5 confirmed repairs, 3 failed final builds, 2 cases with no edits applied, and 1 already building unchanged. The ten development cases contain four repairs, five unrepaired cases and one already-building case; rcran is the separate repaired example. Rust reached its 60-turn limit, but its retained candidate passed final validation: agent termination and repair success are different fields.
 
-The outcomes above were read directly from the eight completed `record.json` files in the authenticated output directory:
+The first eight outcomes were read directly from their completed `record.json` files. The final three outcomes and completion status were verified from the terminal summaries in `/home/ubuntu/demo3-setup/run-all.log`. The authenticated output directory is:
 
 ```text
 /home/ubuntu/buildbench-experiments/demo3-v032-20261116T135011Z/
   demo3-20261116T135011Z-<run suffix>/record.json
 ```
 
-Successful records reported `repaired: true` and `termination_reason: build_succeeded`; the three unsuccessful records reported `repaired: false` and `build_failed`. Durations come from the corresponding case summaries in `/home/ubuntu/demo3-setup/run-all.log`. All eight console summaries reported zero loop builds. The active process identified libevtx as case 9 at this snapshot. Raw records remain on the host and are not attached to this Markdown update. The earlier invalid-key run (`20261116T134558Z`) is excluded even though its messages remain in the combined console log.
+Successful records reported `repaired: true` and `termination_reason: build_succeeded`; the three unsuccessful records reported `repaired: false` and `build_failed`. Durations come from the corresponding case summaries in `/home/ubuntu/demo3-setup/run-all.log`. The final summaries report `no_edit_applied` for libevtx (2,539.8 s) and pybigwig (557.8 s), and `case_not_failing` for html-xml-utils (116.6 s). All ten cases that entered the agent reported zero loop builds. The completion check showed no active sweep or case process. Raw records remain on the host and are not attached to this Markdown update. The earlier invalid-key run (`20261116T134558Z`) is excluded even though its messages remain in the combined console log.
 
-Libbpp-core and libbpp-qt now have verified x86-target repairs after the QEMU setup change. This does not establish that every former setup blocker is repaired, nor isolate an agent improvement from the environment change. A final eleven-case score and controlled Demo 2/refactor comparison remain pending. Token and tool-call metrics are not supplied by this snapshot and must not be inferred from timings.
+Libbpp-core and libbpp-qt now have verified x86-target repairs after the QEMU setup change. This does not establish that every former setup blocker is repaired, nor isolate an agent improvement from the environment change. The eleven-case sweep is complete; a controlled Demo 2/refactor comparison remains pending. Token and tool-call metrics are not supplied by this snapshot and must not be inferred from timings.
 
 ## 4. Claims and limitations
 

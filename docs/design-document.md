@@ -96,7 +96,7 @@ The core architecture remains an LLM-driven investigation and edit loop. Demo 3'
 | Build requests inside the loop | Zero in this configuration; the class's default build budget is unused |
 | Harness build timeout | Each manifest's build timeout plus 600 seconds |
 | Input failure evidence in this rerun | A fresh unchanged baseline build, not an explicitly supplied historical log |
-| Concurrency / repeats | One case at a time per host; one run per case per campaign. Two refactored-agent campaigns are underway on separate ARM64 hosts; the second starts with the five amd64-target cases. Outcomes remain pending. |
+| Concurrency / repeats | One case at a time per host; one run per case per campaign. Three refactored-agent campaigns are underway on separate ARM64 hosts, with different case orders. See §3.1 for timestamped partial outcomes and host differences. |
 
 Agent limits are research settings, not organizer limits. Total case wall time includes work outside the agent loop and can exceed 30 minutes. Do not substitute `--agent full-agent`: that directory contains newer development. Do not use `scripts/demo2_demo.py` for this experiment; it selects a different configuration.
 
@@ -110,11 +110,65 @@ Agent limits are research settings, not organizer limits. Total case wall time i
 | Pinned QEMU setup | The [recorded workaround](evidence/qemu-fix-20261102/qemu-setup-and-diagnosis.md) and [five-case follow-up](evidence/qemu-fix-20261102/five-case-results.md) distinguish environment recovery from package repair. The fresh November 16 host also passed the x86 grep smoke test. |
 | Austin’s November 16 unrefactored 0.3.2 sweep (`a0bd0db`) | **In progress, checked November 16 at 15:17 UTC.** Three cases finished: rcran repaired (211.3 s), libbpp-core repaired (4554.6 s), ectrans not repaired (335.4 s). Case 4, libmceliece, was running. The remaining outcomes and committed raw-evidence archive are pending. |
 
-**Refactored-agent evidence (`db555cd`):** 492 dedicated agent tests and 80 harness tests passed on both campaign hosts. Two independent eleven-case runs have been launched with fresh baselines and no iterative build feedback. Their completed-case counts and repair results are pending confirmation; they are separate from Austin’s earlier sweep and the historical 4/11 result.
+**Refactored-agent evidence (`db555cd`):** 492 dedicated agent tests and 80 harness tests passed on the first two campaign hosts. Three independent eleven-case campaigns are now running with fresh baselines and no iterative build feedback. Their dated partial results are in §3.1, separately from Austin’s earlier unrefactored sweep and the historical 4/11 result.
 
 The fresh sweep includes rcran plus libbpp-core, libbpp-qt, python-intbitset, ectrans, libmceliece, libunwind, rust-subversion, libevtx, html-xml-utils and pybigwig. Exact IDs are checked against `docs/evidence/demo2/development-cases.json` below.
 
-The observed partial results are operational evidence from the running host, not yet a committed raw-evidence archive. The initial invalid-key attempt was stopped and retained separately; it is not pooled with the authenticated sweep. The authenticated output directory is `~/buildbench-experiments/demo3-v032-20261116T135011Z` on the team host.
+Austin’s partial results above are operational evidence from that running host, not yet a committed raw-evidence archive. The initial invalid-key attempt was stopped and retained separately; it is not pooled with the authenticated sweep. The authenticated output directory is `~/buildbench-experiments/demo3-v032-20261116T135011Z` on the team host.
+
+### 3.1 Accumulated case results
+
+This table accumulates results from different tests and partially completed campaigns. “Repeat 1–4” identifies the source of an observation; it does not mean every case has four completed runs or that all runs form a controlled repeat experiment. Repeats 1–3 use the same refactored agent but differ in case order, coverage and host resources. Repeat 4 is reserved for Austin’s contribution, whose agent version and settings must be recorded separately. Unfinished or unavailable results are not counted as failures.
+
+Repeats 1–3 use commit `db555cde6e88d126411f60516ae8321eff988404`, recorded agent `0.3.2+demo3.refactor+a2c50271ee37`, and served model `openai.gpt-oss-120b-1:0`. Evidence, tools and history are enabled; iterative build feedback and review edits are disabled; repair strategy is `default`. Wall time is total harness case time in seconds, including baseline and final validation when performed, not model latency alone.
+
+| Case (target architecture) | Repeat 1 | Repeat 2 | Repeat 3 | Repeat 4 (Austin) |
+| --- | --- | --- | --- | --- |
+| rcran (arm64) | **Repaired · 186.1 s** | Not started | Not started | Not supplied |
+| libbpp-core (amd64) | Failed build · 4,391.7 s | No edits applied · 2,092.0 s | Not started | Not supplied |
+| ectrans (arm64) | Failed build · 236.1 s | Not started | Not started | Not supplied |
+| libmceliece (arm64) | Failed build · 253.6 s | Not started | Not started | Not supplied |
+| libbpp-qt (amd64) | Running | **Repaired · 1,781.0 s** | Not started | Not supplied |
+| python-intbitset (amd64) | Not started | Running | Not started | Not supplied |
+| libunwind (arm64) | Not started | Not started | **Repaired · 353.1 s** | Not supplied |
+| rust-subversion (arm64) | Not started | Not started | Running | Not supplied |
+| libevtx (amd64) | Not started | Not started | Not started | Not supplied |
+| html-xml-utils (arm64) | Not started | Not started | Not started | Not supplied |
+| pybigwig (amd64) | Not started | Not started | Not started | Not supplied |
+| **Completed cases / planned** | **4 / 11** | **2 / 11** | **1 / 11** | Not supplied |
+| **Confirmed repairs among completed cases** | **1** | **1** | **1** | Not supplied |
+
+Rcran is the separate smoke case; the other ten are the development cases. These partial repair counts are not an aggregate repair rate or a matched three-repeat comparison. For example, libbpp-core completed twice with different outcomes (`build_failed` versus `no_edit_applied`), while most other cases have no completed repeat yet. The model's stopping reason is distinct from final success: Repeat 2's libbpp-qt hit `attempt_budget`, but its retained candidate still passed independent validation.
+
+#### Repeat key and evidence locations
+
+Source logs and raw `record.json` files remain under `/home/ubuntu/buildbench-experiments/` on the corresponding host. Exact locations are retained in the structured evidence file. The [structured snapshot](evidence/demo3/partial-results-20261116T163923Z.json) is a transcription of the terminal reports, not a replacement for the full evidence archive.
+
+| Repeat | Host / instance type | Configuration / evidence |
+| --- | --- | --- |
+| Repeat 1 | `172.31.68.209` / `m7g.xlarge` | Refactored `db555cd`; structured snapshot contains record locations; original case order, rcran first |
+| Repeat 2 | `172.31.73.13` / `m7g.2xlarge` | Refactored `db555cd`; five amd64-target cases first |
+| Repeat 3 | `172.31.74.145` / `m7g.xlarge` | Refactored `db555cd`; libunwind, rust-subversion and libmceliece first, rcran last |
+| Repeat 4 (Austin) | To be supplied | Contribution pending; record its commit, settings and evidence before adding results |
+
+
+All hosts are ARM64; x86-target builds use the pinned QEMU 10.2.3 setup checked earlier. Instance types come from the observed EC2 configuration; the snapshots do not independently query instance metadata. In particular, Repeat 2 has a larger host, so these timings are not a controlled speed comparison. Case order and completed coverage also differ. Austin's unrefactored `a0bd0db` results above remain a separate configuration; they are not pooled into these refactored-agent experiments. Repeat 4 remains unfilled until Austin supplies the contribution intended for this table; the earlier unrefactored results above are not silently imported.
+
+#### Completed-case metrics
+
+Token values below are the recorded cumulative model usage. Applied edits come from each case's console summary. All seven completed cases recorded zero loop builds; tool-call counts were not included in the snapshots and remain unknown.
+
+| Case | Repeat | Wall time (s) | Model turns | Edit attempts | Applied edits | Input tokens | Output tokens | Agent termination |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| ectrans | 1 | 236.1 | 9 | 1 | 1 | 62,563 | 8,011 | `model_stop` |
+| libbpp-core | 1 | 4,391.7 | 50 | 8 | 9 | 840,223 | 48,773 | `attempt_budget` |
+| libmceliece | 1 | 253.6 | 26 | 3 | 3 | 231,962 | 14,311 | `model_stop` |
+| rcran | 1 | 186.1 | 4 | 1 | 1 | 31,576 | 1,069 | `model_stop` |
+| libbpp-core | 2 | 2,092.0 | 5 | 0 | 0 | 43,353 | 3,124 | `model_stop` |
+| libbpp-qt | 2 | 1,781.0 | 46 | 8 | 12 | 752,156 | 42,525 | `attempt_budget` |
+| libunwind | 3 | 353.1 | 3 | 1 | 1 | 22,590 | 1,129 | `model_stop` |
+
+The final verdicts above come from the harness summaries and records, not the model's self-assessment. Repeat 1's libbpp-core final build log separately showed a symbols-file parsing error (`(optional) is not a valid version`). Reasons for the other failed final builds have not been reclassified from model explanations alone. All completed harness processes exited zero; that indicates completed evaluation, not successful repair.
 
 ## 4. Claims and limitations
 

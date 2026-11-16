@@ -1,0 +1,199 @@
+{
+  "provenance": "Transcribed from user-supplied EC2 terminal snapshots, not downloaded raw record files.",
+  "commit": "db555cde6e88d126411f60516ae8321eff988404",
+  "snapshots": {
+    "1": {
+      "utc": "2026-11-16T16:36:58.296459+00:00",
+      "host": "ip-172-31-68-209",
+      "directory": "demo3-v032-20261116T151031Z",
+      "running": "libbpp-qt"
+    },
+    "2": {
+      "utc": "2026-11-16T16:37:58.460718+00:00",
+      "host": "ip-172-31-73-13",
+      "directory": "demo3-v032-repeat-20261116T152302Z",
+      "running": "python-intbitset",
+      "note": "Active process confirmed separately after the snapshot; exact follow-up timestamp unavailable."
+    },
+    "3": {
+      "utc": "2026-11-16T16:39:23.452049+00:00",
+      "host": "ip-172-31-74-145",
+      "directory": "demo3-v032-third-20261116T162521Z",
+      "running": "rust-subversion"
+    }
+  },
+  "records": [
+    {
+      "case_id": "launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280",
+      "agent_version": "0.3.2+demo3.refactor+a2c50271ee37",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "attempt_budget",
+      "wall_seconds": 4391.7,
+      "usage": {
+        "input_tokens": 840223,
+        "output_tokens": 48773
+      },
+      "kept_attempts": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "record_path": "/home/ubuntu/buildbench-experiments/demo3-v032-20261116T151031Z/launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280/record.json",
+      "attempts_count": 8,
+      "turns_count": 50,
+      "builds_count": 0,
+      "experiment": 1,
+      "applied_edits_from_console": 9
+    },
+    {
+      "case_id": "launchpad-noble-amd64-arm64-ectrans-50e45e72102d",
+      "agent_version": "0.3.2+demo3.refactor+a2c50271ee37",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "model_stop",
+      "wall_seconds": 236.1,
+      "usage": {
+        "input_tokens": 62563,
+        "output_tokens": 8011
+      },
+      "kept_attempts": [
+        1
+      ],
+      "record_path": "/home/ubuntu/buildbench-experiments/demo3-v032-20261116T151031Z/launchpad-noble-amd64-arm64-ectrans-50e45e72102d/record.json",
+      "attempts_count": 1,
+      "turns_count": 9,
+      "builds_count": 0,
+      "experiment": 1,
+      "applied_edits_from_console": 1
+    },
+    {
+      "case_id": "launchpad-noble-amd64-arm64-libmceliece-5020df9683fc",
+      "agent_version": "0.3.2+demo3.refactor+a2c50271ee37",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "build_failed",
+      "agent_termination": "model_stop",
+      "wall_seconds": 253.6,
+      "usage": {
+        "input_tokens": 231962,
+        "output_tokens": 14311
+      },
+      "kept_attempts": [
+        1,
+        2,
+        3
+      ],
+      "record_path": "/home/ubuntu/buildbench-experiments/demo3-v032-20261116T151031Z/launchpad-noble-amd64-arm64-libmceliece-5020df9683fc/record.json",
+      "attempts_count": 3,
+      "turns_count": 26,
+      "builds_count": 0,
+      "experiment": 1,
+      "applied_edits_from_console": 3
+    },
+    {
+      "case_id": "launchpad-mantic-amd64-arm64-r-cran-digest-7a42effc961f",
+      "agent_version": "0.3.2+demo3.refactor+a2c50271ee37",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": true,
+      "termination_reason": "build_succeeded",
+      "agent_termination": "model_stop",
+      "wall_seconds": 186.1,
+      "usage": {
+        "input_tokens": 31576,
+        "output_tokens": 1069
+      },
+      "kept_attempts": [
+        1
+      ],
+      "record_path": "/home/ubuntu/buildbench-experiments/demo3-v032-20261116T151031Z/rcran-01/record.json",
+      "attempts_count": 1,
+      "turns_count": 4,
+      "builds_count": 0,
+      "experiment": 1,
+      "applied_edits_from_console": 1
+    },
+    {
+      "case_id": "launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280",
+      "agent_version": "0.3.2+demo3.refactor+a2c50271ee37",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": false,
+      "termination_reason": "no_edit_applied",
+      "agent_termination": "model_stop",
+      "wall_seconds": 2092.0,
+      "usage": {
+        "input_tokens": 43353,
+        "output_tokens": 3124
+      },
+      "kept_attempts": [],
+      "record_path": "/home/ubuntu/buildbench-experiments/demo3-v032-repeat-20261116T152302Z/launchpad-jammy-arm64-amd64-libbpp-core-13069fd09280/record.json",
+      "attempts_count": 0,
+      "turns_count": 5,
+      "builds_count": 0,
+      "experiment": 2,
+      "applied_edits_from_console": 0
+    },
+    {
+      "case_id": "launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f",
+      "agent_version": "0.3.2+demo3.refactor+a2c50271ee37",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": true,
+      "termination_reason": "build_succeeded",
+      "agent_termination": "attempt_budget",
+      "wall_seconds": 1781.0,
+      "usage": {
+        "input_tokens": 752156,
+        "output_tokens": 42525
+      },
+      "kept_attempts": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "record_path": "/home/ubuntu/buildbench-experiments/demo3-v032-repeat-20261116T152302Z/launchpad-noble-arm64-amd64-libbpp-qt-32eb71858f9f/record.json",
+      "attempts_count": 8,
+      "turns_count": 46,
+      "builds_count": 0,
+      "experiment": 2,
+      "applied_edits_from_console": 12
+    },
+    {
+      "experiment": 3,
+      "case_id": "launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91",
+      "agent_version": "0.3.2+demo3.refactor+a2c50271ee37",
+      "model": "openai-compatible:openai.gpt-oss-120b-1:0",
+      "served_model": "openai.gpt-oss-120b-1:0",
+      "repaired": true,
+      "termination_reason": "build_succeeded",
+      "agent_termination": "model_stop",
+      "wall_seconds": 353.1,
+      "usage": {
+        "input_tokens": 22590,
+        "output_tokens": 1129
+      },
+      "attempts_count": 1,
+      "turns_count": 3,
+      "builds_count": 0,
+      "record_path": "/home/ubuntu/buildbench-experiments/demo3-v032-third-20261116T162521Z/launchpad-plucky-amd64-arm64-libunwind-f18b55e03a91/record.json",
+      "applied_edits_from_console": 1
+    }
+  ]
+}

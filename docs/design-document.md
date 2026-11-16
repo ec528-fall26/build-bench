@@ -1,396 +1,458 @@
-# Design Document — Demo 2
+# Design Document — Demo 3
 
 **Team:** Anthony Capraru, Austin Li, Joonseo Moon, Juliette Jacques, Owen Zhang
-**Mentor:** Minghua Ma, Microsoft
-**Branch:** `demo-2`. Last updated 21 October 2026. **Revised 4 November 2026** after the Demo 2 feedback: §2 names the two techniques that are specific to cross-architecture failures, §3a reports the runs since Demo 2, §4 says what the reverse-direction cases need, §5.0 says how to change the model region and model, and Experiment 5 no longer claims that `./bb ready` passes locally (it cannot, for a model-dependent agent; see there). The code the feedback measured was restructured on 4 November (full agent 0.3.3: one function per loop stage, a dispatch table for tools).
 
-> **TA: to reproduce our results, go straight to [§5](#5-how-to-reproduce-our-results).** It starts from launching a new EC2 instance and gives every command, its run time and its expected output. §§1–4 explain what the system is and what we found.
+**Mentor:** Minghua Ma, Microsoft
+
+**Demo branch:** `demo-3` · **Selected agent:** `full-agent-v032`, version **0.3.2**
+
+**Updated:** 16 November 2026
+
+> **TA: start at [§5](#5-ta-reproduction-guide).** The guide starts with a fresh ARM64 EC2 instance and ends with an eleven-case evaluation and saved evidence. A short rcran-only run is available first. The full rerun is in progress; this document does not claim its final repair count.
 
 ## 1. What we built
 
-**The problem.** Build-Bench is a competition benchmark of Debian software packages that build on one CPU architecture (for example x86-64) but fail to build on another (for example ARM64). Each benchmark **case** contains the package's source code, the failing build log, and frozen copies of every dependency, so the failure can be reproduced exactly. A repair counts only if the organizers' **validator**, an official build tool, rebuilds the edited package from scratch on the target architecture and produces the expected `.deb` files.
+Build-Bench contains Debian source packages that fail when built for a different CPU architecture. Our agent investigates a failure log and package source, proposes edits, and leaves the final source for independent validation. A repair is successful only when the target build succeeds **and** produces the expected binary artifacts.
 
-**Our system** is an LLM agent that reads the failure, edits the package's source files, and hands the result to the validator. It has three parts:
-
-| Part | What it is | Where it runs |
+| Component | Responsibility | Location |
 | --- | --- | --- |
-| **Agent** | Our Python program that calls the model and edits files. Two versions, described below. | Inside `buildbench-starter-kit-0.1.0-rc.2/agents/`. It sees only a copy of the package source and never runs builds itself. |
-| **Harness** | Our test driver (`harness/`). It sets up each case, runs the agent, packs the edited source back into a Debian source package, calls the validator, and records the result. | On the host machine (an AWS EC2 Linux server). |
-| **Validator** | The organizers' build tool, shipped inside each case **bundle** (a downloaded archive with the case and a Docker image). | In a **Docker container** that the harness starts on the host. This is where Docker comes in: the harness uses the host's Docker to run the validator. The agent never gets Docker access. |
+| Agent 0.3.2 | Select evidence, inspect source with tools, propose and apply edits, retain conversation history | `buildbench-starter-kit-0.1.0-rc.5/agents/full-agent-v032/` |
+| Local harness | Build the unchanged baseline, unpack a fresh worktree, invoke the agent, repackage Debian source, perform final validation and record outcomes | `harness/` |
+| Official validator | Build the source for the target architecture using the frozen dependencies; validate binary artifacts | Docker image included in each downloaded validator bundle |
+| Model | Generate repair decisions; no training or fine-tuning | Bedrock `openai.gpt-oss-120b-1:0`, `us-east-1` |
 
-The model is `gpt-oss-120b`, an open-weight model that we call through Amazon Bedrock's OpenAI-compatible API. During the competition the organizers provide the model through their own endpoint. We do not train or fine-tune it.
-
-### The two agents
-
-- **One-shot agent (the baseline).** It sends the model the last 500 lines of the build log plus a fixed list of common build files (`debian/rules`, `debian/control`, `CMakeLists.txt`, `Makefile`, `setup.py`, `Cargo.toml` and a few others). The model replies once with a list of exact text replacements. The agent applies the ones that match and stops. It never sees whether its change worked. It is frozen at git tag `one-shot-v1` so later versions have a fixed point of comparison.
-- **Full agent (our extension).** It works in a loop. It can call read-only tools to list, search and read any file in the package, propose edits, and ask the harness for a build. It then reads the new build log and tries again until it succeeds or runs out of budget (attempts, builds, tokens, turns and time). Before applying edits it checks that each one matches the file exactly, and it keeps track of which earlier attempt came closest.
+The agent has no direct Docker interface. The host-side harness runs the validator. In this Demo 3 configuration, **iterative build feedback is disabled**: the agent can inspect files and revise edits, but does not observe builds between edits. The harness still builds the original source and validates the final candidate.
 
 ```mermaid
 flowchart LR
-    A[Case bundle: source, failing log, dependencies] --> B[Harness: unpack source]
-    B --> C[Agent: read failure, call model, edit files]
-    C -->|full agent only: request a build| D[Harness repacks source, validator builds it in Docker]
-    D -->|new build log| C
-    C --> E[Harness: final clean build by validator]
-    E --> F{Build succeeded and expected .deb files present?}
-    F -->|yes| G[Repaired]
-    F -->|no| H[Not repaired; everything recorded]
+    A[Frozen case and dependencies] --> B[Unchanged baseline build]
+    B --> C[Failure log and unpacked source]
+    C --> D[Agent 0.3.2: evidence, tools, edits, history]
+    D --> E[Repackage final source]
+    E --> F[Independent target build and artifact checks]
+    F --> G[Record repair or failure with evidence]
 ```
 
-### What counts as a repair
+If the unchanged baseline already succeeds, the harness records `case_not_failing`; the case receives no repair credit and the model is not called.
 
-A run counts as **repaired** only if the validator's final, separate build reports `succeeded` **and** its check of the expected output files passes. An edit being applied, or the model claiming success, does not count. Every run is recorded, including failures. If a case already builds before any edit, it is recorded as `case_not_failing` and gets no credit.
+## 2. Design changes and frozen configuration
 
-## 2. Key design decisions
+Demo 2's design included an agent that requested builds during its repair loop. This demonstration selects the historical 0.3.2 agent in a configuration without those requests. The main changes include:
 
-| Decision | Why, and what it costs |
+- **Evidence and recognized patterns:** compiler diagnostics are presented with relevant source context. Recognizers identify evidence for Rust C-string signedness, x86 intrinsics on ARM, ARM outline-atomics helpers, and symbol mismatches. Their advice does not itself edit files.
+- **More reliable edits:** narrowly constrained wrong-path recovery finds an exact match in a unique eligible file; export-removal and already-applied edits receive explicit handling.
+- **Full-log tools and stopping rules:** new `read_log` / `search_log` tools inspect numbered log lines. No-build prompts explain that the original log does not change after an edit and tell the model to stop when its repair is complete.
+- **Batch recovery:** preserve valid edits when another edit is stuck, permit source inspection during correction, and handle unique whitespace matches and required Debian flag exports.
+
+Evidence selection, source-inspection tools and repair history already existed in Demo 2; they are retained capabilities, not entirely new Demo 3 features.
+- **Environment repair:** pinned QEMU registration fixes the x86 execution problem on our ARM64 host. This is a host setup change, separately evaluated from agent repair quality.
+
+See [the historical findings](no-build-live-findings.md) and [the selected version notes](demo-3-agent.md). The restored agent source comes from `feaa5714d9a4c9738dee46c9190e4d81d05c43af`; the running November 16 evaluation uses repository commit `a0bd0db518f452d751267adbdc2f00516ad78c8d`.
+
+| Setting | Demo 3 value |
 | --- | --- |
-| Keep a frozen one-shot baseline | Gives a fixed point to measure improvements against. It can't see files outside its fixed list or learn from a failed build. |
-| Edits are exact text replacements in existing files under `input/` | The model can't run shell commands or touch anything else, so every change is visible in a diff. The model must quote file text exactly, and it often gets this wrong. The full agent returns a specific error message so the model can correct it. |
-| The harness, not the agent, runs builds | Matches the competition rule that agents get no Docker or build access. The full agent's in-loop builds go through the harness, which only exists in our local setup. |
-| Independent final validation | A plausible-looking patch that doesn't build gets no credit. |
-| Debian source repacking in the harness | The validator consumes a Debian source package, not loose files, so the harness rebuilds it with `dpkg-source` after each edit. |
+| Agent selector | `--agent full-agent-v032` |
+| Evidence manager / tools / history | Enabled (`1`) |
+| Iterative build feedback | Disabled (`0`) |
+| Repair strategy / review edits | `default` / disabled (`0`) |
+| Agent limits | 8 edit attempts; 60 model turns; 120 tool calls; 3,000,000 cumulative model tokens; 1,800 seconds with 120 seconds reserved for stopping |
+| Build requests inside the loop | Zero in this configuration; the class's default build budget is unused |
+| Harness build timeout | Each manifest's build timeout plus 600 seconds |
+| Input failure evidence in this rerun | A fresh unchanged baseline build, not an explicitly supplied historical log |
+| Concurrency / repeats | One case at a time; one attempt per case in this sweep |
 
-### What is specific to cross-architecture failures
+Agent limits are research settings, not organizer limits. Total case wall time includes work outside the agent loop and can exceed 30 minutes. Do not substitute `--agent full-agent`: that directory contains newer development. Do not use `scripts/demo2_demo.py` for this experiment; it selects a different configuration.
 
-The loop above is a standard agent loop, and the feedback on Demo 2 said so. Two things in the full agent are not, and both were measured on the real model after Demo 2 (§3a):
+## 3. Evidence and results status
 
-| Technique | What it does | Why a general agent loop does not have it |
-| --- | --- | --- |
-| **Recognised cross-architecture patterns** (`src/patterns.py`, 0.3.2) | The errors and the log are matched against signatures of failures that only happen when a package is built for another CPU: a Rust crate that hard-codes C `char` as `i8` (it is `u8` on ARM), an x86-only intrinsics header included on ARM, GCC's ARM outline-atomics helpers missing at link time, a Debian symbols file written for another architecture. For a match, the agent gathers the facts the repair needs from the package itself (which files hard-code `i8` and how many lines; which `#if HAVE_*` guards the include and which header defines the macro; which symbols the diff lists) and shows them, with the usual repair, right after the compiler errors. | The portable fix is often the opposite of what the compiler message suggests. On rust-subversion the compiler says "expected `*const u8`, found `*const i8`", and the model twice "fixed" it by casting to `i8`, the wrong direction, even with the rule in its instructions. Shown the files and the replacement next to the errors, it made the portable `c_char` change across seven files in one turn and the package built. |
-| **Mechanical batch repair without build feedback** (`src/edit_repair.py`, 0.3.1–0.3.2) | The competition applies the agent's edits untested and builds once at the end, so a batch that is not written is a certain failure. Before a batch goes back to the model for correction, the controller repairs what is unambiguous: whitespace-only mismatches, an edit whose text lives in one other file, a Debian maintainer flag that needs `export` to take effect, a line inserted into a backslash-continued Makefile variable, no-op and already-made edits; and when one item cannot be fixed it drops that item alone and applies the rest. | A loop with build feedback can afford to lose a batch and try again. Without it, rust-subversion lost 26 edits to one no-op item and libunwind sent the same mis-indented text ten times; the controller's handling of failures cost more than the model's reasoning. |
-
-Both are deterministic, standard-library code with their own tests (`tests/full-agent/test_patterns.py`, `test_edit_repair.py`), and both are advice or repair that the model's own edit still has to carry: nothing is patched behind the model's back.
-
-Approaches we tried and dropped (details in [full-agent.md](full-agent.md) and [part5-findings.md](part5-findings.md)): editing in small groups of three changes, which was too slow for package-wide problems; larger token budgets alone, which didn't fix wrong or repeated edits; and summarizing compiler errors, which discarded details the model needed.
-
-## 3. Results
-
-From one recorded run of every case with each agent (19 October 2026). The case list is rcran (the organizers' single downloadable example case) plus the ten public development cases.
-
-| | One-shot | Full agent |
-| --- | ---: | ---: |
-| Cases run | 11 | 11 |
-| **Repaired** | **0** | **1 (rcran)** |
-| Development cases repaired | 0/10 | 0/10 |
-| Blocked before the package build started | 5 | 5 |
-| Already building, no repair needed | 1 | 1 |
-
-What this shows:
-
-- **The pipeline works end to end.** On rcran, the full agent found an x86-only CPU instruction setting (`HAVE_MM_PREFETCH`), turned it off, and the validator's clean build produced the expected ARM64 package.
-- **The five "blocked" cases** are the ARM64 → x86-64 direction. Their builds crashed in the x86 emulator (QEMU) during setup, before our code mattered, so they don't measure repair ability.
-- **The four remaining development cases** (including a large Rust package) were not repaired by either agent. A hand-assisted Rust fix does build, which shows that editing the source is enough. Our agent hasn't found that fix on its own.
-
-Full case-by-case results: [demo2-results.md](demo2-results.md). Raw records: `docs/evidence/demo2/paired-retest/`.
-
-### 3a. Runs since Demo 2 (3 November, full agent 0.3.0 → 0.3.2, no build feedback)
-
-These runs use the hosted regime (edits applied untested, one final validation build), one run per case, with the real model, on the same ARM64 instance. Details and every run record: [no-build-live-findings.md](no-build-live-findings.md), rounds 5–7.
-
-| Case | 0.3.0 | 0.3.2 | What decided it |
-| --- | --- | --- | --- |
-| rcran | repaired, 25 turns | repaired, 4 turns | the x86-intrinsics pattern names the config header |
-| libunwind | repaired, 39 turns | repaired, 5 turns | the outline-atomics pattern gives the `debian/rules` lines |
-| rust-subversion | not repaired | **repaired**, 13 edits in 7 files | the signedness pattern; first repair of this case in any run |
-| html-xml-utils | | repaired (`nolto`) | weak evidence: the unchanged source also builds locally |
-| ectrans | | not repaired | agent miss (CMake include path) |
-| libmceliece | | not repaired | binutils assertion, same before and after |
-| pybigwig | | not repaired | agent edited a quilt patch by hand; `dpkg-source` rejected it |
-| libbpp-core, libbpp-qt, python-intbitset, libevtx | | undetermined | x86 targets: QEMU segfaults in the chroot before the build (see §4) |
-
-On the seven cases the environment can judge, 4 of 7 are repaired (3 solid, 1 weak), against 1 of 11 at Demo 2. Model cost for the whole set was about a dollar.
-
-## 4. Limitations and next steps
-
-- **Repair rate is low.** One repair in 22 runs. Our proposal promised a working prototype and evaluation coverage for Demo 2, not a minimum repair rate. Improving it is the Demo 3 goal.
-- **Reverse-direction cases (ARM64 → x86-64) have still not been evaluated.** Their validator runs an x86-64 chroot, which on our ARM64 instance means QEMU user-mode emulation, and `chroot ... grep` segfaults inside it before the package build starts (same failure at Demo 2 and on 3 November). The harness itself has no architecture check; what is architecture-bound is the instance. The plan is to run those five cases on an x86-64 instance (`m7i.xlarge`, same Ubuntu image, same §5.2 commands) where their validator runs natively, and to keep the ARM64 instance for the other six. This has not been done yet; the x86 cases' edits from 3 November are recorded but unjudged.
-- **Results vary between runs** because the model's output varies.
-- **The competition's hosted platform isn't qualified yet.** It provides the model differently and doesn't allow in-loop builds. Notes and plan: [hosted-submission.md](hosted-submission.md).
-- **Demo 3:** controlled repeated runs, measuring whether build feedback and history help, and fixes for the edit-matching failures above.
-
-## 5. How to reproduce our results
-
-**Tested on a fresh instance (21 October 2026).** A team member who launched a new instance ran Experiments 1, 2 and 5 exactly as written below, and the dry run of Experiment 4. The results matched the expected outputs given here.
-
-### 5.0 What you need
-
-| Item | Requirement |
+| Evidence set | What can be claimed |
 | --- | --- |
-| Machine | AWS EC2 `m7g.xlarge` (ARM64, 4 vCPU, 16 GiB RAM), 80 GiB disk, region `us-east-1`. Native ARM64 Linux is required; the scripts refuse to run on macOS or x86. |
-| Operating system | Ubuntu Server 24.04 LTS, ARM64 |
-| Tools | Python 3.12 (Ubuntu's built-in; standard library only, no `pip install`). Docker, `dpkg-dev`, git, QEMU and tmux from Ubuntu's package manager (§5.2). |
-| Accounts | GitHub read access to this repository, and an AWS account that can launch EC2 and use Amazon Bedrock. The case bundles download without an account. |
-| Our code | This repository at tag `demo2-ta-v1`. The starter kit is committed inside it. |
-| Model | Amazon Bedrock, `us-east-1`, model `openai.gpt-oss-120b-1:0`. Needed for Experiments 3–4 only. **Another region:** set `BB_MODEL_BASE_URL` to `https://bedrock-runtime.<region>.amazonaws.com/openai/v1` and generate the key in that region; the default is us-east-1 because that is where we enabled model access. **Another model:** set `BB_MODEL_ID` to its Bedrock id (full agent) or edit `MODEL_ID` in the one-shot agent, which is frozen. In the competition neither applies: the hosted runner injects `BB_MODEL_BASE_URL`, `BB_MODEL_NAME` and `BB_MODEL_TOKEN_FILE`, and the agent reads those first. |
-| Cost | EC2 is about $0.16/hour. Bedrock calls cost a few cents per run. Terminate the instance when finished. |
+| Demo 2 paired retest | Historical one-shot 0/11 and full-agent 1/11, with five x86 setup failures and one already-building case; see [Demo 2 results](demo2-results.md) |
+| Historical 0.3.2 evaluation | Reported 4/11: rcran, libunwind, rust-subversion, html-xml-utils. The html result is weak evidence because unchanged source also built locally. Four x86 outcomes were undetermined under QEMU. This is not a new controlled comparison. |
+| Pinned QEMU setup | The [recorded workaround](evidence/qemu-fix-20261102/qemu-setup-and-diagnosis.md) and [five-case follow-up](evidence/qemu-fix-20261102/five-case-results.md) distinguish environment recovery from package repair. The fresh November 16 host also passed the x86 grep smoke test. |
+| November 16 fresh 0.3.2 sweep | **In progress, checked November 16 at 15:17 UTC.** Three cases finished: rcran repaired (211.3 s), libbpp-core repaired (4554.6 s), ectrans not repaired (335.4 s). Case 4, libmceliece, was running. The remaining outcomes and committed raw-evidence archive are pending. |
 
-| Experiment | What it shows | Needs model key? | Time |
-| --- | --- | --- | --- |
-| Setup (§§5.1–5.4) | Instance ready, cases downloaded and verified, offline tests pass | No | About 45 min, mostly downloads |
-| [1. Pipeline controls](#experiment-1-pipeline-controls-no-model) | A known fix is accepted and a non-fix is rejected | No | 6 min |
-| [2. Scripted revision loop](#experiment-2-scripted-revision-loop-no-model) | The full agent recovers from a failed build | No | 6 min |
-| [3. Live repair of rcran](#experiment-3-live-repair-of-rcran) | The model repairs a real case | Yes | 3–5 min per agent |
-| [4. Full evaluation](#experiment-4-full-evaluation-all-22-runs) | The results table in §3 | Yes | About 2 h (up to 4 h) |
-| [5. Starter kit readiness check](#experiment-5-starter-kit-readiness-check) | Our agents pass the competition's packaging and example test | Yes | 3–6 min per agent |
+The fresh sweep includes rcran plus libbpp-core, libbpp-qt, python-intbitset, ectrans, libmceliece, libunwind, rust-subversion, libevtx, html-xml-utils and pybigwig. Exact IDs are checked against `docs/evidence/demo2/development-cases.json` below.
 
-Experiments 1 and 2 give the same result every time. Experiments 3–5 depend on the model, so your counts may differ from ours. For those, check that the run completes and that any repair it reports passed the validator.
+The observed partial results are operational evidence from the running host, not yet a committed raw-evidence archive. The initial invalid-key attempt was stopped and retained separately; it is not pooled with the authenticated sweep. The authenticated output directory is `~/buildbench-experiments/demo3-v032-20261116T135011Z` on the team host.
 
-### 5.1 Launch the instance
+## 4. Limitations and completion criteria
 
-In the AWS console, set the region to **US East (N. Virginia) `us-east-1`**. Open **EC2 → Instances → Launch instances** and set:
+A single sweep does not establish the proposal's promised paired improvement: that requires three matched repeats for each compared configuration on the same ten development cases, under the same model, budgets and working QEMU environment. History ablation, token/wall-time comparisons and regression accounting remain separate work. Historical scores from different environments are context, not a controlled before/after result.
 
-| Setting | Value |
-| --- | --- |
-| Name | `build-bench-demo2-ta` |
-| Application and OS image | **Ubuntu Server 24.04 LTS (HVM), SSD Volume Type**, architecture **64-bit (Arm)** |
-| Instance type | `m7g.xlarge` |
-| Key pair | **Create new key pair**: name `build-bench-ta`, type RSA, format `.pem`. The browser downloads `build-bench-ta.pem`. |
-| Network settings | Default VPC, **Auto-assign public IP: Enable**, a security group allowing **SSH (port 22)** from **My IP** only. |
-| Configure storage | **80 GiB**, gp3 |
+For the completed Demo 3 report, retain all eleven outcomes; separate already-building cases, genuine package failures, model failures and infrastructure failures. Report rcran separately from the ten development cases. Include tokens (unknown stays unknown), wall time, edit attempts, tool calls, termination reasons, migration direction, and any regressions. Build success does not prove unrestricted semantic correctness; review patches that disable tests, features or meaningful validation.
 
-Click **Launch instance**. When the status check shows *2/2 checks passed*, copy the **Public IPv4 address**. In your **laptop terminal**, replace `YOUR_EC2_PUBLIC_IP` and run:
+The guide below uses the same selected agent and settings as the live sweep. Fresh-host package installation, bundle verification, QEMU smoke testing and one live rcran repair were observed on November 16. The new convenience runner has local checks; it has not yet completed its own eleven-case end-to-end run. This distinction must remain until that validation finishes.
 
-```bash
-mkdir -p "$HOME/.ssh" &&
-mv "$HOME/Downloads/build-bench-ta.pem" "$HOME/.ssh/" &&
-chmod 400 "$HOME/.ssh/build-bench-ta.pem" &&
-ssh -i "$HOME/.ssh/build-bench-ta.pem" ubuntu@YOUR_EC2_PUBLIC_IP
-```
+## 5. TA reproduction guide
 
-Answer `yes` to the host-key prompt. Expected: an `ubuntu@ip-...:~$` prompt. To reconnect later, run only the last line. **All remaining commands run on EC2.**
+### 5.1 Requirements and instance launch
 
-### 5.2 Install tools and clone the repository
+Use **Ubuntu Server 24.04 LTS, 64-bit Arm**, EC2 **m7g.xlarge** (4 vCPU, 16 GiB RAM), **80 GiB gp3**, in **US East (N. Virginia), `us-east-1`**. Name it `build-bench-demo3-ta`. Use a key pair you control and public IPv4 access; allow SSH from your IP when using a local SSH client. Browser EC2 Instance Connect requires its service's network access as described in the AWS console. Record the AMI ID because Ubuntu images change.
+
+Our fresh host used AMI `ami-0f6435163a86ffc8c`, Ubuntu 24.04.5 ARM64. AWS labels this platform **Linux/UNIX**. It has the same instance size and disk capacity as the earlier host, with a newer Ubuntu image.
+
+Connect as `ubuntu`, using EC2 Instance Connect or your SSH client. **All commands below run on EC2**, not your laptop. You need GitHub read access and an AWS identity permitted to invoke the Bedrock model. Budget for several hours for all eleven cases; a confirmed full-sweep duration is not available yet. Downloads vary substantially with network speed. Check the console's current EC2, disk, public IPv4 and model prices; running resources incur charges.
+
+### 5.2 Install tools and check out the code
 
 ```bash
 sudo apt-get update &&
-sudo apt-get install -y git python3 docker.io dpkg-dev xz-utils gzip tar ca-certificates tmux qemu-user-static binfmt-support &&
-sudo systemctl enable --now docker &&
-sudo usermod -aG docker "$USER"
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+  git python3 docker.io dpkg-dev xz-utils gzip tar ca-certificates \
+  tmux qemu-user-static binfmt-support curl &&
+sudo systemctl enable --now docker
+
+mkdir -p "$HOME/Downloads" "$HOME/demo3-ta/bin" &&
+git clone --branch demo-3 --single-branch \
+  https://github.com/ec528-fall26/build-bench.git "$HOME/build-bench-demo3"
+cd "$HOME/build-bench-demo3"
+# Pin the exact implementation used by the November 16 sweep.
+git checkout --detach a0bd0db518f452d751267adbdc2f00516ad78c8d
+git rev-parse HEAD | tee "$HOME/demo3-ta/repository-commit.txt"
 ```
 
-Log out (`exit`) and reconnect so Docker works without `sudo`. Then:
+Keep this guide open from the `demo-3` branch on GitHub while following it. The detached checkout above reproduces the live sweep's original 0.3.2 implementation. The newer branch includes `0.3.2+demo3.refactor` (see [refactor notes](demo-3-code-quality.md)); that is a distinct version and has not produced the live results reported here. To evaluate the refactor, intentionally stay on `demo-3`, record its commit, use a separate output directory, and label the results accordingly. The runner is provided inline in §5.6, so it needs no unpublished repository file.
+
+The following wrapper lets the harness invoke Docker through the Ubuntu user's existing sudo access, without a Docker-group logout/reconnect step:
 
 ```bash
-mkdir -p "$HOME/Downloads" &&
-git clone --branch demo2-ta-v1 https://github.com/ec528-fall26/build-bench.git "$HOME/build-bench-demo2" &&
-cd "$HOME/build-bench-demo2" &&
-{ lsb_release -ds; uname -m; docker info --format '{{.Architecture}}'; python3 --version
-  docker --version; dpkg-source --version | head -1; git rev-parse HEAD; } | tee "$HOME/tool-versions.txt"
+cat > "$HOME/demo3-ta/bin/docker" <<'SH'
+#!/bin/sh
+exec sudo /usr/bin/docker "$@"
+SH
+chmod +x "$HOME/demo3-ta/bin/docker"
+export PATH="$HOME/demo3-ta/bin:$PATH"
+docker info --format '{{.Architecture}}'
+{ uname -a; cat /etc/os-release; python3 --version; docker --version;
+  dpkg-source --version | head -1; } > "$HOME/demo3-ta/tool-versions.txt"
+tmux new -s demo3-ta
 ```
 
-Expected: `Ubuntu 24.04.x LTS`, `aarch64` twice, `Python 3.12.x`, then the Docker, dpkg and commit lines. Keep `tool-versions.txt` with your results. Ubuntu doesn't let us pin exact package versions, so this file records the ones you got.
+Expected architecture: `aarch64`. Run subsequent commands inside tmux. To reconnect, SSH back in, run `tmux attach -t demo3-ta`, and restore the `PATH` export if using a new shell. The Ubuntu EC2 image normally supports noninteractive sudo; verify `sudo -n true` before a long run.
 
-Start a **tmux** session now and run everything else inside it, so long steps survive a dropped connection:
+### 5.3 Download and verify frozen validator bundles
 
-```bash
-tmux new -s demo2-ta
-```
-
-If you get disconnected, SSH in again and run `tmux attach -t demo2-ta`.
-
-### 5.3 Download and verify the case bundles
-
-The two bundles come from the [Build-Bench downloads page](https://matrix.cstcloud.cn/build-bench/data-downloads.html): "Local Validator Example rcran-v1" (387 MB) and "Local Validator Bundle: 10 Cases development-v1" (2.29 GB). The server is slow (about 0.6 MB/s for us), so allow up to an hour.
+Source: [Build-Bench downloads](https://matrix.cstcloud.cn/build-bench/data-downloads.html). Approximately 387 MB for rcran and 2.29 GB for the ten development cases.
 
 ```bash
+cd "$HOME/Downloads"
 base=https://matrix.cstcloud.cn/build-bench/releases/local-validation
-cd "$HOME/Downloads" &&
-curl -fL -C - -O "$base/rcran-v1/buildbench-local-rcran-v1.tar.gz" &&
-curl -fL -C - -O "$base/development-v1/buildbench-local-development-v1.tar.gz"
-```
-
-If a download stops, run the same command again to resume it. Check both files against the organizers' published hashes. Expected: two lines ending in `OK`.
-
-```bash
-cd "$HOME/Downloads" &&
-sha256sum -c <<'EOF'
+curl -fL --retry 5 -C - -O "$base/rcran-v1/buildbench-local-rcran-v1.tar.gz" &&
+curl -fL --retry 5 -C - -O "$base/development-v1/buildbench-local-development-v1.tar.gz" &&
+sha256sum -c <<'HASHES'
 894e6a5d57acce17b8743d562a4e027c28dd81e549b08b94c3d29d360cac4538  buildbench-local-rcran-v1.tar.gz
 542145b03b79cdf6deb4fdf960acaa1e21a9d24fbf52a19b1cf3be6707981d94  buildbench-local-development-v1.tar.gz
-EOF
+HASHES
 ```
 
-Extract each bundle, check its internal checksums, and load its validator Docker image. Expected: `OK` lines from `sha256sum`, a `Loaded image` line from Docker, then a passing check (rcran) or a list of ten cases (development).
+Expected: both archives end in `OK`. Stop if either check fails. Rerun the curl commands to resume interrupted downloads. Then:
 
 ```bash
 tar -xzf "$HOME/Downloads/buildbench-local-rcran-v1.tar.gz" -C "$HOME" &&
+tar -xzf "$HOME/Downloads/buildbench-local-development-v1.tar.gz" -C "$HOME"
+
 cd "$HOME/buildbench-local-rcran-v1" &&
-sha256sum -c SHA256SUMS && docker load -i runtime-image.tar.gz && bash run.sh --check
-```
+sha256sum -c SHA256SUMS &&
+docker load -i runtime-image.tar.gz && bash run.sh --check
 
-```bash
-tar -xzf "$HOME/Downloads/buildbench-local-development-v1.tar.gz" -C "$HOME" &&
 cd "$HOME/buildbench-local-development-v1" &&
-sha256sum -c SHA256SUMS && docker load -i runtime-image.tar && bash run.sh --list
+sha256sum -c SHA256SUMS &&
+docker load -i runtime-image.tar && bash run.sh --list
 ```
 
-Confirm that the ten cases are the ones we evaluated. Expected: ten `OK` lines, then `10/10 case manifests match`.
+Expected: internal checksum checks pass, images load, rcran's check passes, and ten case IDs are listed. Do not continue after a failure.
 
 ```bash
-cd "$HOME/build-bench-demo2" &&
-python3 - "$HOME/buildbench-local-development-v1" <<'EOF'
-import hashlib, json, sys
-from pathlib import Path
-bundle = Path(sys.argv[1])
-cases = json.load(open('docs/evidence/demo2/development-cases.json'))['cases']
-ok = 0
-for case in cases:
-    path = bundle / 'cases' / case['case_id'] / 'manifest.json'
-    good = path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == case['manifest_sha256']
-    ok += good
-    print('OK ' if good else 'BAD', case['case_id'])
-print(f'{ok}/{len(cases)} case manifests match')
-sys.exit(ok != len(cases))
-EOF
-```
-
-### 5.4 Offline tests and the recorded configuration
-
-These run our unit tests and recompute the §3 table from the saved run records. They need no Docker and no model key, and take under a minute.
-
-```bash
-cd "$HOME/build-bench-demo2" &&
-env -u BB_MODEL_TRACE -u BB_REPAIR_STRATEGY -u BB_REVIEW_EDITS \
-  -u BB_AGENT_USE_EVIDENCE_MANAGER -u BB_AGENT_USE_TOOLS \
-  -u BB_AGENT_USE_BUILD_FEEDBACK -u BB_AGENT_USE_HISTORY \
-  python3 -m unittest discover -s tests/full-agent -p 'test_*.py' &&
-python3 -m unittest discover -s harness/tests -t . &&
-python3 -m unittest discover -s tests/demo2 -p 'test_*.py' &&
-python3 scripts/demo2_evidence_report.py
-```
-
-Expected: `Ran 320 tests ... OK`, `Ran 79 tests ... OK`, `Ran 15 tests ... OK`, then a report that includes:
-
-```text
-Latest paired retest (one repeat; raw verdicts retained):
-one-shot 0 / 11 repairs; 5 setup-blocked; 1 already building
-full-agent 1 / 11 repairs; 5 setup-blocked; 1 already building
-```
-
-Our recorded evaluation used the agent code at commit `001f3b9` with larger full-agent budgets than the defaults. The next command creates a second copy of the repository at that commit with those budgets. It checks every source file against its recorded hash, so you run exactly the code we ran. It also splits the ten-case bundle into one folder per case, which is the layout the experiment scripts expect.
-
-```bash
-python3 scripts/demo2_prepare_recorded.py --out "$HOME/build-bench-demo2-recorded" &&
-cd "$HOME/build-bench-demo2-recorded" &&
-cat ta-recorded-profile.json &&
+cd "$HOME/build-bench-demo3"
 python3 -m harness.case_views "$HOME/buildbench-local-development-v1" "$HOME/bb-cases"
+python3 - <<'PY'
+import hashlib, json
+from pathlib import Path
+cases = json.load(open('docs/evidence/demo2/development-cases.json'))['cases']
+assert len(cases) == 10
+for case in cases:
+    p = Path.home() / 'buildbench-local-development-v1/cases' / case['case_id'] / 'manifest.json'
+    assert hashlib.sha256(p.read_bytes()).hexdigest() == case['manifest_sha256'], case['case_id']
+print('10/10 frozen development manifests match')
+PY
 ```
 
-Expected: the profile prints the budgets (12 attempts, 10 builds, 1,000,000 tokens, 80 turns, 200 tool calls, 7,200 s) with no error. **Experiments 1–4 run in `~/build-bench-demo2-recorded`.**
+The generated views point at the original bundles; they do not modify the case sources or dependencies.
 
-### Experiment 1: Pipeline controls (no model)
+### 5.4 Install and test the pinned x86 emulator
 
-This experiment runs rcran twice with fixed, hand-written edits instead of the model. One edit is the known correct fix, and the other only adds a comment. It checks that the harness and validator accept a real fix and reject a fake one.
+Do this before any case builds. The Ubuntu QEMU 8.2 handler previously crashed during x86 setup. Use the tested digest rather than a moving image tag. This changes host binfmt registration; repeat after a reboot or emulator update.
 
 ```bash
-cd "$HOME/build-bench-demo2-recorded" &&
-python3 scripts/demo2_demo.py controls \
-  --bundle "$HOME/buildbench-local-rcran-v1" \
-  --out "$HOME/buildbench-experiments/ta-rcran-controls-01"
+qemu_image=tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+cat /proc/sys/fs/binfmt_misc/qemu-x86_64 > "$HOME/demo3-ta/binfmt-before.txt"
+docker pull --platform linux/arm64 "$qemu_image" &&
+docker run --privileged --rm --platform linux/arm64 "$qemu_image" \
+  --uninstall qemu-x86_64,qemu-i386 &&
+docker run --privileged --rm --platform linux/arm64 "$qemu_image" --install amd64,386
+cat /proc/sys/fs/binfmt_misc/qemu-x86_64 | tee "$HOME/demo3-ta/binfmt-after.txt"
+
+docker run --rm --platform linux/amd64 --network none --ulimit core=0 \
+  ubuntu@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852 \
+  /bin/sh -c '/usr/bin/grep --version && /usr/bin/grep -q "^ID=ubuntu" /etc/os-release'
 ```
 
-Expected (about 6 min): two JSON summaries, then the final line.
+Expected: handler `enabled`, flags containing `F`, GNU grep version output, and exit code 0. The pinned installer supplies QEMU 10.2.3; the installed Ubuntu package version can still say 8.2 because registration does not replace that package. A passing smoke test confirms basic x86 execution, not all package builds. If it hangs or crashes, investigate before proceeding; see the [QEMU diagnosis](evidence/qemu-fix-20261102/qemu-setup-and-diagnosis.md).
 
-```text
-Starting positive; evidence: ...
-{ ... "run_id": "positive", "repaired": true,  "termination_reason": "build_succeeded", ... "check_error": null }
-Starting negative; evidence: ...
-{ ... "run_id": "negative", "repaired": false, "termination_reason": "build_failed",    ... "check_error": null }
-Pipeline completed. Live not-repaired results are valid outcomes, not claimed successes.
-```
-
-`"usage"` shows `null` tokens because no model is called. Any non-null `check_error` means the check failed, and the script exits with code 2.
-
-### Experiment 2: Scripted revision loop (no model)
-
-This experiment runs the full agent's loop with pre-written model replies: a wrong fix first, then the right one. It shows that the agent reads a failed build log and tries again until the build succeeds.
+### 5.5 Offline checks and optional pipeline controls
 
 ```bash
-python3 scripts/demo2_demo.py revise-replay \
-  --bundle "$HOME/buildbench-local-rcran-v1" \
-  --out "$HOME/buildbench-experiments/ta-rcran-revise-01"
+cd "$HOME/build-bench-demo3"
+python3 -m unittest discover -s harness/tests -t .
 ```
 
-Expected (about 6 min): one summary with `"repaired": true`, `"termination_reason": "build_succeeded"` and `"check_error": null`, then the `Pipeline completed.` line. The script also confirms that at least one failed build came before the successful one.
+Expected: the suite reports `OK`. Harness tests do not prove live repairs. The current `tests/full-agent` targets the newer agent directory, so its count is not a test count for restored 0.3.2.
 
-### Model key (needed for Experiments 3–5)
-
-In the AWS console, go to **Amazon Bedrock** in region `us-east-1`, then **API keys → Short-term API keys → Generate**. The key lasts up to 12 hours ([AWS instructions](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-generate.html)). Paste this block into the EC2 tmux shell, then paste the key at the prompt. The key is not shown as you paste it.
+Optional: verify that the harness accepts a known rcran fix and rejects a comment-only non-fix. These use **one-shot replay**, with no model calls; they test the validation pipeline rather than Demo 3's repair policy. Use a fresh output directory on each repetition.
 
 ```bash
-read -r -s -p 'Paste short-term Bedrock API key for us-east-1: ' BB_MODEL_API_KEY
-export BB_MODEL_API_KEY
-printf '\n'
-export BB_MODEL_BASE_URL='https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1'
-echo "key length: ${#BB_MODEL_API_KEY}"
+controls="$HOME/buildbench-experiments/demo3-controls-$(date -u +%Y%m%dT%H%M%SZ)"
+python3 -m harness.run_case --bundle "$HOME/buildbench-local-rcran-v1" \
+  --agent one-shot --replay harness/replays/rcran-known-fix.json \
+  --run-id positive --runs-dir "$controls"
+python3 -m harness.run_case --bundle "$HOME/buildbench-local-rcran-v1" \
+  --agent one-shot --replay harness/replays/rcran-comment-only.json \
+  --run-id negative --runs-dir "$controls"
 ```
 
-Expected: a nonzero key length. **The key exists only in this shell.** A new tmux window, session or SSH login won't have it, so paste the block again there.
+Expected: positive `REPAIRED`, negative `not repaired`. Preserve the actual records if either expectation fails; don't proceed as though the pipeline passed.
 
-### Experiment 3: Live repair of rcran
+### 5.6 Preview, authenticate and run
 
-These runs repeat Experiments 1–2 with the real model, once per agent.
+Save this convenience runner on the instance. It uses only Python’s standard library and the checked-out harness. It keeps the key in memory and records the selected commit and run settings.
 
 ```bash
-python3 scripts/demo2_demo.py live-one-shot \
-  --bundle "$HOME/buildbench-local-rcran-v1" \
-  --out "$HOME/buildbench-experiments/ta-rcran-one-shot-01"
-python3 scripts/demo2_demo.py live-full \
-  --bundle "$HOME/buildbench-local-rcran-v1" \
-  --out "$HOME/buildbench-experiments/ta-rcran-full-01"
+cat > "$HOME/demo3-ta/run.py" <<'PYRUN'
+#!/usr/bin/env python3
+"""Run the frozen Demo 3 agent on rcran or all eleven local cases."""
+import argparse
+import getpass
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+
+ROOT = Path.home() / 'build-bench-demo3'
+BASE = 'https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1'
+MODEL = 'openai.gpt-oss-120b-1:0'
+CONFIG = {
+    'BB_AGENT_USE_EVIDENCE_MANAGER': '1', 'BB_AGENT_USE_TOOLS': '1',
+    'BB_AGENT_USE_BUILD_FEEDBACK': '0', 'BB_AGENT_USE_HISTORY': '1',
+    'BB_REPAIR_STRATEGY': 'default', 'BB_REVIEW_EDITS': '0',
+}
+
+
+def schedule(rcran, views, only_rcran):
+    bundles = [rcran.resolve()]
+    if not only_rcran:
+        bundles += sorted(p.resolve() for p in views.iterdir() if p.is_dir())
+    if len(bundles) != (1 if only_rcran else 11):
+        raise ValueError('Expected rcran plus exactly ten case views')
+    jobs = []
+    for bundle in bundles:
+        manifest = json.loads((bundle / 'case/manifest.json').read_text())
+        if not (bundle / 'run.sh').is_file():
+            raise ValueError(f'Missing run.sh: {bundle}')
+        jobs.append({'case_id': manifest['case_id'], 'bundle': str(bundle)})
+    if len({j['case_id'] for j in jobs}) != len(jobs):
+        raise ValueError('Duplicate case IDs')
+    return jobs
+
+
+def environment(key):
+    # Prevent unrelated hosted settings or newer-agent flags overriding this run.
+    env = {k: v for k, v in os.environ.items() if not k.startswith('BB_')}
+    env.update(CONFIG, BB_MODEL_API_KEY=key, BB_MODEL_BASE_URL=BASE)
+    return env
+
+
+def preflight(key):
+    request = urllib.request.Request(
+        BASE + '/chat/completions',
+        data=json.dumps({'model': MODEL, 'messages': [{'role': 'user', 'content': 'Reply OK.'}],
+                         'max_completion_tokens': 128}).encode(),
+        headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key})
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            data = json.load(response)
+        if not data.get('choices'):
+            raise ValueError('Model returned no choices')
+    except urllib.error.HTTPError as error:
+        # Never print headers, credentials or a response that may echo them.
+        raise ValueError(f'Model preflight failed: HTTP {error.code}; no case started') from None
+    except (OSError, ValueError) as error:
+        raise ValueError(f'Model preflight failed ({type(error).__name__}); no case started') from None
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--rcran', type=Path, default=Path.home() / 'buildbench-local-rcran-v1')
+    parser.add_argument('--views', type=Path, default=Path.home() / 'bb-cases')
+    parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--only-rcran', action='store_true')
+    parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--resume', action='store_true', help='skip completed records; preserve all outcomes')
+    args = parser.parse_args()
+    jobs = schedule(args.rcran, args.views, args.only_rcran)
+    commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+    profile = {'commit': commit, 'agent': 'full-agent-v032', 'model': MODEL,
+               'base_url': BASE, 'config': CONFIG, 'log_source': 'fresh baseline build', 'jobs': jobs}
+    for index, job in enumerate(jobs, 1):
+        print(f"[{index}/{len(jobs)}] {job['case_id']}", flush=True)
+    if args.dry_run:
+        print('Dry run only: no key read, model calls, builds or output files.')
+        return 0
+    if os.uname().machine not in ('aarch64', 'arm64') or sys.platform != 'linux':
+        raise ValueError('Run on the configured ARM64 Linux host')
+    out = args.out.resolve()
+    if args.resume:
+        if json.loads((out / 'profile.json').read_text()) != profile:
+            raise ValueError('Resume profile differs: use the same checkout, cases and configuration')
+    else:
+        out.mkdir(parents=True, exist_ok=False)
+        (out / 'profile.json').write_text(json.dumps(profile, indent=2) + '\n')
+    pending = [(i, j) for i, j in enumerate(jobs, 1)
+               if not (out / f'case-{i:02d}' / 'record.json').exists()]
+    if not pending:
+        print(f'All {len(jobs)} case records already exist: {out}')
+        return 0
+    # A hidden prompt avoids shell history; the key is never written to a file.
+    key = os.environ.get('BB_MODEL_API_KEY') or getpass.getpass('Bedrock key (hidden): ')
+    key = key.strip()
+    if not key:
+        raise ValueError('Empty key; no case started')
+    preflight(key)
+    print('Model access verified. Preflight usage is separate from case metrics.', flush=True)
+    env = environment(key)
+    for i, job in pending:
+        run_id = f'case-{i:02d}'
+        old = out / run_id
+        if old.exists():
+            # Preserve an interrupted attempt before using a fresh harness directory.
+            n = 1
+            while (out / f'{run_id}-interrupted-{n}').exists():
+                n += 1
+            old.rename(out / f'{run_id}-interrupted-{n}')
+        print(f"[{i}/{len(jobs)}] START {job['case_id']}", flush=True)
+        with (out / f'{run_id}.console.log').open('a') as log:
+            result = subprocess.run([sys.executable, '-u', '-m', 'harness.run_case',
+                '--bundle', job['bundle'], '--agent', 'full-agent-v032', '--live',
+                '--run-id', run_id, '--runs-dir', str(out)], cwd=ROOT, env=env,
+                stdout=log, stderr=subprocess.STDOUT)
+        record_path = out / run_id / 'record.json'
+        if not record_path.exists():
+            print(f'No record; stopped (exit {result.returncode}). Inspect {out / (run_id + ".console.log")}.')
+            return 2
+        record = json.loads(record_path.read_text())
+        print(f"[{i}/{len(jobs)}] repaired={record['repaired']} "
+              f"termination={record['termination_reason']} agent={record.get('agent_termination')}", flush=True)
+        if result.returncode or record.get('agent_termination') == 'model_error':
+            print('Stopped after runner/model error. Existing records are retained, including this failure.')
+            return 2
+    print(f'All {len(jobs)} case records saved in {out}. Read runs.jsonl and final validator evidence.')
+    return 0
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except (ValueError, OSError, KeyError) as error:
+        print(f'Error: {error}', file=sys.stderr)
+        sys.exit(2)
+PYRUN
 ```
 
-Expected (about 3 min and 5 min): one summary each with `"check_error": null` and real token counts in `"usage"`, then `Pipeline completed.` `"repaired"` may be `true` or `false`. In our recorded run, the full agent repaired rcran and one-shot did not.
-
-### Experiment 4: Full evaluation (all 22 runs)
-
-This experiment reproduces the §3 table: 11 cases × 2 agents. First, turn on x86 emulation, which the five ARM64 → x86-64 cases need:
+Preview without credentials, Docker builds, or model calls:
 
 ```bash
-sudo update-binfmts --enable qemu-x86_64 &&
-cat /proc/sys/fs/binfmt_misc/qemu-x86_64
+cd "$HOME/build-bench-demo3"
+python3 "$HOME/demo3-ta/run.py" \
+  --out "$HOME/buildbench-experiments/demo3-ta-01" --dry-run
 ```
 
-Expected: `enabled`, and a `flags:` line containing `F`. Then preview the schedule without running anything:
+Expected: exactly eleven numbered cases, then `Dry run only`. For a quick live check, add `--only-rcran` and use a separate output directory. For the full sweep, omit that flag.
+
+In the AWS console, choose **Amazon Bedrock → API keys → Short-term API keys** in **us-east-1** and generate a key. It inherits the generating identity's permissions and expires at the earlier of the session expiration or 12 hours. See [AWS key instructions](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-generate.html). Copy only the key value. Do not put it in a command, chat, screenshot or committed file.
 
 ```bash
-cd "$HOME/build-bench-demo2-recorded" &&
-python3 scripts/demo2_retest.py \
-  --rcran "$HOME/buildbench-local-rcran-v1" \
-  --views "$HOME/bb-cases" \
-  --out "$HOME/buildbench-experiments/ta-paired-recorded-01" \
-  --dry-run
+python3 "$HOME/demo3-ta/run.py" \
+  --out "$HOME/buildbench-experiments/demo3-ta-01"
 ```
 
-Expected: `22 live runs: 11 cases × 2 agents × 1 repeat(s). No calls/builds started.` and 22 job names. To run it, repeat the same command **without** `--dry-run`.
+At **`Bedrock key (hidden):`**, paste the complete key and press Enter. Nothing is displayed. The runner first makes a small request to the same model. Expected: `Model access verified`, followed by `[1/11] START ...`. HTTP 401/403 stops the run before any case build; correct the credential or permissions first. The preflight's model usage is separate from case metrics.
 
-Expected (about 2 h, up to 4 h): progress lines `[1/22] ...` to `[22/22] ...`, with long quiet periods during builds, ending with `Schedule complete. Read results.md and coverage.json; already-building cases are not repairs.` The output folder's `results.md` has one row per case and agent. Compare it with §3. As in our run, expect the five ARM64 → x86-64 cases to fail during setup. If the run stops partway (for example, the key expired), paste a new key and rerun the same command with `--resume` added.
+The helper fixes all six settings in §2, clears unrelated `BB_*` overrides, and selects `full-agent-v032`. It runs each case in its own Python process, with a new baseline failure log and no iterative build feedback. It saves the commit, configuration and schedule in `profile.json`; each case has its own console log and `record.json`. Keep tmux running; detach with Ctrl-b then d, and reconnect with `tmux attach -t demo3-ta`.
 
-### Experiment 5: Starter kit checks
+For a single case without the helper, the underlying invocation is `python3 -m harness.run_case --bundle BUNDLE --agent full-agent-v032 --live --run-id UNIQUE_ID --runs-dir OUTPUT_DIR`, with the six environment settings from §2 and a private `BB_MODEL_API_KEY`. The helper is preferred because it checks model access first.
 
-**What changed since 21 October.** This section used to say that `./bb ready` passes for our agents after a change to the kit's runner (`runner/run-agent-case.sh`) that gave the agent network access and the model key. That change was committed after the Demo 2 deadline, so the submitted code could not pass this experiment, and the grader's `./bb ready` failed twice. We have withdrawn the claim and the runner change: the kit's `AGENTS.md` forbids modifying `runner/` for a submission, and the current kit (rc.5) runs the agent with `--network none` and injects no model settings locally. A model-dependent agent therefore cannot pass `./bb ready` on a laptop or on EC2, by design. Verified on 4 November with full agent 0.3.3 on the ARM64 instance, no key in the environment: the kit prints `✓ Agent submission is valid`, `✓ Example Case prepared`, `✓ Initial build failure reproduced`, `✓ Agent completed`, then `generate_patch.py: error: Agent made no allowed textual change`, `[1/1] hello failed (exit=2)`, `Passed: 0/1`, and exits 5; the agent's own `agent-result.json` in the run folder says `No model API key configured (set BB_MODEL_API_KEY).` That outcome is the expected one, not a setup error, and it is what the grader saw.
+### 5.7 Progress, interruption and result interpretation
 
-What `./bb` can verify locally is packaging. This runs offline, in a checkout of **main** (its kit is rc.5; the `demo2-ta-v1` tag carries rc.2, whose `bb check` behaves the same), and must pass:
+From another shell on the instance:
 
 ```bash
-git clone https://github.com/ec528-fall26/build-bench.git "$HOME/build-bench-main" &&
-cd "$HOME/build-bench-main/buildbench-starter-kit-0.1.0-rc.5" &&
-./bb check --agent ./agents/full-agent &&
-./bb package --agent ./agents/full-agent
+out="$HOME/buildbench-experiments/demo3-ta-01"
+tail -n 8 "$out"/case-*.console.log
+cd "$HOME/build-bench-demo3"
+python3 -m harness.summarize "$out/runs.jsonl" --agent-version 0.3.2
 ```
 
-Expected: `✓ Agent submission is valid` (31 files for 0.3.3), then the ZIP path, size and SHA-256 from `bb package`. The same two commands for `./agents/one-shot`.
+`runs.jsonl` appears after the first case finishes. A quiet console during a long build is normal. The helper prints a completion line only after all eleven records exist; inspect case coverage as well as aggregate repair counts.
 
-The model-dependent part is verified where model access exists: the organizers' **Hosted Smoke**, which checks model access, agent execution and independent validation on their platform. Full agent 0.2.0 passed it on 3 November; the version table and the procedure are in [hosted-submission.md](hosted-submission.md). The repair ability itself is measured by Experiments 3–4 and §3a, which use the real validator through our harness.
+For an interrupted process, first confirm the old runner and its validator container have stopped. Then rerun the same command with `--resume`, from the same checkout and paths. The helper skips completed records, preserves unfinished directories with an `-interrupted-N` suffix, and prompts for a key again. It refuses a different commit/configuration/schedule. **Completed failures are retained, not retried or silently replaced.** If a credential expires during a case, preserve that error; use a new output directory for a fresh complete sweep after correcting the key. Report both attempts and do not merge only favorable results.
 
-### 5.5 When you're done
+| Evidence | Interpretation |
+| --- | --- |
+| `record.json`: `repaired: true` | Final validator succeeded and artifact validation passed |
+| `termination_reason: case_not_failing` | Unchanged baseline builds; no repair credit |
+| `agent_termination: model_error` | Model/credential/service failure, not source-repair evidence |
+| Baseline or final infrastructure error / QEMU crash | Environment failure; inspect stage and build log |
+| `build_failed` / no edit / limits reached | Inspect the record and patch to classify the failure |
+| Shell exit code 0 | The harness completed; this alone does not mean repaired |
 
-Copy anything you want to keep from `~/buildbench-experiments/`, then **terminate** the instance in the EC2 console. A stopped instance still bills for its disk.
+Per-case evidence includes `baseline/`, `repair.diff` when edits exist, `replies.jsonl`, `harness.log`, and the final validator directory referenced by `record.json`'s `result.result_dir`. Check the actual `build-result.json` and artifact list before reporting success. The validator's `patch_applied` may be false because the harness submits repackaged source rather than a validator `--patch` argument.
 
-## More detail
+### 5.8 Save evidence and shut down
 
-- [one-shot-agent.md](one-shot-agent.md) and [full-agent.md](full-agent.md): how each agent works, in depth.
-- [demo2-results.md](demo2-results.md): case-by-case results with log evidence.
-- [part5-findings.md](part5-findings.md): earlier experiments, including the hand-assisted Rust repair.
-- [hosted-submission.md](hosted-submission.md): the competition's hosted platform and our plan for it.
-- [design-proposal.md](design-proposal.md): the original proposal and milestones.
+Save the output directory and `~/demo3-ta/` environment records before stopping the instance. From the EC2 shell:
+
+```bash
+out="$HOME/buildbench-experiments/demo3-ta-01"
+tar -czf "$HOME/demo3-ta-evidence.tar.gz" \
+  -C "$HOME" "buildbench-experiments/$(basename "$out")" demo3-ta
+sha256sum "$HOME/demo3-ta-evidence.tar.gz"
+```
+
+Download the archive using your SSH/SCP client or approved file-transfer method. Do not include credentials. Stop the instance when pausing work; storage remains billable. Terminate only after preserving needed evidence and confirming the disk is no longer needed.
+
+## 6. Local packaging versus hosted evaluation
+
+The local harness verifies repair behavior with model access and the real validator. The starter kit's offline `bb check` and `bb package` verify submission structure, not repair success:
+
+```bash
+cd "$HOME/build-bench-demo3/buildbench-starter-kit-0.1.0-rc.5"
+./bb check --agent ./agents/full-agent-v032
+./bb package --agent ./agents/full-agent-v032
+```
+
+### Starter-kit readiness check (`./bb ready`)
+
+Run the starter kit's combined validation, example test and packaging check, and retain its actual result:
+
+```bash
+cd "$HOME/build-bench-demo3/buildbench-starter-kit-0.1.0-rc.5"
+./bb ready --agent ./agents/full-agent-v032 \
+  --output dist/demo3-readiness.zip --json
+```
+
+A successful readiness run reports `status: succeeded` with exit code 0 and produces the ZIP. If it fails, retain the reported diagnostic and the `runs/ready/` result files. `bb check` or `bb package` passing alone does not establish readiness or a successful model repair. The unmodified local runner uses `--network none`; host-side Bedrock authentication for the harness does not automatically give the readiness container model access. Record this limitation when applicable rather than reporting an unobserved pass. The earlier Demo 2 guide used a modified rc.2 runner; those local network overrides are not part of this rc.5 reproduction.
+
+Inspect the actual output and ZIP hash. Do not claim `bb ready` passes for a model-dependent agent without hosted model access, and do not modify the starter kit runner to supply networking or credentials. Hosted Smoke and competition results are a separate evidence set; see [hosted submission notes](hosted-submission.md).

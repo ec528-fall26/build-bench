@@ -251,7 +251,8 @@ import urllib.error
 import urllib.request
 
 ROOT = Path.home() / 'build-bench-demo3'
-BASE = 'https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1'
+REGION = os.environ.get('DEMO3_MODEL_REGION', 'us-east-1')
+BASE = f'https://bedrock-runtime.{REGION}.amazonaws.com/openai/v1'
 MODEL = 'openai.gpt-oss-120b-1:0'
 CONFIG = {
     'BB_AGENT_USE_EVIDENCE_MANAGER': '1', 'BB_AGENT_USE_TOOLS': '1',
@@ -399,6 +400,10 @@ python3 "$HOME/demo3-ta/run.py" \
 
 At **`Bedrock key (hidden):`**, paste the complete key and press Enter. Nothing is displayed. The runner first makes a small request to the same model. Expected: `Model access verified`, followed by `[1/11] START ...`. HTTP 401/403 stops the run before any case build; correct the credential or permissions first. The preflight's model usage is separate from case metrics.
 
+**Changing region:** before invoking the helper, export `DEMO3_MODEL_REGION` with the commercial AWS region you intend to use (default `us-east-1`). The helper uses the resulting endpoint for both its access check and the actual agent, and records it in `profile.json`. Verify model availability and credential permissions in that region. Use a new output directory when changing regions; results from different endpoints are not automatically a controlled comparison. Exporting `BB_MODEL_BASE_URL` alone does not override this helper.
+
+The development model is fixed to `openai.gpt-oss-120b-1:0` in the selected agent's `src/model_client.py`. Do not edit only the helper's `MODEL`: that would change its preflight and label without changing the actual agent model. Changing models requires a separately versioned, tested agent configuration.
+
 The helper fixes all six settings in §2, clears unrelated `BB_*` overrides, and selects `full-agent-v032`. It runs each case in its own Python process, with a new baseline failure log and no iterative build feedback. It saves the commit, configuration and schedule in `profile.json`; each case has its own console log and `record.json`. Keep tmux running; detach with Ctrl-b then d, and reconnect with `tmux attach -t demo3-ta`.
 
 For a single case without the helper, the underlying invocation is `python3 -m harness.run_case --bundle BUNDLE --agent full-agent-v032 --live --run-id UNIQUE_ID --runs-dir OUTPUT_DIR`, with the six environment settings from §2 and a private `BB_MODEL_API_KEY`. The helper is preferred because it checks model access first.
@@ -487,3 +492,49 @@ fi
 A successful readiness run reports `status: succeeded` with exit code 0 and produces the ZIP; its SHA-256 must match the returned artifact metadata. The command records the result without hiding a failed exit code. If using this block outside the fresh-host guide, create `~/demo3-ta/` first. If it fails, retain the reported diagnostic and the `runs/ready/` result files. `bb check` or `bb package` passing alone does not establish readiness or a successful model repair. The unmodified local runner uses `--network none`; host-side Bedrock authentication for the harness does not automatically give the readiness container model access. Record this limitation when applicable rather than reporting an unobserved pass. The earlier Demo 2 guide used a modified rc.2 runner; those local network overrides are not part of this rc.5 reproduction.
 
 Inspect the actual output and ZIP hash. Do not claim `bb ready` passes for a model-dependent agent without hosted model access, and do not modify the starter kit runner to supply networking or credentials. Hosted Smoke and competition results are a separate evidence set; see [hosted submission notes](hosted-submission.md).
+
+
+## 7. Addressing the Demo 2 reproducibility feedback
+
+Demo 2's pre-deadline instructions omitted the runner modification needed for live model access, did not explain changing `us-east-1`, and claimed a one-shot readiness pass that the TA could not reproduce. Those historical failures remain failures; this update does not retroactively fix the submitted Demo 2 artifact.
+
+For Demo 3, use the selected `full-agent-v032` and distinguish two local modes:
+
+- **Official offline runner:** §6 invokes the unchanged kit. Its local sandbox has no model network or injected key. Save the actual diagnostic; do not claim a pass based on unit tests or packaging.
+- **Explicit local network-enabled readiness:** the checked-in helper below makes a disposable kit copy, enables Docker bridge networking for the agent, and forwards only the development API key, endpoint and six Demo 3 settings by environment-variable name. It keeps the read-only root, capability restrictions, source mounts and independent validator checks. The tracked kit and packaged agent are unchanged. This is a modified local experiment, not an official hosted readiness claim.
+
+The implementation and these instructions must be committed to `demo-3` before the submission deadline. The helper is not present in historical `db555cd`; run it from the submitted branch checkout (or copy it from there to the pinned checkout), and retain the recorded commit and helper hash. It records the actual agent metadata through the readiness artifact; do not infer a new eleven-case score from the bundled example.
+
+### Run the local check on the configured Linux build host
+
+Use a separate checkout from any running campaign. Docker must be usable by this shell. The helper needs Python 3.11 or newer. If using §5.2's sudo Docker wrapper, replace that wrapper with the following version so sudo preserves only the explicitly selected model settings:
+
+```bash
+cat > "$HOME/demo3-ta/bin/docker" <<'SH'
+#!/bin/sh
+exec sudo --preserve-env=BB_MODEL_API_KEY,BB_MODEL_BASE_URL,BB_AGENT_USE_EVIDENCE_MANAGER,BB_AGENT_USE_TOOLS,BB_AGENT_USE_BUILD_FEEDBACK,BB_AGENT_USE_HISTORY,BB_REPAIR_STRATEGY,BB_REVIEW_EDITS /usr/bin/docker "$@"
+SH
+chmod +x "$HOME/demo3-ta/bin/docker"
+```
+
+This is unnecessary when Docker already works directly for your user. It requires permission to preserve those variables under the host's sudo policy. Never put the key literal in this wrapper.
+
+From the repository root, run the offline configuration tests first:
+
+```bash
+python3 -m unittest discover -s tests/experiments -p test_demo3_ready.py -v
+```
+
+Then run live local readiness (this makes paid model calls and runs the bundled example builds):
+
+```bash
+python3 scripts/demo3_ready.py \
+  --live-model --region us-east-1 \
+  --out "$HOME/buildbench-experiments/demo3-local-ready-$(date -u +%Y%m%dT%H%M%SZ)"
+```
+
+The helper prompts for a hidden key if `BB_MODEL_API_KEY` is not already exported. Change `--region` to use a different commercial AWS region where the fixed model is available and your credentials are authorized. Omitting `--live-model` runs the offline runner and forwards no model credentials. Do not expect live repair in that mode.
+
+Retain `profile.json`, `ready-result.json`, `ready-progress.log`, `exit-code.txt`, both runner source copies, and the copied `runs/` evidence. On success, also retain `demo3-readiness.zip` and `SHA256SUMS`. The helper returns success only if the readiness process exits zero, reports `status: succeeded`, and the produced ZIP hash matches the kit's artifact metadata. A failed result does not become a pass because an old ZIP or another agent's result exists.
+
+**Validation status:** four configuration regression tests passed locally without Docker or model calls. No live readiness pass is claimed for this helper yet. Record the observed command, mode, commit, region, verdict and diagnostic after running it; if it fails, investigate the actual failing stage before submission. A network-enabled local pass must be labeled as such, separately from official offline readiness, hosted Smoke and the eleven-case campaigns.
